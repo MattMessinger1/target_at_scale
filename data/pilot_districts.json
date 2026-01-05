@@ -1,0 +1,57 @@
+[
+  {
+    "id": "denver-ps",
+    "name": "Denver Public Schools",
+    "state": "CO",
+    "state_full": "Colorado",
+    "website_url": "https://www.dpsk12.org",
+    "student_count": 90000,
+    "el_percentage": 30,
+    "kb_state_content": true,
+    "notes": "Major urban district, high EL population, CO has CLDE 45-hour requirement"
+  },
+  {
+    "id": "madison-metro",
+    "name": "Madison Metropolitan School District",
+    "state": "WI",
+    "state_full": "Wisconsin",
+    "website_url": "https://www.madison.k12.wi.us",
+    "student_count": 27000,
+    "el_percentage": 15,
+    "kb_state_content": true,
+    "notes": "WIDA headquarters state, good for testing WI-specific content"
+  },
+  {
+    "id": "fairfax-county",
+    "name": "Fairfax County Public Schools",
+    "state": "VA",
+    "state_full": "Virginia",
+    "website_url": "https://www.fcps.edu",
+    "student_count": 180000,
+    "el_percentage": 20,
+    "kb_state_content": false,
+    "notes": "Very large district, well-funded, will need Perplexity for state-specific research"
+  },
+  {
+    "id": "providence-ps",
+    "name": "Providence Public School District",
+    "state": "RI",
+    "state_full": "Rhode Island",
+    "website_url": "https://www.providenceschools.org",
+    "student_count": 22000,
+    "el_percentage": 40,
+    "kb_state_content": false,
+    "notes": "Very high EL population, will need Perplexity for state-specific research"
+  },
+  {
+    "id": "anchorage-sd",
+    "name": "Anchorage School District",
+    "state": "AK",
+    "state_full": "Alaska",
+    "website_url": "https://www.asdk12.org",
+    "student_count": 44000,
+    "el_percentage": 12,
+    "kb_state_content": false,
+    "notes": "Unique geography, tests edge cases, will need Perplexity for state-specific research"
+  }
+]
