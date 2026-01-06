@@ -2,17 +2,17 @@
  * API client for WCEPS Email Generator backend.
  */
 
-// Vite environment type augmentation
-declare global {
-  interface ImportMetaEnv {
-    VITE_API_URL?: string
+// Use environment variable for API URL in production, fallback to /api for dev with proxy
+const getApiBase = (): string => {
+  try {
+    // @ts-expect-error - Vite injects env at build time
+    const viteUrl = import.meta.env?.VITE_API_URL
+    return viteUrl ? `${viteUrl}/api` : '/api'
+  } catch {
+    return '/api'
   }
 }
-
-// Use environment variable for API URL in production, fallback to /api for dev with proxy
-const API_BASE = (import.meta as { env: ImportMetaEnv }).env.VITE_API_URL 
-  ? `${(import.meta as { env: ImportMetaEnv }).env.VITE_API_URL}/api`
-  : '/api'
+const API_BASE = getApiBase()
 
 // Types
 export interface District {

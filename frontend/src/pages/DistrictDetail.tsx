@@ -80,7 +80,7 @@ export default function DistrictDetail() {
 
   const scrapeMutation = useMutation({
     mutationFn: () => api.districts.scrape(districtId!),
-    onSuccess: (data: ScrapeResult) => {
+    onSuccess: (_data: ScrapeResult) => {
       toast({ 
         title: 'Scraping Complete',
         description: `Scraping completed for district`
