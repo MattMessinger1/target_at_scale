@@ -648,7 +648,7 @@ JSON array:"""
 
     try:
         response = await openai_client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.2-thinking",
             messages=[
                 {"role": "system", "content": "You are a data extraction assistant. Return only valid JSON. Focus on funding that requires compliance triggers like CSI/TSI designation, consent decrees, or corrective action status."},
                 {"role": "user", "content": parse_prompt}
@@ -777,7 +777,7 @@ JSON array:"""
 
     try:
         response = await openai_client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.2-thinking",
             messages=[
                 {"role": "system", "content": "You are a data extraction assistant. Return only valid JSON. Always include a 'sources' array for each item, even if empty. For each source, include a highlight_text field with a short phrase to find on the page."},
                 {"role": "user", "content": parse_prompt}
@@ -896,7 +896,7 @@ JSON array:"""
 
     try:
         response = await openai_client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.2-thinking",
             messages=[
                 {"role": "system", "content": "You are a data extraction assistant. Return only valid JSON. Always include a 'sources' array for each item, even if empty. For each source, include a highlight_text field with a short phrase to find on the page."},
                 {"role": "user", "content": parse_prompt}
@@ -1093,7 +1093,7 @@ JSON array:"""
 
     try:
         response = await openai_client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.2-thinking",
             messages=[
                 {"role": "system", "content": "You are a data extraction assistant. Return only valid JSON."},
                 {"role": "user", "content": parse_prompt}

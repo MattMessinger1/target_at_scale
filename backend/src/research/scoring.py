@@ -102,7 +102,7 @@ async def score_item(
     
     try:
         response = await openai_client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.2-thinking",
             messages=[
                 {
                     "role": "system",

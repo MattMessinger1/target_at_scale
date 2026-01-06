@@ -181,7 +181,7 @@ SUBJECT: [subject line]
 """
     
     response = await client.chat.completions.create(
-        model="gpt-4o",  # Using GPT-4o, can be upgraded to GPT-5 when available
+        model="gpt-5.2-thinking",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt}

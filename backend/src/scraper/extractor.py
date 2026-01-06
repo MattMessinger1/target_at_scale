@@ -104,7 +104,7 @@ JSON array:"""
 
     try:
         response = await client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.2-thinking",
             messages=[
                 {"role": "system", "content": "You are a data extraction assistant. Return only valid JSON."},
                 {"role": "user", "content": prompt}
@@ -337,7 +337,7 @@ JSON:"""
 
     try:
         response = await client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.2-thinking",
             messages=[
                 {"role": "system", "content": "You are an education analyst. Return only valid JSON."},
                 {"role": "user", "content": prompt}

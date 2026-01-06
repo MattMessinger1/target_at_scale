@@ -172,7 +172,7 @@ async def extract_snippets_from_content(
     
     try:
         response = await client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.2-thinking",
             messages=[
                 {
                     "role": "system", 
