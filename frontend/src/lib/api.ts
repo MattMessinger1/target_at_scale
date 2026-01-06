@@ -169,6 +169,10 @@ export interface ResearchRequest {
   audience: string
   top_n?: number
   min_score?: number
+  // Multi-select support - additional selections beyond the primary
+  additional_products?: string[]
+  additional_states?: string[]
+  additional_audiences?: string[]
 }
 
 export interface ResearchResponse {

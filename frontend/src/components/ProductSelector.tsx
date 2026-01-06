@@ -1,5 +1,6 @@
 /**
  * ProductSelector component for selecting WCEPS products.
+ * Supports multi-select mode.
  */
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
@@ -37,11 +38,11 @@ const PRODUCT_INFO: Record<string, { description: string; icon: string }> = {
 }
 
 interface ProductSelectorProps {
-  selectedProduct: string
-  onSelect: (product: string) => void
+  selectedProducts: string[]
+  onSelect: (products: string[]) => void
 }
 
-export function ProductSelector({ selectedProduct, onSelect }: ProductSelectorProps) {
+export function ProductSelector({ selectedProducts, onSelect }: ProductSelectorProps) {
   const { data, isLoading } = useQuery({
     queryKey: ['products'],
     queryFn: api.research.getProducts,
@@ -55,21 +56,51 @@ export function ProductSelector({ selectedProduct, onSelect }: ProductSelectorPr
 
   const products = data?.products || []
 
+  const handleToggleProduct = (product: string) => {
+    if (selectedProducts.includes(product)) {
+      onSelect(selectedProducts.filter(p => p !== product))
+    } else {
+      onSelect([...selectedProducts, product])
+    }
+  }
+
+  const handleSelectAll = () => {
+    if (selectedProducts.length === products.length) {
+      onSelect([])
+    } else {
+      onSelect([...products])
+    }
+  }
+
   return (
     <div className="space-y-3">
-      <label className="block text-sm font-medium text-slate-300">
-        Select Product
-      </label>
+      <div className="flex items-center justify-between">
+        <label className="block text-sm font-medium text-slate-300">
+          Select Product{selectedProducts.length > 1 ? 's' : ''}
+        </label>
+        <button
+          onClick={handleSelectAll}
+          className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
+        >
+          {selectedProducts.length === products.length ? 'Clear All' : 'Select All'}
+        </button>
+      </div>
+      
+      {selectedProducts.length > 0 && (
+        <div className="text-xs text-slate-400">
+          {selectedProducts.length} product{selectedProducts.length > 1 ? 's' : ''} selected
+        </div>
+      )}
       
       <div className="grid grid-cols-1 gap-2">
         {products.map((product) => {
           const info = PRODUCT_INFO[product] || { description: '', icon: '📦' }
-          const isSelected = selectedProduct === product
+          const isSelected = selectedProducts.includes(product)
           
           return (
             <button
               key={product}
-              onClick={() => onSelect(product)}
+              onClick={() => handleToggleProduct(product)}
               className={`p-4 rounded-lg border text-left transition-all ${
                 isSelected
                   ? 'bg-emerald-600/20 border-emerald-500 ring-2 ring-emerald-500/50'
@@ -86,13 +117,17 @@ export function ProductSelector({ selectedProduct, onSelect }: ProductSelectorPr
                     {info.description}
                   </div>
                 </div>
-                {isSelected && (
-                  <span className="text-emerald-400">
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                  isSelected 
+                    ? 'bg-emerald-500 border-emerald-500' 
+                    : 'border-slate-500'
+                }`}>
+                  {isSelected && (
+                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
-                  </span>
-                )}
+                  )}
+                </div>
               </div>
             </button>
           )

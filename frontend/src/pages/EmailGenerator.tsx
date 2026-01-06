@@ -2,7 +2,7 @@
  * EmailGenerator page - Main V1 email tool flow.
  * 
  * Flow:
- * 1. Select product, state, audience
+ * 1. Select products, states, audiences (multi-select)
  * 2. Research (with RAG context) → returns scored items
  * 3. Curate (select funding + compliance items)
  * 4. Generate email
@@ -18,21 +18,29 @@ import {
   GenerateEmailResponse 
 } from '../lib/api'
 import { ProductSelector } from '../components/ProductSelector'
-import { StateSelector } from '../components/StateSelector'
+import { StateSelector, SelectedState } from '../components/StateSelector'
 import { AudienceSelector } from '../components/AudienceSelector'
 import { CurationStep } from '../components/CurationStep'
 
 type Step = 'select' | 'research' | 'curate' | 'generate' | 'done'
 
+const STEP_ORDER: Step[] = ['select', 'research', 'curate', 'generate', 'done']
+const STEP_LABELS: Record<Step, string> = {
+  select: 'Select',
+  research: 'Research',
+  curate: 'Curate',
+  generate: 'Generate',
+  done: 'Done',
+}
+
 export default function EmailGenerator() {
   // Step state
   const [currentStep, setCurrentStep] = useState<Step>('select')
   
-  // Selection state
-  const [selectedProduct, setSelectedProduct] = useState('')
-  const [selectedState, setSelectedState] = useState('')
-  const [selectedStateFull, setSelectedStateFull] = useState('')
-  const [selectedAudience, setSelectedAudience] = useState('')
+  // Selection state - now arrays for multi-select
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([])
+  const [selectedStates, setSelectedStates] = useState<SelectedState[]>([])
+  const [selectedAudiences, setSelectedAudiences] = useState<string[]>([])
   
   // Research results
   const [researchResults, setResearchResults] = useState<ResearchResponse | null>(null)
@@ -45,12 +53,17 @@ export default function EmailGenerator() {
   const [generatedEmail, setGeneratedEmail] = useState<GenerateEmailResponse | null>(null)
   const [copied, setCopied] = useState(false)
 
-  // Research mutation
+  // Research mutation - for multi-select, we use the first selection as primary
+  // and include others in the context
   const researchMutation = useMutation({
     mutationFn: () => api.research.research({
-      product: selectedProduct,
-      state: selectedState,
-      audience: selectedAudience,
+      product: selectedProducts[0], // Primary product
+      state: selectedStates[0]?.code || '', // Primary state
+      audience: selectedAudiences[0], // Primary audience
+      // Additional selections are passed as context
+      additional_products: selectedProducts.slice(1),
+      additional_states: selectedStates.slice(1).map(s => s.code),
+      additional_audiences: selectedAudiences.slice(1),
     }),
     onSuccess: (data) => {
       setResearchResults(data)
@@ -61,10 +74,10 @@ export default function EmailGenerator() {
   // Generate mutation
   const generateMutation = useMutation({
     mutationFn: () => api.generate.email({
-      product: selectedProduct,
-      state: selectedState,
-      state_full: selectedStateFull,
-      audience: selectedAudience,
+      product: selectedProducts.join(', '),
+      state: selectedStates.map(s => s.code).join(', '),
+      state_full: selectedStates.map(s => s.name).join(', '),
+      audience: selectedAudiences.join(', '),
       selected_funding: selectedFunding.map(f => ({
         title: f.title,
         description: f.description,
@@ -84,13 +97,8 @@ export default function EmailGenerator() {
     },
   })
 
-  const canResearch = selectedProduct && selectedState && selectedAudience
+  const canResearch = selectedProducts.length > 0 && selectedStates.length > 0 && selectedAudiences.length > 0
   const canGenerate = selectedFunding.length > 0 || selectedCompliance.length > 0
-
-  const handleStateSelect = (code: string, name: string) => {
-    setSelectedState(code)
-    setSelectedStateFull(name)
-  }
 
   const handleStartResearch = () => {
     setCurrentStep('research')
@@ -112,10 +120,9 @@ export default function EmailGenerator() {
 
   const handleReset = () => {
     setCurrentStep('select')
-    setSelectedProduct('')
-    setSelectedState('')
-    setSelectedStateFull('')
-    setSelectedAudience('')
+    setSelectedProducts([])
+    setSelectedStates([])
+    setSelectedAudiences([])
     setResearchResults(null)
     setSelectedFunding([])
     setSelectedCompliance([])
@@ -125,13 +132,13 @@ export default function EmailGenerator() {
   const handleExportCSV = () => {
     if (!generatedEmail) return
     
-    const headers = ['Subject Line', 'Email Body', 'Product', 'State', 'Audience', 'Word Count']
+    const headers = ['Subject Line', 'Email Body', 'Products', 'States', 'Audiences', 'Word Count']
     const row = [
       `"${generatedEmail.subject_line.replace(/"/g, '""')}"`,
       `"${generatedEmail.email_body.replace(/"/g, '""')}"`,
-      generatedEmail.product,
-      generatedEmail.state,
-      generatedEmail.audience,
+      `"${selectedProducts.join(', ')}"`,
+      `"${selectedStates.map(s => s.name).join(', ')}"`,
+      `"${selectedAudiences.join(', ')}"`,
       generatedEmail.word_count.toString(),
     ]
     
@@ -140,9 +147,34 @@ export default function EmailGenerator() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `email-${generatedEmail.product.toLowerCase().replace(/\s+/g, '-')}-${generatedEmail.state}.csv`
+    a.download = `email-${selectedProducts[0]?.toLowerCase().replace(/\s+/g, '-') || 'wceps'}-${selectedStates[0]?.code || 'multi'}.csv`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  // Handle clicking on a step to navigate
+  const handleStepClick = (step: Step) => {
+    const currentIndex = STEP_ORDER.indexOf(currentStep)
+    const targetIndex = STEP_ORDER.indexOf(step)
+    
+    // Can only go back to completed steps or current step
+    if (targetIndex <= currentIndex) {
+      // Don't go to research or generate steps directly (they're loading states)
+      if (step === 'research' || step === 'generate') {
+        return
+      }
+      setCurrentStep(step)
+    }
+  }
+
+  // Get step status for styling
+  const getStepStatus = (step: Step) => {
+    const currentIndex = STEP_ORDER.indexOf(currentStep)
+    const stepIndex = STEP_ORDER.indexOf(step)
+    
+    if (step === currentStep) return 'current'
+    if (stepIndex < currentIndex) return 'completed'
+    return 'upcoming'
   }
 
   return (
@@ -160,33 +192,48 @@ export default function EmailGenerator() {
               </p>
             </div>
             
-            {/* Progress Steps */}
+            {/* Progress Steps - Clickable */}
             <div className="flex items-center gap-2">
-              {['select', 'research', 'curate', 'generate', 'done'].map((step, i) => (
-                <div
-                  key={step}
-                  className={`flex items-center ${i > 0 ? 'ml-2' : ''}`}
-                >
-                  {i > 0 && (
-                    <div className={`w-8 h-0.5 mr-2 ${
-                      ['select', 'research', 'curate', 'generate', 'done'].indexOf(currentStep) >= i
-                        ? 'bg-emerald-500'
-                        : 'bg-slate-700'
-                    }`} />
-                  )}
+              {STEP_ORDER.map((step, i) => {
+                const status = getStepStatus(step)
+                const isClickable = status === 'completed' || status === 'current'
+                const isTransitional = step === 'research' || step === 'generate'
+                
+                return (
                   <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-colors ${
-                      currentStep === step
-                        ? 'bg-emerald-500 text-white'
-                        : ['select', 'research', 'curate', 'generate', 'done'].indexOf(currentStep) > i
-                          ? 'bg-emerald-600/50 text-emerald-300'
-                          : 'bg-slate-700 text-slate-400'
-                    }`}
+                    key={step}
+                    className={`flex items-center ${i > 0 ? 'ml-2' : ''}`}
                   >
-                    {i + 1}
+                    {i > 0 && (
+                      <div className={`w-8 h-0.5 mr-2 ${
+                        STEP_ORDER.indexOf(currentStep) >= i
+                          ? 'bg-emerald-500'
+                          : 'bg-slate-700'
+                      }`} />
+                    )}
+                    <button
+                      onClick={() => handleStepClick(step)}
+                      disabled={!isClickable || isTransitional}
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
+                        status === 'current'
+                          ? 'bg-emerald-500 text-white'
+                          : status === 'completed'
+                            ? 'bg-emerald-600/50 text-emerald-300 hover:bg-emerald-600/70 cursor-pointer'
+                            : 'bg-slate-700 text-slate-400'
+                      } ${isClickable && !isTransitional ? 'hover:ring-2 hover:ring-emerald-500/50' : ''}`}
+                      title={`${STEP_LABELS[step]}${isClickable && !isTransitional ? ' (click to edit)' : ''}`}
+                    >
+                      {status === 'completed' ? (
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      ) : (
+                        i + 1
+                      )}
+                    </button>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>
@@ -196,30 +243,56 @@ export default function EmailGenerator() {
       <div className="max-w-6xl mx-auto px-6 py-8">
         {/* Step 1: Selection */}
         {currentStep === 'select' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-1">
-              <ProductSelector
-                selectedProduct={selectedProduct}
-                onSelect={setSelectedProduct}
-              />
-            </div>
-            
-            <div className="lg:col-span-1">
-              <StateSelector
-                selectedState={selectedState}
-                onSelect={handleStateSelect}
-              />
-            </div>
-            
-            <div className="lg:col-span-1">
-              <AudienceSelector
-                selectedAudience={selectedAudience}
-                onSelect={setSelectedAudience}
-              />
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-1">
+                <ProductSelector
+                  selectedProducts={selectedProducts}
+                  onSelect={setSelectedProducts}
+                />
+              </div>
+              
+              <div className="lg:col-span-1">
+                <StateSelector
+                  selectedStates={selectedStates}
+                  onSelect={setSelectedStates}
+                />
+              </div>
+              
+              <div className="lg:col-span-1">
+                <AudienceSelector
+                  selectedAudiences={selectedAudiences}
+                  onSelect={setSelectedAudiences}
+                />
+              </div>
             </div>
 
+            {/* Selection Summary */}
+            {(selectedProducts.length > 0 || selectedStates.length > 0 || selectedAudiences.length > 0) && (
+              <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+                <h3 className="text-sm font-medium text-slate-300 mb-3">Selection Summary</h3>
+                <div className="flex flex-wrap gap-2">
+                  {selectedProducts.map(p => (
+                    <span key={p} className="px-2 py-1 bg-emerald-900/50 text-emerald-400 rounded text-sm">
+                      {p}
+                    </span>
+                  ))}
+                  {selectedStates.map(s => (
+                    <span key={s.code} className="px-2 py-1 bg-blue-900/50 text-blue-400 rounded text-sm">
+                      {s.name}
+                    </span>
+                  ))}
+                  {selectedAudiences.map(a => (
+                    <span key={a} className="px-2 py-1 bg-purple-900/50 text-purple-400 rounded text-sm">
+                      {a}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Start Research Button */}
-            <div className="lg:col-span-3 flex justify-center pt-6">
+            <div className="flex justify-center pt-6">
               <button
                 onClick={handleStartResearch}
                 disabled={!canResearch}
@@ -244,8 +317,8 @@ export default function EmailGenerator() {
             </h2>
             <p className="text-slate-400 text-center max-w-md">
               Finding funding opportunities and compliance requirements for{' '}
-              <span className="text-emerald-400">{selectedProduct}</span> in{' '}
-              <span className="text-emerald-400">{selectedStateFull}</span>
+              <span className="text-emerald-400">{selectedProducts.join(', ')}</span> in{' '}
+              <span className="text-emerald-400">{selectedStates.map(s => s.name).join(', ')}</span>
             </p>
             <div className="mt-4 text-sm text-slate-500">
               This may take 30-60 seconds...
@@ -256,17 +329,35 @@ export default function EmailGenerator() {
         {/* Step 3: Curation */}
         {currentStep === 'curate' && researchResults && (
           <div className="space-y-6">
-            {/* Selection Summary */}
-            <div className="flex items-center gap-4 text-sm">
-              <span className="px-3 py-1 bg-emerald-900/50 text-emerald-400 rounded-full">
-                {selectedProduct}
-              </span>
-              <span className="px-3 py-1 bg-blue-900/50 text-blue-400 rounded-full">
-                {selectedStateFull}
-              </span>
-              <span className="px-3 py-1 bg-purple-900/50 text-purple-400 rounded-full">
-                {selectedAudience}
-              </span>
+            {/* Selection Summary - Clickable to edit */}
+            <div className="flex items-center gap-4 text-sm flex-wrap">
+              <button 
+                onClick={() => setCurrentStep('select')}
+                className="flex items-center gap-2 px-3 py-1 bg-emerald-900/50 text-emerald-400 rounded-full hover:bg-emerald-900/70 transition-colors"
+              >
+                {selectedProducts.join(', ')}
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+              <button 
+                onClick={() => setCurrentStep('select')}
+                className="flex items-center gap-2 px-3 py-1 bg-blue-900/50 text-blue-400 rounded-full hover:bg-blue-900/70 transition-colors"
+              >
+                {selectedStates.map(s => s.name).join(', ')}
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+              <button 
+                onClick={() => setCurrentStep('select')}
+                className="flex items-center gap-2 px-3 py-1 bg-purple-900/50 text-purple-400 rounded-full hover:bg-purple-900/70 transition-colors"
+              >
+                {selectedAudiences.join(', ')}
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
             </div>
 
             {/* Curation UI */}
@@ -285,7 +376,7 @@ export default function EmailGenerator() {
                 onClick={() => setCurrentStep('select')}
                 className="px-6 py-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors"
               >
-                ← Back
+                ← Back to Selection
               </button>
               <button
                 onClick={handleGenerate}
@@ -310,7 +401,7 @@ export default function EmailGenerator() {
               Generating Email...
             </h2>
             <p className="text-slate-400">
-              Crafting a personalized email for {selectedAudience}
+              Crafting a personalized email for {selectedAudiences.join(', ')}
             </p>
           </div>
         )}
@@ -318,17 +409,48 @@ export default function EmailGenerator() {
         {/* Step 5: Done - Show Email */}
         {currentStep === 'done' && generatedEmail && (
           <div className="space-y-6">
-            {/* Selection Summary */}
-            <div className="flex items-center gap-4 text-sm">
-              <span className="px-3 py-1 bg-emerald-900/50 text-emerald-400 rounded-full">
-                {selectedProduct}
-              </span>
-              <span className="px-3 py-1 bg-blue-900/50 text-blue-400 rounded-full">
-                {selectedStateFull}
-              </span>
-              <span className="px-3 py-1 bg-purple-900/50 text-purple-400 rounded-full">
-                {selectedAudience}
-              </span>
+            {/* Selection Summary - Clickable to edit */}
+            <div className="flex items-center gap-4 text-sm flex-wrap">
+              <button 
+                onClick={() => setCurrentStep('select')}
+                className="flex items-center gap-2 px-3 py-1 bg-emerald-900/50 text-emerald-400 rounded-full hover:bg-emerald-900/70 transition-colors"
+                title="Click to edit products"
+              >
+                {selectedProducts.join(', ')}
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+              <button 
+                onClick={() => setCurrentStep('select')}
+                className="flex items-center gap-2 px-3 py-1 bg-blue-900/50 text-blue-400 rounded-full hover:bg-blue-900/70 transition-colors"
+                title="Click to edit states"
+              >
+                {selectedStates.map(s => s.name).join(', ')}
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+              <button 
+                onClick={() => setCurrentStep('select')}
+                className="flex items-center gap-2 px-3 py-1 bg-purple-900/50 text-purple-400 rounded-full hover:bg-purple-900/70 transition-colors"
+                title="Click to edit audiences"
+              >
+                {selectedAudiences.join(', ')}
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+              <button 
+                onClick={() => setCurrentStep('curate')}
+                className="flex items-center gap-2 px-3 py-1 bg-slate-700 text-slate-300 rounded-full hover:bg-slate-600 transition-colors"
+                title="Click to edit curation"
+              >
+                Edit Curation
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
               <span className="px-3 py-1 bg-slate-700 text-slate-300 rounded-full">
                 {generatedEmail.word_count} words
               </span>
@@ -354,7 +476,7 @@ export default function EmailGenerator() {
             </div>
 
             {/* Action Buttons */}
-            <div className="flex justify-center gap-4 pt-4">
+            <div className="flex justify-center gap-4 pt-4 flex-wrap">
               <button
                 onClick={handleCopyEmail}
                 className={`px-6 py-3 rounded-lg font-medium transition-all flex items-center gap-2 ${
@@ -385,6 +507,17 @@ export default function EmailGenerator() {
               </button>
               
               <button
+                onClick={() => {
+                  // Re-run generation with same selections
+                  setCurrentStep('generate')
+                  generateMutation.mutate()
+                }}
+                className="px-6 py-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors flex items-center gap-2"
+              >
+                🔄 Regenerate
+              </button>
+              
+              <button
                 onClick={handleReset}
                 className="px-6 py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-colors"
               >
@@ -399,6 +532,12 @@ export default function EmailGenerator() {
           <div className="mt-6 p-4 bg-red-900/30 border border-red-800 rounded-lg text-red-400">
             <strong>Error:</strong>{' '}
             {researchMutation.error?.message || generateMutation.error?.message || 'Something went wrong'}
+            <button
+              onClick={() => setCurrentStep('select')}
+              className="ml-4 text-sm underline hover:text-red-300"
+            >
+              Go back and try again
+            </button>
           </div>
         )}
       </div>
