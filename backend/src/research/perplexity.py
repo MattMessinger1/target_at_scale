@@ -1,6 +1,6 @@
 """Perplexity API integration for funding and compliance research.
 
-This module uses Perplexity's sonar-pro model to research state-specific
+This module uses Perplexity's sonar-reasoning-pro model to research state-specific
 funding opportunities and compliance requirements for English learner programs.
 """
 import httpx
@@ -18,101 +18,158 @@ settings = get_settings()
 
 PERPLEXITY_BASE_URL = "https://api.perplexity.ai"
 
-# Research query templates - focused on finding "hidden gems" beyond baseline funding
-# Title I and Title III are baseline - everyone knows about them. We need the add-ons.
+# Research query templates - focused on GOVERNMENT funding sources (federal, state, district)
+# NO foundations or private grants - we want large-scale government money
 
 FUNDING_QUERY_TEMPLATE = """
-IMPORTANT: Do NOT focus on Title I or Title III - those are baseline federal programs that every district already knows about.
+Search for GOVERNMENT FUNDING SOURCES in {state} that could support {product_context}.
 
-Instead, search for ADDITIONAL and LESS OBVIOUS funding opportunities in {state} that could support {product_context}:
+IMPORTANT: Focus ONLY on government funding (federal, state, district). Do NOT include foundations, private grants, or corporate philanthropy.
 
-1. **State-Specific Programs**: What state-funded EL/multilingual programs exist in {state} beyond federal requirements?
-2. **Foundation & Private Grants**: Any education foundations, community foundations, or corporate grants for EL programs in {state}?
-3. **NEW Programs (Last 6 Months)**: Any EL-related funding announced since July 2025?
-4. **UPCOMING Programs (Next 6 Months)**: Any grants opening for applications in the coming months?
-5. **Supplemental Federal**: ESSER/ARP remaining funds, CSI/TSI school improvement allocations, refugee/immigrant education grants
-6. **Regional Programs**: County-level, regional education agency (BOCES, ESC, ISD), or consortia funding
-7. **University Partnerships**: Grant programs through {state} universities for K-12 EL support
+**Federal Funding Sources:**
+1. Title III allocations for {state} - current year amounts and how districts can access them
+2. ESSER/ARP remaining funds - any unspent pandemic relief money still available
+3. Refugee and immigrant education grants (federal programs for newcomer students)
+4. IDEA funds that can support EL students with disabilities
+5. 21st Century Community Learning Centers funds applicable to EL programs
 
-For each opportunity found, provide:
-- Program name and administering agency
-- Approximate funding amounts available
-- Application deadline (if known)
-- Why this relates to: {product_type}
-- Direct URL to program information if available
+**State Funding Sources:**
+6. State appropriations for EL/bilingual education in {state}
+7. State block grants or categorical funding for language services
+8. State literacy initiatives that include EL students
+9. Any NEW state funding announced in the past 12 months (since January 2025)
+10. Upcoming state budget allocations for FY2026-2027
 
-Focus on actionable opportunities with current or upcoming application windows.
-Prioritize lesser-known opportunities that districts might miss.
+**District-Level Allocations:**
+11. How districts in {state} typically allocate EL funding
+12. Per-pupil funding formulas for EL students
+
+For each funding source, provide:
+- Program name and administering agency (federal dept, state agency, etc.)
+- Approximate funding amounts (total allocation or per-pupil)
+- Application deadline or budget cycle timing
+- How this relates to: {product_type}
+- Direct URL to program information
+
+Focus on LARGE funding sources - block grants and major allocations, not small grants.
+Look at both ACTIVE programs (past 12 months) and UPCOMING allocations (next 12 months).
 """
 
 FUNDING_QUERY_SIMPLE = """
-IMPORTANT: Do NOT focus on Title I or Title III - those are baseline federal programs everyone already knows.
+Search for GOVERNMENT FUNDING for English learner (EL/ELL) programs in {state}.
 
-Search for ADDITIONAL and LESS OBVIOUS funding for English learner (EL/ELL) programs in {state}:
+IMPORTANT: Focus ONLY on government funding. NO foundations, private grants, or corporate sources.
 
-1. **State-Specific Programs**: State-funded EL programs beyond federal requirements
-2. **Foundation & Private Grants**: Education foundations, community foundations, corporate grants
-3. **NEW Programs (Last 6 Months)**: Funding announced since July 2025
-4. **UPCOMING Programs (Next 6 Months)**: Grants opening for applications soon
-5. **Supplemental Federal**: ESSER/ARP leftover funds, CSI/TSI allocations, refugee/immigrant grants
-6. **Regional Programs**: County-level or regional education agency funding
-7. **University Partnerships**: State university programs supporting K-12 EL
+**Federal Funding:**
+1. Title III allocations for {state}
+2. ESSER/ARP remaining funds still available
+3. Refugee/immigrant education grants
+4. IDEA funds for EL students with disabilities
+5. 21st Century funds applicable to EL
 
-For each opportunity, include:
+**State Funding:**
+6. State appropriations for EL/bilingual education
+7. State block grants for language services
+8. NEW state funding (past 12 months)
+9. Upcoming state budget allocations (next 12 months)
+
+**District Allocations:**
+10. Per-pupil funding formulas for EL students
+
+For each source, include:
 - Program name and agency
-- Funding amounts if known
-- Application deadline if known
-- Direct URL to program information
+- Funding amounts (total or per-pupil)
+- Deadline or budget cycle
+- Direct URL to program info
 
-Prioritize lesser-known opportunities that districts might miss.
+Focus on LARGE government funding sources, not small grants.
 """
 
 COMPLIANCE_QUERY_TEMPLATE = """
-What are the compliance requirements in {state} related to {product_context}?
+Search for ALL hard compliance requirements for English learner programs in {state} that relate to {product_context}.
 
-Search for HIGH-SIGNAL compliance items that create urgency for districts:
+IMPORTANT: NAME SPECIFIC DISTRICTS whenever you find them under investigation, consent decree, or with many underperforming schools.
 
-1. **Consent Decrees & DOJ Inquiries**: Any active or recent federal oversight, OCR investigations, or legal mandates affecting EL programs in {state}?
-2. **NEW Requirements (Last 12 Months)**: Any compliance changes announced since January 2025?
-3. **Upcoming Deadlines**: Compliance deadlines in the next 6 months
-4. **CSI/TSI Schools**: Districts or schools identified for Comprehensive or Targeted Support related to EL outcomes
-5. **Teacher Certification**: EL/ESL/bilingual endorsement requirements and deadlines
-6. **Professional Development Mandates**: Required PD hours for teachers working with ELs
-7. **Assessment Requirements**: State-specific WIDA/ACCESS or alternative ELP assessment mandates
-8. **Reporting Deadlines**: When districts must report EL data (ESSA, state reporting)
+**1. Federal Oversight & Legal (HIGH PRIORITY - Name specific districts!):**
+- Active DOJ investigations or consent decrees affecting EL programs in {state}
+- OCR complaints or resolutions related to EL services
+- ESSA compliance issues
+- NAME THE SPECIFIC DISTRICTS under federal oversight
+
+**2. Underperforming Schools (HIGH PRIORITY - Name specific districts!):**
+- CSI (Comprehensive Support and Improvement) schools for EL outcomes in {state}
+- TSI (Targeted Support and Improvement) schools for EL subgroup
+- ATSI (Additional Targeted Support) designations
+- NAME THE SPECIFIC DISTRICTS with the most schools on these lists
+- How many schools in each district are on improvement lists?
+
+**3. Teacher Requirements:**
+- EL/ESL/Bilingual certification requirements in {state}
+- Mandatory professional development hours for teachers working with ELs
+- Endorsement requirements and deadlines
+- What happens if teachers don't meet requirements?
+
+**4. Assessment & Reporting Mandates:**
+- ELP assessment requirements (WIDA ACCESS, state alternatives)
+- Annual assessment windows and deadlines
+- Reporting deadlines for EL data (ESSA, state reporting)
+- Reclassification requirements and timelines
+
+**5. State-Specific Mandates:**
+- State laws requiring specific EL services
+- Monitoring requirements and consequences
+- Parent notification requirements
+- Any NEW requirements in the past 12 months
 
 For each requirement, provide:
-- Requirement name/title
-- Administering agency or legal basis
-- Deadline or frequency (e.g., "annual by March", "by July 2026")
-- Consequences of non-compliance if known
-- Why this relates to: {product_type}
-- Direct URL to official guidance/regulation if available
+- Requirement name and legal basis
+- Specific deadline or frequency
+- Consequences of non-compliance
+- SPECIFIC DISTRICT NAMES if applicable
+- How this relates to: {product_type}
+- Direct URL to official guidance
 
-Prioritize items that create urgency or consequences for districts.
+NAME SPECIFIC DISTRICTS under DOJ investigation or with many CSI/TSI schools - these are high-priority sales targets.
 """
 
 COMPLIANCE_QUERY_SIMPLE = """
-What are the compliance requirements for English learner programs in {state}?
+Search for ALL hard compliance requirements for English learner programs in {state}.
 
-Focus on HIGH-SIGNAL items that create urgency:
+IMPORTANT: NAME SPECIFIC DISTRICTS under investigation or with underperforming schools.
 
-1. **Consent Decrees & DOJ**: Active federal oversight or legal mandates affecting EL programs
-2. **NEW Requirements (Last 12 Months)**: Compliance changes since January 2025
-3. **Upcoming Deadlines**: Compliance deadlines in the next 6 months
-4. **CSI/TSI Schools**: Schools under improvement status for EL outcomes
-5. **Teacher Certification**: EL endorsement requirements and deadlines
-6. **PD Mandates**: Required professional development hours for EL teachers
-7. **Assessment Requirements**: State ELP assessment mandates
-8. **Reporting Deadlines**: When EL data must be reported
+**Federal Oversight (Name specific districts!):**
+- DOJ investigations or consent decrees - WHICH DISTRICTS?
+- OCR complaints - WHICH DISTRICTS?
+- ESSA compliance issues
 
-For each requirement, include:
-- Requirement name and legal basis
+**Underperforming Schools (Name specific districts!):**
+- CSI schools for EL outcomes - WHICH DISTRICTS have the most?
+- TSI schools for EL subgroup - WHICH DISTRICTS?
+- ATSI designations
+
+**Teacher Requirements:**
+- EL/ESL certification requirements
+- Mandatory PD hours for EL teachers
+- Endorsement deadlines
+
+**Assessment & Reporting:**
+- ELP assessment requirements and deadlines
+- Annual reporting deadlines
+- Reclassification requirements
+
+**State Mandates:**
+- State EL service requirements
+- Monitoring requirements
+- NEW requirements (past 12 months)
+
+For each requirement:
+- Name and legal basis
 - Deadline or frequency
 - Consequences of non-compliance
-- Direct URL to official guidance
+- SPECIFIC DISTRICT NAMES when applicable
+- Direct URL to guidance
 
-Prioritize items that create urgency for districts.
+Prioritize naming districts under federal oversight or with many underperforming schools.
 """
 
 ELL_CONTACT_QUERY_TEMPLATE = """
@@ -150,14 +207,14 @@ class PerplexityClient:
     async def search(
         self,
         query: str,
-        model: str = "sonar-pro",
-        max_tokens: int = 1500
+        model: str = "sonar-reasoning-pro",
+        max_tokens: int = 2000
     ) -> Dict[str, Any]:
         """Perform a search query using Perplexity.
         
         Args:
             query: The search query
-            model: Model to use (sonar-pro recommended)
+            model: Model to use (sonar-reasoning-pro for deeper research)
             max_tokens: Maximum tokens in response
         
         Returns:
