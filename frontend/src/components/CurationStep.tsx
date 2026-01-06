@@ -325,10 +325,25 @@ export function CurationStep({
         </div>
         
         {fundingItems.length === 0 ? (
-          <div className="p-6 text-center text-slate-500 bg-slate-800/30 rounded-lg border border-slate-700">
-            No funding opportunities found above the relevance threshold.
-            <br />
-            <span className="text-xs">Try adjusting your product or state selection.</span>
+          <div className="p-6 bg-slate-800/30 rounded-lg border border-amber-700/50">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">💡</span>
+              <div>
+                <h4 className="font-medium text-amber-400 mb-2">
+                  No Unique Funding "Hidden Gems" Found
+                </h4>
+                <p className="text-sm text-slate-400 mb-3">
+                  Our research found no special funding sources beyond the "table stakes" 
+                  (Title I, Title III, and standard state categorical funding) for this state and product.
+                </p>
+                <p className="text-sm text-slate-300">
+                  <strong className="text-emerald-400">Good news:</strong> Districts can use their existing 
+                  table stakes funding to address the compliance requirements below. Focus on highlighting 
+                  how your product helps them meet mandates — that's a compelling reason to allocate their 
+                  baseline EL funding to you.
+                </p>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="space-y-3">
@@ -359,10 +374,21 @@ export function CurationStep({
         </div>
         
         {complianceItems.length === 0 ? (
-          <div className="p-6 text-center text-slate-500 bg-slate-800/30 rounded-lg border border-slate-700">
-            No compliance requirements found above the relevance threshold.
-            <br />
-            <span className="text-xs">Try adjusting your product or state selection.</span>
+          <div className="p-6 bg-slate-800/30 rounded-lg border border-slate-700">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">ℹ️</span>
+              <div>
+                <h4 className="font-medium text-slate-300 mb-2">
+                  No High-Signal Compliance Requirements Found
+                </h4>
+                <p className="text-sm text-slate-400">
+                  Our research didn't find DOJ investigations, consent decrees, CSI/TSI schools, 
+                  or other urgent compliance drivers in this state that strongly match your product. 
+                  This is still useful — your email can focus on proactive value rather than 
+                  compliance pressure.
+                </p>
+              </div>
+            </div>
           </div>
         ) : (
           <div className="space-y-3">
