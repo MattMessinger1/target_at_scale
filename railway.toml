@@ -1,9 +1,11 @@
+# Root railway.toml - Railway should use backend/railway.json instead
+# Set Root Directory to "backend" in Railway service settings
+
 [build]
 builder = "nixpacks"
-buildCommand = "cd backend && pip install -r requirements.txt"
 
 [deploy]
-startCommand = "cd backend && uvicorn src.api.main:app --host 0.0.0.0 --port $PORT"
+startCommand = "uvicorn src.api.main:app --host 0.0.0.0 --port ${PORT:-8080}"
 healthcheckPath = "/health"
 healthcheckTimeout = 100
 restartPolicyType = "on_failure"
