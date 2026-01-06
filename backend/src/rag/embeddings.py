@@ -1,7 +1,8 @@
 """Embeddings generation and storage using ChromaDB.
 
 This module handles:
-- Generating embeddings using OpenAI's text-embedding-3-small
+- Generating embeddings using OpenAI's text-embedding-3-large (3072 dims)
+- Smart chunking with overlap for better context capture
 - Storing and retrieving embeddings from ChromaDB
 - Batch embedding of KB items
 """
@@ -24,9 +25,9 @@ settings = get_settings()
 # ChromaDB collection name
 KB_COLLECTION_NAME = "knowledge_base"
 
-# OpenAI embedding model
-EMBEDDING_MODEL = "text-embedding-3-small"
-EMBEDDING_DIMENSION = 1536
+# OpenAI embedding model - using large for better retrieval accuracy
+EMBEDDING_MODEL = "text-embedding-3-large"
+EMBEDDING_DIMENSION = 3072
 
 
 def get_chroma_client() -> chromadb.Client:
@@ -47,6 +48,57 @@ def get_or_create_collection(client: chromadb.Client, name: str = KB_COLLECTION_
     )
 
 
+def chunk_text(
+    text: str, 
+    chunk_size: int = 1500, 
+    overlap: int = 200,
+    min_chunk_size: int = 100
+) -> List[str]:
+    """Split text into overlapping chunks for better context capture.
+    
+    Args:
+        text: Text to chunk
+        chunk_size: Target size for each chunk (chars)
+        overlap: Number of chars to overlap between chunks
+        min_chunk_size: Minimum chunk size (skip tiny chunks)
+    
+    Returns:
+        List of text chunks
+    """
+    if not text or len(text) <= chunk_size:
+        return [text] if text else []
+    
+    chunks = []
+    start = 0
+    
+    while start < len(text):
+        end = start + chunk_size
+        chunk = text[start:end]
+        
+        # Try to break at paragraph boundary for cleaner chunks
+        if end < len(text):
+            # Look for paragraph break
+            last_para = chunk.rfind('\n\n')
+            if last_para > chunk_size // 2:
+                end = start + last_para + 2
+                chunk = text[start:end]
+            else:
+                # Fall back to sentence boundary
+                last_period = chunk.rfind('. ')
+                if last_period > chunk_size // 2:
+                    end = start + last_period + 2
+                    chunk = text[start:end]
+        
+        # Only add if chunk is substantial
+        if len(chunk.strip()) >= min_chunk_size:
+            chunks.append(chunk.strip())
+        
+        # Move start position with overlap
+        start = end - overlap if end < len(text) else len(text)
+    
+    return chunks
+
+
 class EmbeddingService:
     """Service for generating and managing embeddings."""
     
@@ -62,7 +114,7 @@ class EmbeddingService:
             text: Text to embed
         
         Returns:
-            Embedding vector (1536 dimensions)
+            Embedding vector (3072 dimensions with text-embedding-3-large)
         """
         # Truncate very long texts
         if len(text) > 8000:
@@ -152,11 +204,14 @@ def embed_text(text: str) -> List[float]:
 
 
 async def embed_kb_items(db: AsyncSession, batch_size: int = 50) -> Dict[str, Any]:
-    """Embed all KB items and store in ChromaDB.
+    """Embed all KB items and store in ChromaDB with smart chunking.
+    
+    Uses overlapping chunks for long documents to capture more context.
+    Each chunk becomes a separate embedding with shared metadata.
     
     Args:
         db: Database session
-        batch_size: Number of items to embed at once
+        batch_size: Number of chunks to embed at once
     
     Returns:
         Summary of embedding results
@@ -173,40 +228,56 @@ async def embed_kb_items(db: AsyncSession, batch_size: int = 50) -> Dict[str, An
     # Clear existing embeddings
     service.clear_collection()
     
+    # Prepare all chunks from all items
+    all_chunks = []  # List of (id, text, metadata)
+    
+    for item in items:
+        # Build base metadata for this item
+        base_metadata = {
+            "category": item.category or "",
+            "subcategory": item.subcategory or "",
+            "product_name": item.product_name or "",
+            "document_type": item.document_type or "",
+            "applicable_states": ",".join(item.applicable_states) if item.applicable_states else "",
+            "title": item.title or "",
+            "source_id": item.id,  # Track original item
+        }
+        
+        # Create full text for chunking
+        text_parts = [item.title or ""]
+        if item.summary:
+            text_parts.append(item.summary)
+        if item.content:
+            text_parts.append(item.content)
+        
+        full_text = "\n\n".join(filter(None, text_parts))
+        
+        # Chunk the text (handles short texts automatically)
+        chunks = chunk_text(full_text, chunk_size=1500, overlap=200)
+        
+        # Create entry for each chunk
+        for chunk_idx, chunk in enumerate(chunks):
+            chunk_id = f"{item.id}_chunk_{chunk_idx}" if len(chunks) > 1 else item.id
+            chunk_metadata = {
+                **base_metadata,
+                "chunk_index": chunk_idx,
+                "total_chunks": len(chunks),
+            }
+            all_chunks.append((chunk_id, chunk, chunk_metadata))
+    
+    print(f"Created {len(all_chunks)} chunks from {len(items)} KB items")
+    
     embedded_count = 0
     errors = []
     
-    # Process in batches
-    for i in range(0, len(items), batch_size):
-        batch = items[i:i + batch_size]
+    # Process chunks in batches
+    for i in range(0, len(all_chunks), batch_size):
+        batch = all_chunks[i:i + batch_size]
         
         try:
-            # Prepare texts for embedding
-            texts = []
-            ids = []
-            metadatas = []
-            
-            for item in batch:
-                # Create searchable text from item
-                text_parts = [item.title or ""]
-                if item.summary:
-                    text_parts.append(item.summary)
-                if item.content:
-                    # Use first 2000 chars of content
-                    text_parts.append(item.content[:2000])
-                
-                text = "\n".join(text_parts)
-                
-                texts.append(text)
-                ids.append(item.id)
-                metadatas.append({
-                    "category": item.category or "",
-                    "subcategory": item.subcategory or "",
-                    "product_name": item.product_name or "",
-                    "document_type": item.document_type or "",
-                    "applicable_states": ",".join(item.applicable_states) if item.applicable_states else "",
-                    "title": item.title or "",
-                })
+            ids = [c[0] for c in batch]
+            texts = [c[1] for c in batch]
+            metadatas = [c[2] for c in batch]
             
             # Generate embeddings
             embeddings = service.embed_batch(texts)
@@ -215,14 +286,16 @@ async def embed_kb_items(db: AsyncSession, batch_size: int = 50) -> Dict[str, An
             service.add_to_collection(ids, embeddings, texts, metadatas)
             
             embedded_count += len(batch)
-            print(f"Embedded {embedded_count}/{len(items)} items...")
+            print(f"Embedded {embedded_count}/{len(all_chunks)} chunks...")
             
         except Exception as e:
             errors.append(f"Batch {i}: {str(e)}")
     
     return {
         "total_items": len(items),
+        "total_chunks": len(all_chunks),
         "embedded": embedded_count,
         "collection_count": service.get_collection_count(),
+        "avg_chunks_per_item": len(all_chunks) / len(items) if items else 0,
         "errors": errors if errors else None,
     }

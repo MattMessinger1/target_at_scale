@@ -22,6 +22,11 @@ def get_rag_query():
     from ...rag.query import query_product_context
     return query_product_context
 
+def get_rag_query_optimized():
+    """Lazy import for optimized RAG query with hybrid search + re-ranking."""
+    from ...rag.query import get_product_context_optimized
+    return get_product_context_optimized
+
 def get_perplexity_functions():
     """Lazy import for Perplexity functions."""
     from ...research.perplexity import research_state_funding, research_state_compliance, research_compliance_funding
@@ -233,18 +238,33 @@ async def research(
         logger.warning(f"Failed to clear cache: {e}")
     
     try:
-        # Step 1: Get product context via RAG
-        query_product_context = get_rag_query()
-        product_context = query_product_context(
+        # Step 1: Get product context via optimized RAG
+        # Uses: query expansion + hybrid search (semantic+keyword) + GPT re-ranking
+        get_product_context_optimized = get_rag_query_optimized()
+        product_context = await get_product_context_optimized(
             product_name=request.product,
             audience=request.audience,
             state=state_full,
+            db=db,
+            use_reranking=True,  # Enable GPT re-ranking for best quality
         )
         context_summary = product_context.get("summary_for_research", "")
+        logger.info(f"RAG context retrieved: {len(context_summary)} chars")
     except Exception as e:
-        logger.error(f"RAG query failed: {e}")
-        product_context = {}
-        context_summary = f"Product: {request.product}"
+        logger.error(f"Optimized RAG query failed, falling back to basic: {e}")
+        # Fallback to basic RAG query
+        try:
+            query_product_context = get_rag_query()
+            product_context = query_product_context(
+                product_name=request.product,
+                audience=request.audience,
+                state=state_full,
+            )
+            context_summary = product_context.get("summary_for_research", "")
+        except Exception as e2:
+            logger.error(f"Basic RAG query also failed: {e2}")
+            product_context = {}
+            context_summary = f"Product: {request.product}"
     
     try:
         # Step 2: Research funding, compliance, and compliance-linked funding with product context
