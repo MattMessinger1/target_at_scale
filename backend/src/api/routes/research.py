@@ -6,18 +6,31 @@ This is the main endpoint for the V1 email tool flow:
 3. GPT scoring for relevance
 4. Returns Top 3 of each for curation
 """
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from ...db import get_db
-from ...rag.query import query_product_context
-from ...research.perplexity import (
-    research_state_funding,
-    research_state_compliance,
-)
-from ...research.scoring import get_top_items
+
+logger = logging.getLogger(__name__)
+
+# Lazy imports - only load heavy modules when needed
+def get_rag_query():
+    """Lazy import for RAG query to avoid startup issues."""
+    from ...rag.query import query_product_context
+    return query_product_context
+
+def get_perplexity_functions():
+    """Lazy import for Perplexity functions."""
+    from ...research.perplexity import research_state_funding, research_state_compliance
+    return research_state_funding, research_state_compliance
+
+def get_scoring_function():
+    """Lazy import for scoring function."""
+    from ...research.scoring import get_top_items
+    return get_top_items
 
 
 router = APIRouter()
@@ -184,63 +197,82 @@ async def research(
     
     state_full = STATE_NAMES[request.state]
     
-    # Step 1: Get product context via RAG
-    product_context = query_product_context(
-        product_name=request.product,
-        audience=request.audience,
-        state=state_full,
-    )
+    try:
+        # Step 1: Get product context via RAG
+        query_product_context = get_rag_query()
+        product_context = query_product_context(
+            product_name=request.product,
+            audience=request.audience,
+            state=state_full,
+        )
+        context_summary = product_context.get("summary_for_research", "")
+    except Exception as e:
+        logger.error(f"RAG query failed: {e}")
+        product_context = {}
+        context_summary = f"Product: {request.product}"
     
-    context_summary = product_context.get("summary_for_research", "")
-    
-    # Step 2: Research funding and compliance with product context
-    funding_result = await research_state_funding(
-        state=request.state,
-        state_full=state_full,
-        db=db,
-        product_context=product_context,
-    )
-    
-    compliance_result = await research_state_compliance(
-        state=request.state,
-        state_full=state_full,
-        db=db,
-        product_context=product_context,
-    )
+    try:
+        # Step 2: Research funding and compliance with product context
+        research_state_funding, research_state_compliance = get_perplexity_functions()
+        
+        funding_result = await research_state_funding(
+            state=request.state,
+            state_full=state_full,
+            db=db,
+            product_context=product_context,
+        )
+        
+        compliance_result = await research_state_compliance(
+            state=request.state,
+            state_full=state_full,
+            db=db,
+            product_context=product_context,
+        )
+    except Exception as e:
+        logger.error(f"Perplexity research failed: {e}")
+        funding_result = {"items": []}
+        compliance_result = {"items": []}
     
     # Step 3: Score and get top items
     funding_items = funding_result.get("items", [])
     compliance_items = compliance_result.get("items", [])
     
-    # Score funding items
-    if funding_items:
-        top_funding = await get_top_items(
-            items=funding_items,
-            item_type="funding",
-            product=request.product,
-            audience=request.audience,
-            state=state_full,
-            product_context=context_summary,
-            top_n=request.top_n,
-            min_score=request.min_score,
-        )
-    else:
-        top_funding = []
-    
-    # Score compliance items
-    if compliance_items:
-        top_compliance = await get_top_items(
-            items=compliance_items,
-            item_type="compliance",
-            product=request.product,
-            audience=request.audience,
-            state=state_full,
-            product_context=context_summary,
-            top_n=request.top_n,
-            min_score=request.min_score,
-        )
-    else:
-        top_compliance = []
+    try:
+        get_top_items = get_scoring_function()
+        
+        # Score funding items
+        if funding_items:
+            top_funding = await get_top_items(
+                items=funding_items,
+                item_type="funding",
+                product=request.product,
+                audience=request.audience,
+                state=state_full,
+                product_context=context_summary,
+                top_n=request.top_n,
+                min_score=request.min_score,
+            )
+        else:
+            top_funding = []
+        
+        # Score compliance items
+        if compliance_items:
+            top_compliance = await get_top_items(
+                items=compliance_items,
+                item_type="compliance",
+                product=request.product,
+                audience=request.audience,
+                state=state_full,
+                product_context=context_summary,
+                top_n=request.top_n,
+                min_score=request.min_score,
+            )
+        else:
+            top_compliance = []
+    except Exception as e:
+        logger.error(f"Scoring failed: {e}")
+        top_funding = funding_items[:request.top_n]
+        top_compliance = compliance_items[:request.top_n]
     
     return ResearchResponse(
         product=request.product,

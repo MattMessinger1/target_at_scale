@@ -1,13 +1,26 @@
 """FastAPI application entry point."""
+import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from ..db import init_db
 from ..config import get_settings
-from .routes import districts, content, kb, emails, snippets, research, generate
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
+
+# Import routes with error handling
+try:
+    from .routes import districts, content, kb, emails, snippets, research, generate
+    logger.info("All routes imported successfully")
+except Exception as e:
+    logger.error(f"Failed to import routes: {e}")
+    raise
 
 
 @asynccontextmanager
@@ -68,3 +81,26 @@ async def root():
 async def health():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch all unhandled exceptions."""
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc), "type": type(exc).__name__}
+    )
+
+
+@app.get("/debug/env")
+async def debug_env():
+    """Debug endpoint to check environment."""
+    import os
+    return {
+        "openai_key_set": bool(os.getenv("OPENAI_API_KEY")),
+        "perplexity_key_set": bool(os.getenv("PERPLEXITY_API_KEY")),
+        "database_url_set": bool(os.getenv("DATABASE_URL")),
+        "port": os.getenv("PORT", "not set"),
+        "frontend_url": os.getenv("FRONTEND_URL", "not set"),
+    }
