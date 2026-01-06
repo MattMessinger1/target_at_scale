@@ -59,7 +59,12 @@ For each funding source, provide:
 
 If you cannot find unique "hidden gem" funding beyond the table stakes, say so clearly. It's valuable to know when no special funding exists.
 
-Look at both ACTIVE programs (past 12 months) and UPCOMING allocations (next 12 months).
+**CRITICAL - VERIFY CURRENCY (as of January 2026):**
+- For each funding source, VERIFY it is still active and available NOW
+- Do NOT include funding with deadlines that have ALREADY PASSED
+- If you cannot confirm current availability, note "availability unverified"
+- Exclude any programs that have been discontinued or fully allocated
+- For each item, indicate status: "active", "upcoming", or "unverified"
 """
 
 FUNDING_QUERY_SIMPLE = """
@@ -96,6 +101,12 @@ For each source, include:
 - Direct URL to program info
 
 If no unique "hidden gems" exist beyond table stakes, say so clearly - that's valuable information.
+
+**CRITICAL - VERIFY CURRENCY (as of January 2026):**
+- VERIFY each source is still active NOW
+- EXCLUDE funding with passed deadlines
+- Note "availability unverified" if uncertain
+- Indicate status: "active", "upcoming", or "unverified"
 """
 
 COMPLIANCE_QUERY_TEMPLATE = """
@@ -122,11 +133,12 @@ IMPORTANT: NAME SPECIFIC DISTRICTS whenever you find them under investigation, c
 - Endorsement requirements and deadlines
 - What happens if teachers don't meet requirements?
 
-**4. Assessment & Reporting Mandates:**
-- ELP assessment requirements (WIDA ACCESS, state alternatives)
-- Annual assessment windows and deadlines
-- Reporting deadlines for EL data (ESSA, state reporting)
+**4. Assessment & Reporting Mandates (EXCLUDE WIDA ACCESS - we already know about this):**
+- DO NOT include WIDA ACCESS - this is table stakes, we already know about it
+- State-specific ELP assessments BEYOND WIDA ACCESS (if any alternatives exist)
 - Reclassification requirements and timelines
+- Reporting deadlines for EL data (ESSA, state reporting)
+- Annual assessment windows (but NOT for WIDA ACCESS)
 
 **5. State-Specific Mandates:**
 - State laws requiring specific EL services
@@ -143,6 +155,13 @@ For each requirement, provide:
 - Direct URL to official guidance
 
 NAME SPECIFIC DISTRICTS under DOJ investigation or with many CSI/TSI schools - these are high-priority sales targets.
+
+**CRITICAL - VERIFY CURRENCY (as of January 2026):**
+- Only include requirements that are CURRENTLY in effect
+- If a requirement has been rescinded, superseded, or modified, note the current status
+- Verify consent decrees and DOJ investigations are STILL ACTIVE
+- Exclude any requirements that have sunset dates in the past
+- For each item, indicate status: "active" (confirmed current), "unverified", or "resolved" (no longer in effect)
 """
 
 COMPLIANCE_QUERY_SIMPLE = """
@@ -165,10 +184,11 @@ IMPORTANT: NAME SPECIFIC DISTRICTS under investigation or with underperforming s
 - Mandatory PD hours for EL teachers
 - Endorsement deadlines
 
-**Assessment & Reporting:**
-- ELP assessment requirements and deadlines
-- Annual reporting deadlines
+**Assessment & Reporting (EXCLUDE WIDA ACCESS):**
+- DO NOT include WIDA ACCESS - we already know about this
+- State-specific assessments BEYOND WIDA (if any)
 - Reclassification requirements
+- Reporting deadlines (ESSA, state)
 
 **State Mandates:**
 - State EL service requirements
@@ -183,6 +203,12 @@ For each requirement:
 - Direct URL to guidance
 
 Prioritize naming districts under federal oversight or with many underperforming schools.
+
+**CRITICAL - VERIFY CURRENCY (as of January 2026):**
+- Only include requirements CURRENTLY in effect
+- Verify consent decrees/DOJ cases are STILL ACTIVE
+- Exclude resolved, rescinded, or sunset requirements
+- Indicate status: "active", "unverified", or "resolved"
 """
 
 # Compliance-Linked Funding - funding that requires compliance status to access
@@ -225,6 +251,13 @@ For each funding source:
 - Direct URL to program information
 
 Focus on ACTIONABLE funding - where districts with compliance issues can actually apply or amend applications.
+
+**CRITICAL - VERIFY CURRENCY (as of January 2026):**
+- Verify each funding program is STILL accepting applications or amendments
+- Confirm CSI/TSI lists are from the MOST RECENT designation cycle (2024-2025 or 2025-2026)
+- EXCLUDE any funding with expired application windows
+- Note if funding cycles are "ongoing" vs "closed until next cycle"
+- For each item, indicate status: "active", "upcoming", "closed_until_next_cycle", or "unverified"
 """
 
 COMPLIANCE_FUNDING_QUERY_SIMPLE = """
@@ -254,6 +287,12 @@ For each source:
 - Direct URL
 
 Focus on actionable funding for districts with compliance designations.
+
+**CRITICAL - VERIFY CURRENCY (as of January 2026):**
+- Verify funding is STILL accepting applications
+- Confirm CSI/TSI lists are from most recent cycle
+- EXCLUDE expired application windows
+- Indicate status: "active", "upcoming", or "unverified"
 """
 
 ELL_CONTACT_QUERY_TEMPLATE = """
@@ -581,6 +620,12 @@ For each compliance-linked funding opportunity, extract:
 - compliance_trigger: What compliance status is required (e.g., "CSI/TSI school designation", "DOJ consent decree")
 - deadline: Application deadline or amendment window
 - action_required: What districts should do (e.g., "Amend CSG application to include EL PD")
+- status: Currency status - MUST be one of:
+  - "active" - confirmed still accepting applications/amendments
+  - "upcoming" - will be available soon (include expected date)
+  - "closed_until_next_cycle" - currently closed but will reopen
+  - "unverified" - could not confirm current availability
+  - EXCLUDE items with expired windows that won't reopen
 - districts_affected: List of specific district names that could access this funding
 - relevance_to_product: How this relates to {product_name or 'EL programs'} (1 sentence)
 - sources: Array of source objects with:
@@ -588,7 +633,10 @@ For each compliance-linked funding opportunity, extract:
   - "title": Optional title for the source
   - "highlight_text": A SHORT phrase (3-6 words) from the source page
 
-IMPORTANT: Only include funding that REQUIRES a compliance designation to access.
+IMPORTANT: 
+- Only include funding that REQUIRES a compliance designation to access.
+- EXCLUDE any funding with permanently expired application windows.
+- Always include a status field.
 {citations_text}
 
 Return a JSON array of compliance-linked funding opportunities. Return empty array [] if none found.
@@ -622,6 +670,9 @@ JSON array:"""
         # Ensure each item has required fields and normalize sources
         if isinstance(items, list):
             for item in items:
+                # Ensure status field exists
+                if "status" not in item:
+                    item["status"] = "unverified"
                 if "sources" not in item:
                     item["sources"] = []
                 if "compliance_trigger" not in item:
@@ -700,13 +751,21 @@ For each funding opportunity, extract:
 - amount: Funding amount if mentioned (e.g., "$2.4M", "up to $50,000")
 - deadline: Application deadline if mentioned
 - funding_type: Category (federal, state, district)
+- status: Currency status - MUST be one of:
+  - "active" - confirmed still available and accepting applications
+  - "upcoming" - will be available soon (include expected date)
+  - "unverified" - could not confirm current availability
+  - EXCLUDE items with passed deadlines entirely
 - relevance_to_product: How this relates to {product_name or 'EL programs'} (1 sentence)
 - sources: Array of source objects with:
   - "url": The citation URL
   - "title": Optional title for the source
   - "highlight_text": A SHORT phrase (3-6 words) that appears on that source page and relates to this funding item. This will be used to scroll to the relevant section.
 
-IMPORTANT: For each source, include a highlight_text that would help find the relevant information on that page.
+IMPORTANT: 
+- For each source, include a highlight_text that would help find the relevant information on that page.
+- EXCLUDE any funding with deadlines that have already passed as of January 2026.
+- Always include a status field.
 {citations_text}
 
 Return a JSON array of funding opportunities. Return empty array [] if none found.
@@ -737,9 +796,12 @@ JSON array:"""
         
         items = json.loads(content_str)
         
-        # Ensure each item has a sources array with text fragment URLs
+        # Ensure each item has required fields and normalize sources
         if isinstance(items, list):
             for item in items:
+                # Ensure status field exists
+                if "status" not in item:
+                    item["status"] = "unverified"
                 if "sources" not in item:
                     item["sources"] = []
                 # Normalize source format and add text fragments
@@ -797,6 +859,8 @@ async def _parse_compliance_items(
     
     parse_prompt = f"""Extract specific compliance requirements from this research about {state}.
 
+IMPORTANT: Do NOT include WIDA ACCESS testing - we already know about that.
+
 For each compliance requirement, extract:
 - title: Name or brief identifier of the requirement
 - description: Brief description (1-2 sentences)
@@ -804,6 +868,11 @@ For each compliance requirement, extract:
 - deadline_or_frequency: When it applies (e.g., "annual", "by March 2026")
 - hours_required: Number of PD hours if applicable
 - urgency: "high" (legal/deadline-driven), "medium" (regulatory), or "low" (best practice)
+- status: Currency status - MUST be one of:
+  - "active" - confirmed currently in effect
+  - "unverified" - could not confirm current status
+  - "resolved" - no longer in effect (EXCLUDE these from results)
+  - EXCLUDE any requirements that have been rescinded or sunset
 - districts_affected: List of specific district names if mentioned (for DOJ cases, CSI/TSI schools, etc.)
 - relevance_to_product: How this relates to {product_name or 'EL programs'} (1 sentence)
 - sources: Array of source objects with:
@@ -811,7 +880,11 @@ For each compliance requirement, extract:
   - "title": Optional title for the source
   - "highlight_text": A SHORT phrase (3-6 words) that appears on that source page and relates to this compliance item. This will be used to scroll to the relevant section.
 
-IMPORTANT: For each source, include a highlight_text that would help find the relevant information on that page.
+IMPORTANT: 
+- Do NOT include WIDA ACCESS testing requirements.
+- For each source, include a highlight_text that would help find the relevant information on that page.
+- EXCLUDE any requirements that are no longer in effect.
+- Always include a status field.
 {citations_text}
 
 Return a JSON array of compliance requirements. Return empty array [] if none found.
@@ -842,9 +915,12 @@ JSON array:"""
         
         items = json.loads(content_str)
         
-        # Ensure each item has a sources array with text fragment URLs
+        # Ensure each item has required fields and normalize sources
         if isinstance(items, list):
             for item in items:
+                # Ensure status field exists
+                if "status" not in item:
+                    item["status"] = "unverified"
                 if "sources" not in item:
                     item["sources"] = []
                 # Normalize source format and add text fragments
