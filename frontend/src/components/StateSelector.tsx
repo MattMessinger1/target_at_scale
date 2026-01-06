@@ -128,7 +128,7 @@ export function StateSelector({ selectedStates, onSelect }: StateSelectorProps) 
           {allWidaSelected ? '✓ All WIDA Selected' : 'Select All WIDA'}
         </button>
         <span className="text-xs text-slate-500">
-          {data?.wida_states.length} WIDA states
+          {data?.wida_states?.length || 0} WIDA states
         </span>
       </div>
 
