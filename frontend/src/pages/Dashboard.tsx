@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,8 @@ import { Link } from 'react-router-dom'
 import { formatNumber, getStatusColor } from '@/lib/utils'
 
 export default function Dashboard() {
+  const queryClient = useQueryClient()
+
   const { data: districts, isLoading: districtsLoading } = useQuery({
     queryKey: ['districts'],
     queryFn: api.districts.list,
@@ -31,10 +33,11 @@ export default function Dashboard() {
     queryFn: api.kb.stats,
   })
 
-  const loadPilotDistricts = useQuery({
-    queryKey: ['load-pilot'],
-    queryFn: api.districts.loadPilot,
-    enabled: false,
+  const loadPilotDistricts = useMutation({
+    mutationFn: api.districts.loadPilot,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['districts'] })
+    },
   })
 
   const stats = {
@@ -70,10 +73,10 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <Button 
-              onClick={() => loadPilotDistricts.refetch()}
-              disabled={loadPilotDistricts.isFetching}
+              onClick={() => loadPilotDistricts.mutate()}
+              disabled={loadPilotDistricts.isPending}
             >
-              {loadPilotDistricts.isFetching && (
+              {loadPilotDistricts.isPending && (
                 <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
               )}
               Load Pilot Districts

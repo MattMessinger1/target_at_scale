@@ -129,9 +129,85 @@ async def trigger_scrape(district_id: str, db: AsyncSession = Depends(get_db)):
     
     # Start scraping (this would typically be a background task)
     try:
-        await scrape_district(district_id, db)
-        return {"message": f"Scraping started for {district.name}"}
+        result = await scrape_district(district_id, db)
+        return {"message": f"Scraping completed for {district.name}", "result": result}
     except Exception as e:
         district.scrape_status = "error"
         await db.commit()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{district_id}/reset")
+async def reset_district(district_id: str, db: AsyncSession = Depends(get_db)):
+    """Reset a district's scrape status and clear scraped content."""
+    from ...db import ScrapedContent, Contact
+    
+    result = await db.execute(select(District).where(District.id == district_id))
+    district = result.scalar_one_or_none()
+    
+    if not district:
+        raise HTTPException(status_code=404, detail="District not found")
+    
+    # Delete all scraped content for this district
+    await db.execute(
+        select(ScrapedContent).where(ScrapedContent.district_id == district_id)
+    )
+    content_result = await db.execute(
+        select(ScrapedContent).where(ScrapedContent.district_id == district_id)
+    )
+    for content in content_result.scalars().all():
+        await db.delete(content)
+    
+    # Delete all contacts for this district
+    contact_result = await db.execute(
+        select(Contact).where(Contact.district_id == district_id)
+    )
+    for contact in contact_result.scalars().all():
+        await db.delete(contact)
+    
+    # Reset district status
+    district.scrape_status = "pending"
+    district.scrape_phase = None
+    district.last_scraped_at = None
+    district.identified_needs = None
+    
+    await db.commit()
+    
+    return {"message": f"Reset {district.name} to pending status"}
+
+
+@router.post("/reset-all-pilot")
+async def reset_all_pilot_districts(db: AsyncSession = Depends(get_db)):
+    """Reset all pilot districts to pending status."""
+    from ...db import ScrapedContent, Contact
+    
+    # Get all districts
+    result = await db.execute(select(District))
+    districts = result.scalars().all()
+    
+    reset_count = 0
+    for district in districts:
+        # Delete scraped content
+        content_result = await db.execute(
+            select(ScrapedContent).where(ScrapedContent.district_id == district.id)
+        )
+        for content in content_result.scalars().all():
+            await db.delete(content)
+        
+        # Delete contacts
+        contact_result = await db.execute(
+            select(Contact).where(Contact.district_id == district.id)
+        )
+        for contact in contact_result.scalars().all():
+            await db.delete(contact)
+        
+        # Reset status
+        district.scrape_status = "pending"
+        district.scrape_phase = None
+        district.last_scraped_at = None
+        district.identified_needs = None
+        reset_count += 1
+    
+    await db.commit()
+    
+    return {"message": f"Reset {reset_count} districts to pending status"}

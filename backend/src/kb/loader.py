@@ -17,6 +17,24 @@ from ..db import KnowledgeBaseItem
 
 settings = get_settings()
 
+
+def _parse_datetime(date_str: Optional[str]) -> Optional[datetime]:
+    """Parse datetime string with flexible format handling."""
+    if not date_str:
+        return None
+    try:
+        # Remove timezone info and handle unusual microsecond formats
+        clean = date_str.replace("+00:00", "").replace("Z", "")
+        # If there's a fractional seconds part, normalize it to 6 digits
+        if "." in clean:
+            base, frac = clean.rsplit(".", 1)
+            frac = frac[:6].ljust(6, "0")  # Truncate or pad to 6 digits
+            clean = f"{base}.{frac}"
+        return datetime.fromisoformat(clean)
+    except (ValueError, TypeError):
+        return None
+
+
 # Product detection patterns
 PRODUCT_PATTERNS = {
     "care_coaching": [
@@ -187,9 +205,7 @@ def process_kb_item(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "tags": tags,
         "applicable_states": states if states else None,
         "product_name": products[0] if products else None,
-        "original_created_at": datetime.fromisoformat(
-            item.get("created_at", "").replace("+00:00", "")
-        ) if item.get("created_at") else None,
+        "original_created_at": _parse_datetime(item.get("created_at")),
     }
 
 

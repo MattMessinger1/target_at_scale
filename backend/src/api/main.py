@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ..db import init_db
 from ..config import get_settings
-from .routes import districts, content, kb, emails
+from .routes import districts, content, kb, emails, snippets, research, generate
 
 settings = get_settings()
 
@@ -27,9 +27,18 @@ app = FastAPI(
 )
 
 # CORS middleware for frontend
+# In production, set FRONTEND_URL environment variable
+import os
+frontend_urls = [
+    "http://localhost:5173",  # Vite dev server
+    "http://localhost:3000",
+]
+if os.getenv("FRONTEND_URL"):
+    frontend_urls.append(os.getenv("FRONTEND_URL"))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],  # Vite dev server
+    allow_origins=frontend_urls,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -38,8 +47,11 @@ app.add_middleware(
 # Include routers
 app.include_router(districts.router, prefix="/api/districts", tags=["Districts"])
 app.include_router(content.router, prefix="/api/content", tags=["Content"])
+app.include_router(snippets.router, prefix="/api/snippets", tags=["Snippets"])
 app.include_router(kb.router, prefix="/api/kb", tags=["Knowledge Base"])
 app.include_router(emails.router, prefix="/api/emails", tags=["Emails"])
+app.include_router(research.router, prefix="/api/research", tags=["Research"])
+app.include_router(generate.router, prefix="/api/generate", tags=["Email Generation"])
 
 
 @app.get("/")

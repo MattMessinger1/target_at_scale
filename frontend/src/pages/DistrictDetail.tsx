@@ -1,6 +1,6 @@
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, type ScrapedContent } from '@/lib/api'
+import { api, type Snippet, type ScrapeResult } from '@/lib/api'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -10,12 +10,41 @@ import {
   RefreshCw,
   Check,
   X,
-  Sparkles,
-  Mail
+  Mail,
+  Play,
+  RotateCcw,
+  User,
+  BarChart3,
+  Target,
+  DollarSign,
+  Shield,
+  BookOpen,
+  CheckSquare,
+  Square
 } from 'lucide-react'
-import { formatNumber, formatPercentage, getStatusColor, getScoreColor } from '@/lib/utils'
+import { formatNumber, formatPercentage, getStatusColor } from '@/lib/utils'
 import { toast } from '@/components/ui/use-toast'
 import { useState } from 'react'
+
+// Snippet category configuration
+const SNIPPET_CATEGORIES = {
+  contact: { label: 'Contacts & Decision Makers', icon: User, color: 'text-blue-600', bgColor: 'bg-blue-50' },
+  statistic: { label: 'District Statistics', icon: BarChart3, color: 'text-emerald-600', bgColor: 'bg-emerald-50' },
+  priority: { label: 'Strategic Priorities', icon: Target, color: 'text-purple-600', bgColor: 'bg-purple-50' },
+  funding: { label: 'Funding Opportunities', icon: DollarSign, color: 'text-amber-600', bgColor: 'bg-amber-50' },
+  compliance: { label: 'Compliance Requirements', icon: Shield, color: 'text-red-600', bgColor: 'bg-red-50' },
+  program: { label: 'Current EL Programs', icon: BookOpen, color: 'text-indigo-600', bgColor: 'bg-indigo-50' },
+}
+
+// Scraping phases for progress display
+const SCRAPE_PHASES = [
+  { id: 'mapping', label: 'Mapping', progress: 15 },
+  { id: 'scraping', label: 'Scraping', progress: 30 },
+  { id: 'extracting', label: 'Extracting', progress: 45 },
+  { id: 'research', label: 'Researching', progress: 60 },
+  { id: 'matching', label: 'Matching', progress: 75 },
+  { id: 'snippets', label: 'Processing Snippets', progress: 90 },
+]
 
 export default function DistrictDetail() {
   const { districtId } = useParams<{ districtId: string }>()
@@ -26,12 +55,20 @@ export default function DistrictDetail() {
     queryKey: ['district', districtId],
     queryFn: () => api.districts.get(districtId!),
     enabled: !!districtId,
+    refetchInterval: (data) => 
+      data?.scrape_status === 'in_progress' ? 2000 : false,
   })
 
-  const { data: content, isLoading: contentLoading } = useQuery({
-    queryKey: ['content', districtId],
-    queryFn: () => api.content.listByDistrict(districtId!),
-    enabled: !!districtId,
+  const { data: snippets, isLoading: snippetsLoading } = useQuery({
+    queryKey: ['snippets', districtId],
+    queryFn: () => api.snippets.listByDistrict(districtId!),
+    enabled: !!districtId && district?.scrape_status === 'completed',
+  })
+
+  const { data: snippetSummary } = useQuery({
+    queryKey: ['snippet-summary', districtId],
+    queryFn: () => api.snippets.getSummary(districtId!),
+    enabled: !!districtId && district?.scrape_status === 'completed',
   })
 
   const { data: emails } = useQuery({
@@ -40,19 +77,59 @@ export default function DistrictDetail() {
     enabled: !!districtId,
   })
 
-  const toggleContentMutation = useMutation({
-    mutationFn: ({ id, included }: { id: number; included: boolean }) =>
-      api.content.update(id, { included_in_email: included }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['content', districtId] })
+  const scrapeMutation = useMutation({
+    mutationFn: () => api.districts.scrape(districtId!),
+    onSuccess: (data: ScrapeResult) => {
+      toast({ 
+        title: 'Scraping Complete',
+        description: `Extracted ${data.result?.snippets_extracted || 0} snippets`
+      })
+      queryClient.invalidateQueries({ queryKey: ['district', districtId] })
+      queryClient.invalidateQueries({ queryKey: ['snippets', districtId] })
+      queryClient.invalidateQueries({ queryKey: ['snippet-summary', districtId] })
+    },
+    onError: (error) => {
+      toast({ 
+        title: 'Scraping Failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive'
+      })
+      queryClient.invalidateQueries({ queryKey: ['district', districtId] })
     },
   })
 
-  const scoreContentMutation = useMutation({
-    mutationFn: () => api.content.scoreAll(districtId!),
+  const resetMutation = useMutation({
+    mutationFn: () => api.districts.reset(districtId!),
     onSuccess: () => {
-      toast({ title: 'Content scored successfully' })
-      queryClient.invalidateQueries({ queryKey: ['content', districtId] })
+      toast({ title: 'District reset to pending' })
+      queryClient.invalidateQueries({ queryKey: ['district', districtId] })
+      queryClient.invalidateQueries({ queryKey: ['snippets', districtId] })
+      queryClient.invalidateQueries({ queryKey: ['snippet-summary', districtId] })
+    },
+  })
+
+  const toggleSnippetMutation = useMutation({
+    mutationFn: ({ id, included }: { id: number; included: boolean }) =>
+      api.snippets.update(id, { included_in_email: included }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['snippets', districtId] })
+      queryClient.invalidateQueries({ queryKey: ['snippet-summary', districtId] })
+    },
+  })
+
+  const selectAllMutation = useMutation({
+    mutationFn: (category?: string) => api.snippets.selectAll(districtId!, category),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['snippets', districtId] })
+      queryClient.invalidateQueries({ queryKey: ['snippet-summary', districtId] })
+    },
+  })
+
+  const deselectAllMutation = useMutation({
+    mutationFn: (category?: string) => api.snippets.deselectAll(districtId!, category),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['snippets', districtId] })
+      queryClient.invalidateQueries({ queryKey: ['snippet-summary', districtId] })
     },
   })
 
@@ -97,16 +174,21 @@ export default function DistrictDetail() {
     )
   }
 
-  // Group content by type
-  const contentByType: Record<string, ScrapedContent[]> = {}
-  content?.forEach((item) => {
-    if (!contentByType[item.content_type]) {
-      contentByType[item.content_type] = []
+  // Group snippets by category
+  const snippetsByCategory: Record<string, Snippet[]> = {}
+  snippets?.forEach((snippet) => {
+    if (!snippetsByCategory[snippet.category]) {
+      snippetsByCategory[snippet.category] = []
     }
-    contentByType[item.content_type].push(item)
+    snippetsByCategory[snippet.category].push(snippet)
   })
 
-  const selectedCount = content?.filter(c => c.included_in_email).length || 0
+  const selectedCount = snippetSummary?.selected_snippets || 0
+  const totalSnippets = snippetSummary?.total_snippets || 0
+
+  // Get current phase progress
+  const currentPhaseIndex = SCRAPE_PHASES.findIndex(p => p.id === district.scrape_phase)
+  const scrapeProgress = currentPhaseIndex >= 0 ? SCRAPE_PHASES[currentPhaseIndex].progress : 0
 
   return (
     <div className="space-y-8">
@@ -151,190 +233,340 @@ export default function DistrictDetail() {
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-sm text-muted-foreground">Content Items</p>
-            <p className="text-2xl font-bold">{content?.length || 0}</p>
+            <p className="text-sm text-muted-foreground">Available Snippets</p>
+            <p className="text-2xl font-bold">{totalSnippets}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground">Selected for Email</p>
-            <p className="text-2xl font-bold">{selectedCount}</p>
+            <p className="text-2xl font-bold text-primary">{selectedCount}</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Actions Bar */}
-      <div className="flex gap-3">
-        <Button 
-          onClick={() => scoreContentMutation.mutate()}
-          disabled={scoreContentMutation.isPending || !content?.length}
-          variant="outline"
-        >
-          {scoreContentMutation.isPending && (
-            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-          )}
-          <Sparkles className="mr-2 h-4 w-4" />
-          Score All Content
-        </Button>
-        <Button
-          onClick={handleGenerateEmail}
-          disabled={generatingEmail || selectedCount === 0}
-        >
-          {generatingEmail && (
-            <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-          )}
-          <Mail className="mr-2 h-4 w-4" />
-          Generate Email
-        </Button>
-      </div>
+      {/* Scraping Status / Start Scraping */}
+      {district.scrape_status === 'pending' && (
+        <Card className="border-dashed border-2 border-primary/30 bg-primary/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Play className="h-5 w-5" />
+              Ready to Scrape
+            </CardTitle>
+            <CardDescription>
+              Start the scraping pipeline to gather content, research funding opportunities, 
+              and extract email-ready snippets from {district.name}.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex gap-3">
+            <Button 
+              onClick={() => scrapeMutation.mutate()}
+              disabled={scrapeMutation.isPending}
+              size="lg"
+            >
+              {scrapeMutation.isPending && (
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              <Play className="mr-2 h-4 w-4" />
+              Start Scraping
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Content Curation */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Content List */}
-        <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Content Curation</CardTitle>
-              <CardDescription>
-                Select content to include in the generated email
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {contentLoading ? (
-                <div className="text-center py-8">
-                  <RefreshCw className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
-                </div>
-              ) : content?.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No content scraped yet. Run scraping first.
-                </div>
+      {district.scrape_status === 'in_progress' && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <RefreshCw className="h-5 w-5 animate-spin text-blue-600" />
+              Processing District Data
+            </CardTitle>
+            <CardDescription>
+              {district.scrape_phase && (
+                <span className="font-medium text-blue-700">
+                  {SCRAPE_PHASES.find(p => p.id === district.scrape_phase)?.label || district.scrape_phase}
+                </span>
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Progress value={scrapeProgress} className="h-2" />
+            <div className="flex justify-between text-xs text-muted-foreground mt-2">
+              {SCRAPE_PHASES.map((phase) => (
+                <span 
+                  key={phase.id}
+                  className={district.scrape_phase === phase.id ? 'font-medium text-blue-600' : ''}
+                >
+                  {phase.label}
+                </span>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {district.scrape_status === 'error' && (
+        <Card className="border-red-200 bg-red-50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-red-700">
+              <X className="h-5 w-5" />
+              Processing Error
+            </CardTitle>
+            <CardDescription>
+              An error occurred. You can reset and try again.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button 
+              onClick={() => resetMutation.mutate()}
+              disabled={resetMutation.isPending}
+              variant="outline"
+            >
+              <RotateCcw className="mr-2 h-4 w-4" />
+              Reset & Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Snippet Curation - Main Content */}
+      {district.scrape_status === 'completed' && (
+        <>
+          {/* Actions Bar */}
+          <div className="flex gap-3 flex-wrap items-center">
+            <Button
+              onClick={handleGenerateEmail}
+              disabled={generatingEmail || selectedCount === 0}
+              size="lg"
+            >
+              {generatingEmail && (
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              <Mail className="mr-2 h-4 w-4" />
+              Generate Email ({selectedCount} snippets)
+            </Button>
+            <div className="flex gap-2 ml-auto">
+              <Button 
+                onClick={() => selectAllMutation.mutate(undefined)}
+                disabled={selectAllMutation.isPending}
+                variant="outline"
+                size="sm"
+              >
+                <CheckSquare className="mr-2 h-4 w-4" />
+                Select All
+              </Button>
+              <Button 
+                onClick={() => deselectAllMutation.mutate(undefined)}
+                disabled={deselectAllMutation.isPending}
+                variant="outline"
+                size="sm"
+              >
+                <Square className="mr-2 h-4 w-4" />
+                Deselect All
+              </Button>
+              <Button 
+                onClick={() => resetMutation.mutate()}
+                disabled={resetMutation.isPending}
+                variant="ghost"
+                size="sm"
+              >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Re-scrape
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-3">
+            {/* Snippet List by Category */}
+            <div className="lg:col-span-2 space-y-6">
+              {snippetsLoading ? (
+                <Card>
+                  <CardContent className="py-8 text-center">
+                    <RefreshCw className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+                    <p className="mt-2 text-muted-foreground">Loading snippets...</p>
+                  </CardContent>
+                </Card>
+              ) : totalSnippets === 0 ? (
+                <Card>
+                  <CardContent className="py-8 text-center text-muted-foreground">
+                    No snippets extracted. Try re-scraping the district.
+                  </CardContent>
+                </Card>
               ) : (
-                <div className="space-y-6">
-                  {Object.entries(contentByType)
-                    .filter(([type]) => type !== 'url_mapping' && type !== 'research_cache')
-                    .map(([type, items]) => (
-                      <div key={type}>
-                        <h3 className="font-medium capitalize mb-3">
-                          {type.replace('_', ' ')} ({items.length})
-                        </h3>
-                        <div className="space-y-2">
-                          {items.map((item) => (
-                            <ContentItem
-                              key={item.id}
-                              item={item}
-                              onToggle={(included) =>
-                                toggleContentMutation.mutate({ id: item.id, included })
-                              }
-                            />
+                Object.entries(SNIPPET_CATEGORIES).map(([categoryKey, config]) => {
+                  const categorySnippets = snippetsByCategory[categoryKey] || []
+                  if (categorySnippets.length === 0) return null
+                  
+                  const Icon = config.icon
+                  const selectedInCategory = categorySnippets.filter(s => s.included_in_email).length
+                  
+                  return (
+                    <Card key={categoryKey} className={`border-l-4 ${config.bgColor}`} style={{ borderLeftColor: config.color.replace('text-', 'var(--') + ')' }}>
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center justify-between">
+                          <CardTitle className="flex items-center gap-2 text-lg">
+                            <Icon className={`h-5 w-5 ${config.color}`} />
+                            {config.label}
+                            <Badge variant="secondary" className="ml-2">
+                              {selectedInCategory}/{categorySnippets.length}
+                            </Badge>
+                          </CardTitle>
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 px-2"
+                              onClick={() => selectAllMutation.mutate(categoryKey)}
+                            >
+                              <CheckSquare className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 px-2"
+                              onClick={() => deselectAllMutation.mutate(categoryKey)}
+                            >
+                              <Square className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        {categorySnippets.map((snippet) => (
+                          <SnippetItem
+                            key={snippet.id}
+                            snippet={snippet}
+                            onToggle={(included) =>
+                              toggleSnippetMutation.mutate({ id: snippet.id, included })
+                            }
+                          />
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )
+                })
+              )}
+            </div>
+
+            {/* Right Sidebar */}
+            <div className="space-y-6">
+              {/* Generated Emails */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Generated Emails</CardTitle>
+                  <CardDescription>
+                    Emails created for this district
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {emails?.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      No emails generated yet
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {emails?.map((email) => (
+                        <div key={email.id} className="p-3 rounded-lg border">
+                          <div className="flex items-center justify-between mb-2">
+                            <Badge className={getStatusColor(email.status)}>
+                              {email.status}
+                            </Badge>
+                          </div>
+                          <p className="font-medium text-sm mb-1">
+                            {email.subject_line}
+                          </p>
+                          <p className="text-xs text-muted-foreground line-clamp-2">
+                            {email.email_body}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Identified Needs */}
+              {district.identified_needs && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Identified Needs</CardTitle>
+                    <CardDescription>
+                      AI-extracted from district content
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {(district.identified_needs as { pain_points?: string[]; priorities?: string[] }).pain_points?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-2">PAIN POINTS</p>
+                        <div className="flex flex-wrap gap-1">
+                          {(district.identified_needs as { pain_points?: string[] }).pain_points?.slice(0, 4).map((need, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">
+                              {need}
+                            </Badge>
                           ))}
                         </div>
                       </div>
-                    ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Generated Emails */}
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Generated Emails</CardTitle>
-              <CardDescription>
-                Emails created for this district
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {emails?.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  No emails generated yet
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {emails?.map((email) => (
-                    <div key={email.id} className="p-3 rounded-lg border">
-                      <div className="flex items-center justify-between mb-2">
-                        <Badge className={getStatusColor(email.status)}>
-                          {email.status}
-                        </Badge>
+                    )}
+                    {(district.identified_needs as { priorities?: string[] }).priorities?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-2">PRIORITIES</p>
+                        <div className="flex flex-wrap gap-1">
+                          {(district.identified_needs as { priorities?: string[] }).priorities?.slice(0, 4).map((priority, i) => (
+                            <Badge key={i} variant="secondary" className="text-xs">
+                              {priority}
+                            </Badge>
+                          ))}
+                        </div>
                       </div>
-                      <p className="font-medium text-sm mb-1">
-                        {email.subject_line}
-                      </p>
-                      <p className="text-xs text-muted-foreground line-clamp-2">
-                        {email.email_body}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+                    )}
+                  </CardContent>
+                </Card>
               )}
-            </CardContent>
-          </Card>
-
-          {/* Identified Needs */}
-          {district.identified_needs && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Identified Needs</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {(district.identified_needs as { pain_points?: string[] }).pain_points?.map((need, i) => (
-                  <Badge key={i} variant="outline" className="mr-1">
-                    {need}
-                  </Badge>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }
 
-function ContentItem({ 
-  item, 
+function SnippetItem({ 
+  snippet, 
   onToggle 
 }: { 
-  item: ScrapedContent
+  snippet: Snippet
   onToggle: (included: boolean) => void
 }) {
-  const score = item.scores?.[0]?.final_score || 0
-
   return (
-    <div className={`p-3 rounded-lg border ${item.included_in_email ? 'border-primary bg-primary/5' : ''}`}>
-      <div className="flex items-start justify-between gap-3">
+    <div 
+      className={`p-3 rounded-lg border transition-all cursor-pointer ${
+        snippet.included_in_email 
+          ? 'border-primary bg-primary/5 ring-1 ring-primary/20' 
+          : 'hover:bg-muted/50'
+      }`}
+      onClick={() => onToggle(!snippet.included_in_email)}
+    >
+      <div className="flex items-start gap-3">
+        <div className={`mt-0.5 shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center ${
+          snippet.included_in_email 
+            ? 'bg-primary border-primary text-primary-foreground' 
+            : 'border-muted-foreground/30'
+        }`}>
+          {snippet.included_in_email && <Check className="h-3 w-3" />}
+        </div>
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-sm truncate">{item.title}</p>
-          <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
-            {item.summary || item.content.slice(0, 150)}
-          </p>
-          {score > 0 && (
-            <div className="flex items-center gap-2 mt-2">
-              <span className="text-xs text-muted-foreground">Score:</span>
-              <span className={`text-xs font-medium ${getScoreColor(score)}`}>
-                {(score * 100).toFixed(0)}%
-              </span>
-              {item.scores?.[0]?.matched_product && (
-                <Badge variant="outline" className="text-xs">
-                  {item.scores[0].matched_product}
-                </Badge>
-              )}
-            </div>
+          <p className="text-sm leading-relaxed">{snippet.snippet_text}</p>
+          {snippet.relevance_note && (
+            <p className="text-xs text-muted-foreground mt-1 italic">
+              → {snippet.relevance_note}
+            </p>
+          )}
+          {snippet.matched_product && (
+            <Badge variant="outline" className="mt-2 text-xs">
+              {snippet.matched_product}
+            </Badge>
           )}
         </div>
-        <Button
-          variant={item.included_in_email ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => onToggle(!item.included_in_email)}
-        >
-          {item.included_in_email ? (
-            <Check className="h-4 w-4" />
-          ) : (
-            <X className="h-4 w-4" />
-          )}
-        </Button>
       </div>
     </div>
   )

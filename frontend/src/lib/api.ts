@@ -2,7 +2,10 @@
  * API client for WCEPS Email Generator backend.
  */
 
-const API_BASE = '/api'
+// Use environment variable for API URL in production, fallback to /api for dev with proxy
+const API_BASE = import.meta.env.VITE_API_URL 
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api'
 
 // Types
 export interface District {
@@ -86,6 +89,124 @@ export interface KBItem {
   product_name: string | null
 }
 
+export interface Snippet {
+  id: number
+  district_id: string
+  source_content_id: number | null
+  category: string  // contact, statistic, priority, funding, compliance, program
+  snippet_text: string
+  relevance_note: string | null
+  confidence: number
+  included_in_email: boolean
+  matched_product: string | null
+  extracted_at: string
+}
+
+export interface SnippetSummary {
+  district_id: string
+  total_snippets: number
+  selected_snippets: number
+  by_category: Array<{
+    category: string
+    count: number
+    selected_count: number
+  }>
+}
+
+// V1 Email Tool Types
+export interface StateInfo {
+  code: string
+  name: string
+  is_wida: boolean
+}
+
+export interface FundingItem {
+  title: string
+  description?: string
+  amount?: string
+  deadline?: string
+  source?: string
+  score: number
+  score_reason: string
+  email_hook: string
+  score_breakdown?: {
+    product_fit: number
+    audience_match: number
+    recency: number
+    specificity: number
+    actionability: number
+  }
+}
+
+export interface ComplianceItem {
+  title: string
+  description?: string
+  type?: string
+  deadline_or_frequency?: string
+  hours_required?: string
+  score: number
+  score_reason: string
+  email_hook: string
+  score_breakdown?: {
+    product_fit: number
+    audience_match: number
+    recency: number
+    specificity: number
+    actionability: number
+  }
+}
+
+export interface ResearchRequest {
+  product: string
+  state: string
+  audience: string
+  top_n?: number
+  min_score?: number
+}
+
+export interface ResearchResponse {
+  product: string
+  state: string
+  state_full: string
+  audience: string
+  product_context_summary: string
+  funding_items: FundingItem[]
+  compliance_items: ComplianceItem[]
+  raw_funding_content?: string
+  raw_compliance_content?: string
+}
+
+export interface GenerateEmailRequest {
+  product: string
+  state: string
+  state_full: string
+  audience: string
+  selected_funding: Array<{
+    title: string
+    description?: string
+    amount?: string
+    email_hook?: string
+  }>
+  selected_compliance: Array<{
+    title: string
+    description?: string
+    type?: string
+    email_hook?: string
+  }>
+  recipient_name?: string
+  recipient_title?: string
+  custom_instructions?: string
+}
+
+export interface GenerateEmailResponse {
+  subject_line: string
+  email_body: string
+  product: string
+  state: string
+  audience: string
+  word_count: number
+}
+
 // API functions
 async function fetchApi<T>(
   endpoint: string,
@@ -108,12 +229,27 @@ async function fetchApi<T>(
 }
 
 // Districts
+export interface ScrapeResult {
+  message: string
+  result?: {
+    district_id: string
+    phases_completed: string[]
+    errors: string[]
+    urls_found?: number
+    pages_scraped?: number
+    products_matched?: number
+    identified_needs?: Record<string, unknown>
+  }
+}
+
 export const api = {
   districts: {
     list: () => fetchApi<District[]>('/districts/'),
     get: (id: string) => fetchApi<District>(`/districts/${id}`),
     loadPilot: () => fetchApi<{ message: string; districts: string[] }>('/districts/load-pilot', { method: 'POST' }),
-    scrape: (id: string) => fetchApi<{ message: string }>(`/districts/${id}/scrape`, { method: 'POST' }),
+    scrape: (id: string) => fetchApi<ScrapeResult>(`/districts/${id}/scrape`, { method: 'POST' }),
+    reset: (id: string) => fetchApi<{ message: string }>(`/districts/${id}/reset`, { method: 'POST' }),
+    resetAllPilot: () => fetchApi<{ message: string }>('/districts/reset-all-pilot', { method: 'POST' }),
   },
 
   content: {
@@ -157,6 +293,37 @@ export const api = {
     stats: () => fetchApi<{ total_items: number; by_category: Record<string, number> }>('/kb/stats'),
   },
 
+  snippets: {
+    listByDistrict: (districtId: string, category?: string, includedOnly?: boolean) => {
+      const params = new URLSearchParams()
+      if (category) params.set('category', category)
+      if (includedOnly) params.set('included_only', 'true')
+      const query = params.toString()
+      return fetchApi<Snippet[]>(`/snippets/district/${districtId}${query ? `?${query}` : ''}`)
+    },
+    getSummary: (districtId: string) =>
+      fetchApi<SnippetSummary>(`/snippets/district/${districtId}/summary`),
+    update: (id: number, data: { included_in_email: boolean }) =>
+      fetchApi<Snippet>(`/snippets/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    bulkUpdate: (snippetIds: number[], includedInEmail: boolean) =>
+      fetchApi<{ message: string; updated_count: number }>('/snippets/bulk-update', {
+        method: 'POST',
+        body: JSON.stringify({ snippet_ids: snippetIds, included_in_email: includedInEmail }),
+      }),
+    selectAll: (districtId: string, category?: string) => {
+      const params = category ? `?category=${category}` : ''
+      return fetchApi<{ message: string }>(`/snippets/district/${districtId}/select-all${params}`, { method: 'POST' })
+    },
+    deselectAll: (districtId: string, category?: string) => {
+      const params = category ? `?category=${category}` : ''
+      return fetchApi<{ message: string }>(`/snippets/district/${districtId}/deselect-all${params}`, { method: 'POST' })
+    },
+    extract: (districtId: string) =>
+      fetchApi<{ snippets_extracted: number; by_category: Record<string, number> }>(`/snippets/district/${districtId}/extract`, { method: 'POST' }),
+    getSelected: (districtId: string) =>
+      fetchApi<Snippet[]>(`/snippets/district/${districtId}/selected`),
+  },
+
   emails: {
     list: (districtId?: string, status?: string) => {
       const params = new URLSearchParams()
@@ -182,5 +349,33 @@ export const api = {
       const params = status ? `?status=${status}` : ''
       return fetchApi<{ count: number; emails: unknown[] }>(`/emails/export/preview${params}`)
     },
+  },
+
+  // V1 Email Tool APIs
+  research: {
+    getProducts: () => fetchApi<{ products: string[] }>('/research/products'),
+    getStates: () => fetchApi<{
+      states: StateInfo[]
+      wida_states: string[]
+      non_wida_states: string[]
+    }>('/research/states'),
+    getAudiences: () => fetchApi<{ audiences: string[] }>('/research/audiences'),
+    research: (data: ResearchRequest) =>
+      fetchApi<ResearchResponse>('/research/', { method: 'POST', body: JSON.stringify(data) }),
+    clearCache: (state?: string) => {
+      const params = state ? `?state=${state}` : ''
+      return fetchApi<{ message: string }>(`/research/cache/clear${params}`)
+    },
+  },
+
+  generate: {
+    email: (data: GenerateEmailRequest) =>
+      fetchApi<GenerateEmailResponse>('/generate/', { method: 'POST', body: JSON.stringify(data) }),
+    batch: (requests: GenerateEmailRequest[]) =>
+      fetchApi<{ emails: GenerateEmailResponse[]; count: number }>('/generate/batch', {
+        method: 'POST',
+        body: JSON.stringify(requests),
+      }),
+    exportTemplate: () => fetchApi<{ headers: string[]; format: string; notes: string }>('/generate/export-csv'),
   },
 }

@@ -21,6 +21,15 @@ FIRECRAWL_BASE_URL = "https://api.firecrawl.dev/v1"
 
 # URL patterns to identify key pages
 URL_PATTERNS = {
+    # ELL staff pages - HIGHEST PRIORITY for contact extraction
+    "ell_staff": [
+        r"ell.*staff", r"ell.*team", r"ell.*directory", r"ell.*contact",
+        r"multilingual.*staff", r"multilingual.*team", r"multilingual.*directory",
+        r"language.*services.*staff", r"esol.*staff", r"esol.*team",
+        r"english-learner.*staff", r"el-department", r"el-services",
+        r"world-languages.*staff", r"dual-language.*staff", r"bilingual.*staff",
+        r"title-iii", r"title.*iii", r"newcomer.*program"
+    ],
     "leadership": [
         r"leadership", r"administration", r"superintendent", r"board",
         r"cabinet", r"executive", r"staff-directory", r"our-team"
@@ -154,6 +163,9 @@ async def scrape_district(district_id: str, db: AsyncSession) -> Dict[str, Any]:
     Phase 1: Map website URLs
     Phase 2: Scrape key pages (leadership, ESOL, strategic)
     Phase 3: Extract content and identify needs
+    Phase 4: Perplexity research (funding, compliance)
+    Phase 5: KB product matching
+    Phase 6: Extract email-ready snippets
     
     Args:
         district_id: ID of the district to scrape
@@ -175,6 +187,8 @@ async def scrape_district(district_id: str, db: AsyncSession) -> Dict[str, Any]:
         "phases_completed": [],
         "errors": [],
     }
+    
+    scraped_pages = []
     
     try:
         # Phase 1: Map website
@@ -203,11 +217,12 @@ async def scrape_district(district_id: str, db: AsyncSession) -> Dict[str, Any]:
         classified_urls = classify_urls(urls)
         
         # Phase 2: Scrape key pages
-        district.scrape_phase = "contacts"
+        district.scrape_phase = "scraping"
         await db.commit()
         
         key_urls = []
-        for category in ["leadership", "esol", "strategic", "curriculum"]:
+        # Prioritize ELL staff pages first for contact extraction
+        for category in ["ell_staff", "leadership", "esol", "strategic", "curriculum"]:
             key_urls.extend(classified_urls[category][:3])  # Top 3 per category
         
         if key_urls:
@@ -244,11 +259,11 @@ async def scrape_district(district_id: str, db: AsyncSession) -> Dict[str, Any]:
             
             await db.commit()
         
-        results["phases_completed"].append("contacts")
+        results["phases_completed"].append("scraping")
         results["pages_scraped"] = len([p for p in scraped_pages if not isinstance(p, Exception)])
         
-        # Phase 3: Extract needs and research
-        district.scrape_phase = "research"
+        # Phase 3: Extract needs
+        district.scrape_phase = "extracting"
         await db.commit()
         
         # Identify needs from scraped content
@@ -256,13 +271,141 @@ async def scrape_district(district_id: str, db: AsyncSession) -> Dict[str, Any]:
         needs = await identify_district_needs(district_id, db)
         
         district.identified_needs = needs
+        await db.commit()
+        
+        results["phases_completed"].append("extracting")
+        results["identified_needs"] = needs
+        
+        # Phase 4: Perplexity research (funding & compliance)
+        district.scrape_phase = "research"
+        await db.commit()
+        
+        from ..research.perplexity import (
+            research_state_funding, 
+            research_state_compliance,
+            research_ell_contacts
+        )
+        
+        try:
+            # Research funding
+            funding = await research_state_funding(district.state, district.state_full, db)
+            funding_content = ScrapedContent(
+                district_id=district_id,
+                content_type="funding",
+                title=f"Funding Opportunities - {district.state_full}",
+                content=funding.get("content", ""),
+                summary=f"EL funding programs and grants available in {district.state_full}",
+                source="perplexity",
+            )
+            db.add(funding_content)
+            
+            # Research compliance
+            compliance = await research_state_compliance(district.state, district.state_full, db)
+            compliance_content = ScrapedContent(
+                district_id=district_id,
+                content_type="compliance",
+                title=f"Compliance Requirements - {district.state_full}",
+                content=compliance.get("content", ""),
+                summary=f"EL program compliance and certification requirements in {district.state_full}",
+                source="perplexity",
+            )
+            db.add(compliance_content)
+            
+            # Research ELL-specific contacts (key decision-makers)
+            ell_contacts_result = await research_ell_contacts(
+                district.name, 
+                district.state_full,
+                district_id,
+                db
+            )
+            
+            # Save ELL contacts as scraped content for snippet extraction
+            if ell_contacts_result.get("contacts"):
+                contacts_content = "\n\n".join([
+                    f"**{c.get('full_name', 'Unknown')}**\n"
+                    f"Title: {c.get('title', 'Unknown')}\n"
+                    f"Department: {c.get('department', 'N/A')}\n"
+                    f"Email: {c.get('email', 'N/A')}\n"
+                    f"Phone: {c.get('phone', 'N/A')}"
+                    for c in ell_contacts_result["contacts"]
+                ])
+                
+                ell_contacts_content = ScrapedContent(
+                    district_id=district_id,
+                    content_type="ell_contacts",
+                    title=f"ELL Leadership Contacts - {district.name}",
+                    content=contacts_content,
+                    summary=f"ELL Director and Multilingual Education leadership contacts for {district.name}",
+                    source="perplexity",
+                )
+                db.add(ell_contacts_content)
+                results["ell_contacts_found"] = len(ell_contacts_result["contacts"])
+            
+            await db.commit()
+            results["phases_completed"].append("research")
+            
+        except Exception as e:
+            results["errors"].append(f"Research phase error: {str(e)}")
+        
+        # Phase 5: KB product matching
+        district.scrape_phase = "matching"
+        await db.commit()
+        
+        from ..kb.product_matcher import match_products_with_kb_content
+        
+        try:
+            if needs:
+                matches = await match_products_with_kb_content(
+                    needs, 
+                    f"{district.name} in {district.state_full}",
+                    db
+                )
+                
+                # Save matched products as scraped content
+                for match in matches:
+                    if match.relevance_score >= 0.2:  # Only save relevant matches
+                        product_content = ScrapedContent(
+                            district_id=district_id,
+                            content_type="product_match",
+                            title=f"Recommended: {match.full_name}",
+                            content=f"**{match.product_name}**\n\n{match.value_prop}\n\n**Why this fits:**\n" + 
+                                    "\n".join([f"- {reason}" for reason in match.match_reasons]),
+                            summary=match.value_prop,
+                            source="knowledge_base",
+                        )
+                        db.add(product_content)
+                
+                await db.commit()
+                results["phases_completed"].append("matching")
+                results["products_matched"] = len([m for m in matches if m.relevance_score >= 0.2])
+                
+        except Exception as e:
+            results["errors"].append(f"Product matching error: {str(e)}")
+        
+        # Phase 6: Extract email-ready snippets
+        district.scrape_phase = "snippets"
+        await db.commit()
+        
+        from ..extractor.snippets import extract_all_snippets_for_district, match_snippets_to_products
+        
+        try:
+            snippet_results = await extract_all_snippets_for_district(district_id, db)
+            results["phases_completed"].append("snippets")
+            results["snippets_extracted"] = snippet_results["snippets_extracted"]
+            results["snippets_by_category"] = snippet_results["by_category"]
+            
+            # Match snippets to products
+            matched = await match_snippets_to_products(district_id, db)
+            results["snippets_matched_to_products"] = matched
+            
+        except Exception as e:
+            results["errors"].append(f"Snippet extraction error: {str(e)}")
+        
+        # Mark as completed
         district.scrape_status = "completed"
         district.scrape_phase = None
         district.last_scraped_at = datetime.utcnow()
         await db.commit()
-        
-        results["phases_completed"].append("research")
-        results["identified_needs"] = needs
         
     except Exception as e:
         district.scrape_status = "error"

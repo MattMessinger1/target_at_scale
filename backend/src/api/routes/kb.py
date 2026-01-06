@@ -159,6 +159,34 @@ async def index_knowledge_base(db: AsyncSession = Depends(get_db)):
     return {"message": f"Indexed {count} knowledge base items"}
 
 
+@router.post("/ingest-documents")
+async def ingest_documents(
+    folder_path: str = Query(default="State Research and Documents"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Ingest documents from a folder into the knowledge base.
+    
+    Parses .docx and .pdf files, extracts content, auto-tags by state
+    and document type, then adds to KB.
+    """
+    import os
+    from ...kb.document_parser import ingest_documents_to_kb
+    
+    # Resolve path relative to project root
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+    full_path = os.path.join(project_root, folder_path)
+    
+    if not os.path.exists(full_path):
+        raise HTTPException(status_code=404, detail=f"Folder not found: {folder_path}")
+    
+    result = await ingest_documents_to_kb(full_path, db)
+    
+    return {
+        "message": f"Ingested {result['added']} documents",
+        "details": result
+    }
+
+
 @router.get("/stats")
 async def get_kb_stats(db: AsyncSession = Depends(get_db)):
     """Get knowledge base statistics."""
@@ -179,3 +207,100 @@ async def get_kb_stats(db: AsyncSession = Depends(get_db)):
         "total_items": total,
         "by_category": category_counts,
     }
+
+
+@router.post("/embed")
+async def embed_knowledge_base(db: AsyncSession = Depends(get_db)):
+    """Generate embeddings for all KB items and store in ChromaDB.
+    
+    This enables semantic search via RAG.
+    """
+    from ...rag.embeddings import embed_kb_items
+    
+    result = await embed_kb_items(db)
+    
+    return {
+        "message": f"Embedded {result['embedded']} items",
+        "details": result
+    }
+
+
+@router.post("/deduplicate")
+async def deduplicate_knowledge_base(
+    dry_run: bool = Query(default=True, description="If true, only report duplicates without removing"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Find and optionally remove duplicate KB items.
+    
+    Uses embedding similarity to identify duplicates (>95% similar).
+    """
+    from ...rag.embeddings import EmbeddingService
+    from ...kb.deduplicator import deduplicate_kb
+    
+    service = EmbeddingService()
+    
+    # Get all items and their embeddings
+    result = await db.execute(select(KnowledgeBaseItem))
+    items = result.scalars().all()
+    
+    # Generate embeddings for deduplication
+    embeddings = {}
+    for item in items:
+        text = f"{item.title}\n{item.summary or ''}\n{(item.content or '')[:1000]}"
+        embeddings[item.id] = service.embed_text(text)
+    
+    # Run deduplication
+    dedup_result = await deduplicate_kb(db, embeddings, dry_run=dry_run)
+    
+    return {
+        "message": f"Found {dedup_result['duplicates_found']} duplicate pairs",
+        "details": dedup_result
+    }
+
+
+@router.get("/rag/query")
+async def rag_query(
+    q: str = Query(..., description="Natural language query"),
+    product: Optional[str] = None,
+    state: Optional[str] = None,
+    n_results: int = Query(default=10, le=50),
+):
+    """Semantic search of the knowledge base using RAG."""
+    from ...rag.query import query_relevant_content
+    
+    results = query_relevant_content(
+        query=q,
+        n_results=n_results,
+        product=product,
+        state=state,
+    )
+    
+    return {
+        "query": q,
+        "results": results,
+        "count": len(results),
+    }
+
+
+@router.get("/rag/product-context")
+async def get_product_context(
+    product: str = Query(..., description="Product name"),
+    audience: Optional[str] = None,
+    state: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get comprehensive product context for email generation.
+    
+    This is the main RAG endpoint - returns all relevant KB content
+    about a product to inform research and email generation.
+    """
+    from ...rag.query import get_full_product_context_with_db
+    
+    context = await get_full_product_context_with_db(
+        product_name=product,
+        audience=audience,
+        state=state,
+        db=db,
+    )
+    
+    return context

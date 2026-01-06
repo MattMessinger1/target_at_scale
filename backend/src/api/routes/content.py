@@ -3,6 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from datetime import datetime
 
@@ -60,7 +61,11 @@ async def list_district_content(
     db: AsyncSession = Depends(get_db)
 ):
     """List all scraped content for a district."""
-    query = select(ScrapedContent).where(ScrapedContent.district_id == district_id)
+    query = (
+        select(ScrapedContent)
+        .options(selectinload(ScrapedContent.scores))
+        .where(ScrapedContent.district_id == district_id)
+    )
     
     if content_type:
         query = query.where(ScrapedContent.content_type == content_type)
@@ -73,7 +78,11 @@ async def list_district_content(
 @router.get("/{content_id}", response_model=ScrapedContentResponse)
 async def get_content(content_id: int, db: AsyncSession = Depends(get_db)):
     """Get specific content item."""
-    result = await db.execute(select(ScrapedContent).where(ScrapedContent.id == content_id))
+    result = await db.execute(
+        select(ScrapedContent)
+        .options(selectinload(ScrapedContent.scores))
+        .where(ScrapedContent.id == content_id)
+    )
     content = result.scalar_one_or_none()
     if not content:
         raise HTTPException(status_code=404, detail="Content not found")
@@ -87,7 +96,11 @@ async def update_content(
     db: AsyncSession = Depends(get_db)
 ):
     """Update content curation settings (human overrides)."""
-    result = await db.execute(select(ScrapedContent).where(ScrapedContent.id == content_id))
+    result = await db.execute(
+        select(ScrapedContent)
+        .options(selectinload(ScrapedContent.scores))
+        .where(ScrapedContent.id == content_id)
+    )
     content = result.scalar_one_or_none()
     
     if not content:

@@ -16,19 +16,25 @@ from ..db import District, ScrapedContent, Contact
 
 settings = get_settings()
 
-# EL-relevant titles to prioritize
+# ELL-specific leadership titles - HIGHEST PRIORITY (the actual decision-makers)
+ELL_LEADER_TITLES = [
+    "multilingual", "language acquisition", "esol", "ell ", "eld ",
+    "bilingual", "english learner", "title iii", "title 3",
+    "dual language", "world language", "newcomer"
+]
+
+# General EL-relevant titles - important but not primary decision-makers
 EL_RELEVANT_TITLES = [
-    "multilingual", "language acquisition", "esol", "ell", "bilingual",
     "curriculum", "instruction", "professional development",
     "superintendent", "assistant superintendent", "director",
-    "coordinator", "specialist", "coach"
+    "coordinator", "specialist", "coach", "academic officer"
 ]
 
 # Titles to exclude
 EXCLUDE_TITLES = [
     "it", "technology", "procurement", "finance", "transportation",
     "maintenance", "food service", "athletics", "security", "facilities",
-    "custodial", "payroll", "accounting"
+    "custodial", "payroll", "accounting", "receptionist", "secretary"
 ]
 
 
@@ -60,23 +66,36 @@ For each person mentioned, extract:
 - department: Their department if mentioned
 - email: Their email address if found
 - phone: Their phone number if found
+- is_ell_leader: true if this person is specifically responsible for English Learner/ELL programs
 
-Only extract contacts who appear to be in roles relevant to English Learner programs, curriculum, instruction, or district leadership. 
+**PRIORITY CONTACTS - Find these first (these are the key decision-makers for EL products):**
+- Director of English Learners / ELL / ELD / ESL / ESOL
+- Director of Multilingual Education / Multilingual Programs / Multilingual Services
+- Title III Coordinator / Director
+- Director of Language Acquisition / Language Services
+- Coordinator of Bilingual Education / Dual Language Programs
+- Director of World Languages
+- ELL Program Manager / Specialist / Coordinator
+- Executive Director of EL Services
+- Assistant Superintendent of Multilingual Education
 
-INCLUDE roles like:
-- Superintendent, Assistant Superintendent
-- Directors, Coordinators of: Curriculum, Instruction, ESOL/ELL, Multilingual, Language Acquisition, Professional Development
+**ALSO INCLUDE if found:**
+- Superintendent, Assistant/Deputy Superintendent
+- Chief Academic Officer
+- Directors/Coordinators of Curriculum, Instruction, Professional Development
 - Principals with EL-focused responsibilities
 
-EXCLUDE roles like:
+**EXCLUDE roles like:**
 - IT/Technology staff
 - Finance/Accounting
 - Transportation
 - Food Service
 - Facilities/Maintenance
 - Athletics
+- General teachers (unless specifically EL teachers with leadership roles)
 
-Return a JSON array of contacts. If no relevant contacts found, return an empty array [].
+Return a JSON array of contacts. Mark contacts with ELL-specific titles as "is_ell_leader": true.
+If no relevant contacts found, return an empty array [].
 
 Content:
 {text[:8000]}
@@ -117,31 +136,41 @@ JSON array:"""
 def calculate_contact_confidence(contact: Dict[str, Any]) -> float:
     """Calculate confidence score for a contact.
     
-    Scoring based on:
-    - Title relevance: +0.3
-    - Email found: +0.25
+    Scoring gives highest priority to ELL-specific leaders:
+    - ELL leader title: +0.45 (base)
+    - General EL-relevant title: +0.3
+    - Email found: +0.2
     - Phone found: +0.1
-    - Department found: +0.15
-    - Name completeness: +0.2
+    - Department found: +0.1
+    - Name completeness: +0.15
+    - is_ell_leader flag: +0.1 bonus
     """
     score = 0.0
     
-    # Title relevance
+    # Check for exclusions first
     title = (contact.get("title") or "").lower()
-    if any(t in title for t in EL_RELEVANT_TITLES):
+    if any(t in title for t in EXCLUDE_TITLES):
+        return 0.0  # Exclude this contact
+    
+    # Title relevance - ELL leaders get highest priority
+    is_ell_leader = contact.get("is_ell_leader", False)
+    if any(t in title for t in ELL_LEADER_TITLES):
+        score += 0.45  # ELL-specific leaders get highest base score
+        is_ell_leader = True
+    elif any(t in title for t in EL_RELEVANT_TITLES):
         score += 0.3
     elif any(t in title for t in ["director", "coordinator", "superintendent"]):
         score += 0.2
     else:
         score += 0.1
     
-    # Check for exclusions
-    if any(t in title for t in EXCLUDE_TITLES):
-        return 0.0  # Exclude this contact
+    # Bonus for ELL leader flag from GPT
+    if is_ell_leader:
+        score += 0.1
     
     # Email found
     if contact.get("email") and "@" in contact.get("email", ""):
-        score += 0.25
+        score += 0.2
     
     # Phone found
     if contact.get("phone"):
@@ -149,14 +178,14 @@ def calculate_contact_confidence(contact: Dict[str, Any]) -> float:
     
     # Department found
     if contact.get("department"):
-        score += 0.15
+        score += 0.1
     
     # Name completeness (has both first and last name)
     name = contact.get("full_name", "")
     if name and len(name.split()) >= 2:
-        score += 0.2
+        score += 0.15
     elif name:
-        score += 0.1
+        score += 0.05
     
     return min(score, 1.0)
 

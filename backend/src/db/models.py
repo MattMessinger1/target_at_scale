@@ -35,6 +35,7 @@ class District(Base):
     contacts: Mapped[List["Contact"]] = relationship("Contact", back_populates="district", cascade="all, delete-orphan")
     scraped_content: Mapped[List["ScrapedContent"]] = relationship("ScrapedContent", back_populates="district", cascade="all, delete-orphan")
     emails: Mapped[List["Email"]] = relationship("Email", back_populates="district", cascade="all, delete-orphan")
+    snippets: Mapped[List["ExtractedSnippet"]] = relationship("ExtractedSnippet", back_populates="district", cascade="all, delete-orphan")
 
 
 class Contact(Base):
@@ -169,6 +170,40 @@ class Email(Base):
     # Relationships
     district: Mapped["District"] = relationship("District", back_populates="emails")
     contact: Mapped[Optional["Contact"]] = relationship("Contact", back_populates="emails")
+
+
+class ExtractedSnippet(Base):
+    """Email-ready snippets extracted from raw scraped content."""
+    __tablename__ = "extracted_snippets"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    district_id: Mapped[str] = mapped_column(String(50), ForeignKey("districts.id"), nullable=False)
+    source_content_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("scraped_content.id"), nullable=True)
+    
+    # Snippet categorization
+    category: Mapped[str] = mapped_column(String(50), nullable=False)  # contact, statistic, priority, funding, compliance, program
+    
+    # The actual email-ready snippet
+    snippet_text: Mapped[str] = mapped_column(Text, nullable=False)
+    
+    # Why this snippet is useful for the email
+    relevance_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # AI confidence in extraction quality (0-1)
+    confidence: Mapped[float] = mapped_column(Float, default=0.8)
+    
+    # User selection for email inclusion
+    included_in_email: Mapped[bool] = mapped_column(Boolean, default=False)
+    
+    # Optional: matched WCEPS product this snippet relates to
+    matched_product: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    
+    # Timestamps
+    extracted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    district: Mapped["District"] = relationship("District", back_populates="snippets")
+    source_content: Mapped[Optional["ScrapedContent"]] = relationship("ScrapedContent")
 
 
 class KnowledgeBaseItem(Base):
