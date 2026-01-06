@@ -197,6 +197,21 @@ async def research(
     
     state_full = STATE_NAMES[request.state]
     
+    # Clear cache before each search to ensure fresh results
+    try:
+        from sqlalchemy import delete
+        from ...db import ScrapedContent
+        
+        await db.execute(
+            delete(ScrapedContent)
+            .where(ScrapedContent.content_type == "research_cache")
+            .where(ScrapedContent.title.like(f"%{request.state}%"))
+        )
+        await db.commit()
+        logger.info(f"Cleared research cache for {request.state}")
+    except Exception as e:
+        logger.warning(f"Failed to clear cache: {e}")
+    
     try:
         # Step 1: Get product context via RAG
         query_product_context = get_rag_query()
