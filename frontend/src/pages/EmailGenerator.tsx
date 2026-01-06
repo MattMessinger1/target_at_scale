@@ -33,6 +33,57 @@ const STEP_LABELS: Record<Step, string> = {
   done: 'Done',
 }
 
+// Research progress step component for the thinking trace
+function ResearchProgressStep({ 
+  step, 
+  label, 
+  isActive, 
+  isComplete 
+}: { 
+  step: number
+  label: string
+  isActive: boolean
+  isComplete: boolean
+}) {
+  return (
+    <div className={`flex items-center gap-3 transition-all ${
+      isComplete ? 'opacity-100' : isActive ? 'opacity-100' : 'opacity-50'
+    }`}>
+      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium ${
+        isComplete 
+          ? 'bg-emerald-500 text-white' 
+          : isActive 
+            ? 'bg-emerald-500/30 text-emerald-400 ring-2 ring-emerald-500/50 animate-pulse' 
+            : 'bg-slate-700 text-slate-500'
+      }`}>
+        {isComplete ? (
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+          </svg>
+        ) : (
+          step
+        )}
+      </div>
+      <span className={`text-sm ${
+        isComplete 
+          ? 'text-emerald-400' 
+          : isActive 
+            ? 'text-slate-200' 
+            : 'text-slate-500'
+      }`}>
+        {label}
+        {isActive && (
+          <span className="ml-2 inline-flex">
+            <span className="animate-bounce" style={{ animationDelay: '0ms' }}>.</span>
+            <span className="animate-bounce" style={{ animationDelay: '150ms' }}>.</span>
+            <span className="animate-bounce" style={{ animationDelay: '300ms' }}>.</span>
+          </span>
+        )}
+      </span>
+    </div>
+  )
+}
+
 export default function EmailGenerator() {
   // Step state
   const [currentStep, setCurrentStep] = useState<Step>('select')
@@ -308,18 +359,58 @@ export default function EmailGenerator() {
           </div>
         )}
 
-        {/* Step 2: Researching */}
+        {/* Step 2: Researching - with progress sub-steps */}
         {currentStep === 'research' && (
-          <div className="flex flex-col items-center justify-center py-16">
+          <div className="flex flex-col items-center justify-center py-12">
             <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-6" />
             <h2 className="text-xl font-semibold text-slate-200 mb-2">
               Researching...
             </h2>
-            <p className="text-slate-400 text-center max-w-md">
+            <p className="text-slate-400 text-center max-w-md mb-6">
               Finding funding opportunities and compliance requirements for{' '}
               <span className="text-emerald-400">{selectedProducts.join(', ')}</span> in{' '}
               <span className="text-emerald-400">{selectedStates.map(s => s.name).join(', ')}</span>
             </p>
+            
+            {/* Progress Sub-Steps */}
+            <div className="w-full max-w-md bg-slate-800/50 rounded-lg border border-slate-700 p-4">
+              <div className="space-y-3">
+                <ResearchProgressStep 
+                  step={1} 
+                  label="Querying knowledge base for product context" 
+                  isActive={true}
+                  isComplete={false}
+                />
+                <ResearchProgressStep 
+                  step={2} 
+                  label="Researching funding opportunities (beyond Title I/III)" 
+                  isActive={false}
+                  isComplete={false}
+                />
+                <ResearchProgressStep 
+                  step={3} 
+                  label="Researching compliance requirements" 
+                  isActive={false}
+                  isComplete={false}
+                />
+                <ResearchProgressStep 
+                  step={4} 
+                  label="Scoring and ranking by relevance" 
+                  isActive={false}
+                  isComplete={false}
+                />
+              </div>
+              
+              <div className="mt-4 pt-4 border-t border-slate-700">
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <svg className="w-4 h-4 animate-pulse text-emerald-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  Searching for hidden gems: state-specific programs, foundation grants, new & upcoming opportunities...
+                </div>
+              </div>
+            </div>
+            
             <div className="mt-4 text-sm text-slate-500">
               This may take 30-60 seconds...
             </div>

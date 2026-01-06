@@ -18,59 +18,101 @@ settings = get_settings()
 
 PERPLEXITY_BASE_URL = "https://api.perplexity.ai"
 
-# Research query templates - now context-aware
+# Research query templates - focused on finding "hidden gems" beyond baseline funding
+# Title I and Title III are baseline - everyone knows about them. We need the add-ons.
+
 FUNDING_QUERY_TEMPLATE = """
-What are the current funding opportunities in {state} that could support {product_context}?
+IMPORTANT: Do NOT focus on Title I or Title III - those are baseline federal programs that every district already knows about.
 
-Specifically look for:
-1. State-level funding programs for EL education and professional development
-2. Title III federal funding allocations for {state} (2025-2026)
-3. Grant programs that support: {product_type}
-4. Application deadlines if available
-5. Specific funding amounts when known
+Instead, search for ADDITIONAL and LESS OBVIOUS funding opportunities in {state} that could support {product_context}:
 
-Focus on programs active in 2025-2026.
-Return information as a structured list of opportunities.
+1. **State-Specific Programs**: What state-funded EL/multilingual programs exist in {state} beyond federal requirements?
+2. **Foundation & Private Grants**: Any education foundations, community foundations, or corporate grants for EL programs in {state}?
+3. **NEW Programs (Last 6 Months)**: Any EL-related funding announced since July 2025?
+4. **UPCOMING Programs (Next 6 Months)**: Any grants opening for applications in the coming months?
+5. **Supplemental Federal**: ESSER/ARP remaining funds, CSI/TSI school improvement allocations, refugee/immigrant education grants
+6. **Regional Programs**: County-level, regional education agency (BOCES, ESC, ISD), or consortia funding
+7. **University Partnerships**: Grant programs through {state} universities for K-12 EL support
+
+For each opportunity found, provide:
+- Program name and administering agency
+- Approximate funding amounts available
+- Application deadline (if known)
+- Why this relates to: {product_type}
+- Direct URL to program information if available
+
+Focus on actionable opportunities with current or upcoming application windows.
+Prioritize lesser-known opportunities that districts might miss.
 """
 
 FUNDING_QUERY_SIMPLE = """
-What are the current funding opportunities for English learner (EL/ELL) programs in {state}?
+IMPORTANT: Do NOT focus on Title I or Title III - those are baseline federal programs everyone already knows.
 
-Include:
-1. State-level funding programs for EL education
-2. Title III federal funding allocations for {state}
-3. Grant programs that support EL professional development
-4. Application deadlines if available
-5. Approximate funding amounts
+Search for ADDITIONAL and LESS OBVIOUS funding for English learner (EL/ELL) programs in {state}:
 
-Focus on programs active in 2025-2026.
+1. **State-Specific Programs**: State-funded EL programs beyond federal requirements
+2. **Foundation & Private Grants**: Education foundations, community foundations, corporate grants
+3. **NEW Programs (Last 6 Months)**: Funding announced since July 2025
+4. **UPCOMING Programs (Next 6 Months)**: Grants opening for applications soon
+5. **Supplemental Federal**: ESSER/ARP leftover funds, CSI/TSI allocations, refugee/immigrant grants
+6. **Regional Programs**: County-level or regional education agency funding
+7. **University Partnerships**: State university programs supporting K-12 EL
+
+For each opportunity, include:
+- Program name and agency
+- Funding amounts if known
+- Application deadline if known
+- Direct URL to program information
+
+Prioritize lesser-known opportunities that districts might miss.
 """
 
 COMPLIANCE_QUERY_TEMPLATE = """
 What are the compliance requirements in {state} related to {product_context}?
 
-Specifically look for:
-1. State regulations affecting {product_type}
-2. Teacher certification or endorsement requirements for EL educators
-3. Professional development requirements and hour mandates
-4. Reporting and assessment requirements (ACCESS, WIDA, ESSA)
-5. Any consent decrees, DOJ inquiries, or legal requirements
+Search for HIGH-SIGNAL compliance items that create urgency for districts:
 
-Focus on current requirements as of 2025.
-Return information as a structured list of requirements.
+1. **Consent Decrees & DOJ Inquiries**: Any active or recent federal oversight, OCR investigations, or legal mandates affecting EL programs in {state}?
+2. **NEW Requirements (Last 12 Months)**: Any compliance changes announced since January 2025?
+3. **Upcoming Deadlines**: Compliance deadlines in the next 6 months
+4. **CSI/TSI Schools**: Districts or schools identified for Comprehensive or Targeted Support related to EL outcomes
+5. **Teacher Certification**: EL/ESL/bilingual endorsement requirements and deadlines
+6. **Professional Development Mandates**: Required PD hours for teachers working with ELs
+7. **Assessment Requirements**: State-specific WIDA/ACCESS or alternative ELP assessment mandates
+8. **Reporting Deadlines**: When districts must report EL data (ESSA, state reporting)
+
+For each requirement, provide:
+- Requirement name/title
+- Administering agency or legal basis
+- Deadline or frequency (e.g., "annual by March", "by July 2026")
+- Consequences of non-compliance if known
+- Why this relates to: {product_type}
+- Direct URL to official guidance/regulation if available
+
+Prioritize items that create urgency or consequences for districts.
 """
 
 COMPLIANCE_QUERY_SIMPLE = """
 What are the compliance requirements for English learner programs in {state}?
 
-Include:
-1. State regulations for EL identification and services
-2. Teacher certification or endorsement requirements for EL educators
-3. Professional development requirements for teachers working with ELs
-4. Reporting and assessment requirements (ACCESS, ESSA)
-5. Any consent decrees or legal requirements
+Focus on HIGH-SIGNAL items that create urgency:
 
-Focus on current requirements as of 2025.
+1. **Consent Decrees & DOJ**: Active federal oversight or legal mandates affecting EL programs
+2. **NEW Requirements (Last 12 Months)**: Compliance changes since January 2025
+3. **Upcoming Deadlines**: Compliance deadlines in the next 6 months
+4. **CSI/TSI Schools**: Schools under improvement status for EL outcomes
+5. **Teacher Certification**: EL endorsement requirements and deadlines
+6. **PD Mandates**: Required professional development hours for EL teachers
+7. **Assessment Requirements**: State ELP assessment mandates
+8. **Reporting Deadlines**: When EL data must be reported
+
+For each requirement, include:
+- Requirement name and legal basis
+- Deadline or frequency
+- Consequences of non-compliance
+- Direct URL to official guidance
+
+Prioritize items that create urgency for districts.
 """
 
 ELL_CONTACT_QUERY_TEMPLATE = """
@@ -197,8 +239,13 @@ async def research_state_funding(
     
     result = await client.search(query)
     
-    # Parse structured items from response
-    items = await _parse_funding_items(result["content"], state_full, product_name)
+    # Parse structured items from response, passing citations for source matching
+    items = await _parse_funding_items(
+        result["content"], 
+        state_full, 
+        product_name,
+        citations=result.get("citations", [])
+    )
     
     research_result = {
         "state": state,
@@ -207,7 +254,7 @@ async def research_state_funding(
         "product": product_name,
         "content": result["content"],
         "citations": result["citations"],
-        "items": items,  # Structured items for scoring
+        "items": items,  # Structured items for scoring (now with sources)
         "researched_at": datetime.utcnow().isoformat(),
     }
     
@@ -259,8 +306,13 @@ async def research_state_compliance(
     
     result = await client.search(query)
     
-    # Parse structured items from response
-    items = await _parse_compliance_items(result["content"], state_full, product_name)
+    # Parse structured items from response, passing citations for source matching
+    items = await _parse_compliance_items(
+        result["content"], 
+        state_full, 
+        product_name,
+        citations=result.get("citations", [])
+    )
     
     research_result = {
         "state": state,
@@ -269,7 +321,7 @@ async def research_state_compliance(
         "product": product_name,
         "content": result["content"],
         "citations": result["citations"],
-        "items": items,  # Structured items for scoring
+        "items": items,  # Structured items for scoring (now with sources)
         "researched_at": datetime.utcnow().isoformat(),
     }
     
@@ -297,12 +349,30 @@ def _get_product_type_description(product_name: Optional[str]) -> str:
 async def _parse_funding_items(
     content: str,
     state: str,
-    product_name: Optional[str]
+    product_name: Optional[str],
+    citations: Optional[List[str]] = None
 ) -> List[Dict[str, Any]]:
-    """Parse structured funding items from Perplexity response."""
+    """Parse structured funding items from Perplexity response with source citations.
+    
+    Args:
+        content: Raw research content from Perplexity
+        state: State name for context
+        product_name: Product name for relevance
+        citations: List of citation URLs from Perplexity response
+    
+    Returns:
+        List of funding items with sources attached
+    """
     from openai import AsyncOpenAI
     
     openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+    
+    # Format citations for the prompt
+    citations_text = ""
+    if citations:
+        citations_text = "\n\nAvailable source citations:\n" + "\n".join(
+            f"[{i+1}] {url}" for i, url in enumerate(citations[:10])
+        )
     
     parse_prompt = f"""Extract specific funding opportunities from this research about {state}.
 
@@ -311,8 +381,12 @@ For each funding opportunity, extract:
 - description: Brief description (1-2 sentences)
 - amount: Funding amount if mentioned (e.g., "$2.4M", "up to $50,000")
 - deadline: Application deadline if mentioned
-- source: Type of funding (federal, state, grant)
+- funding_type: Category (state, federal_supplemental, foundation, regional, university, private)
 - relevance_to_product: How this relates to {product_name or 'EL programs'} (1 sentence)
+- sources: Array of source objects with "url" and optional "title" fields. Match each item to the most relevant citation URLs below. Include any URLs mentioned in the content itself.
+
+IMPORTANT: For each item, identify which citation URLs support it. If a URL is mentioned directly in the research for that program, include it.
+{citations_text}
 
 Return a JSON array of funding opportunities. Return empty array [] if none found.
 
@@ -325,11 +399,11 @@ JSON array:"""
         response = await openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "You are a data extraction assistant. Return only valid JSON."},
+                {"role": "system", "content": "You are a data extraction assistant. Return only valid JSON. Always include a 'sources' array for each item, even if empty."},
                 {"role": "user", "content": parse_prompt}
             ],
             temperature=0,
-            max_tokens=2000,
+            max_tokens=2500,
         )
         
         content_str = response.choices[0].message.content.strip()
@@ -341,7 +415,22 @@ JSON array:"""
             content_str = content_str.replace("```", "")
         
         items = json.loads(content_str)
-        return items if isinstance(items, list) else []
+        
+        # Ensure each item has a sources array
+        if isinstance(items, list):
+            for item in items:
+                if "sources" not in item:
+                    item["sources"] = []
+                # Normalize source format
+                normalized_sources = []
+                for src in item.get("sources", []):
+                    if isinstance(src, str):
+                        normalized_sources.append({"url": src})
+                    elif isinstance(src, dict) and "url" in src:
+                        normalized_sources.append(src)
+                item["sources"] = normalized_sources
+            return items
+        return []
         
     except Exception as e:
         print(f"Error parsing funding items: {e}")
@@ -351,22 +440,45 @@ JSON array:"""
 async def _parse_compliance_items(
     content: str,
     state: str,
-    product_name: Optional[str]
+    product_name: Optional[str],
+    citations: Optional[List[str]] = None
 ) -> List[Dict[str, Any]]:
-    """Parse structured compliance items from Perplexity response."""
+    """Parse structured compliance items from Perplexity response with source citations.
+    
+    Args:
+        content: Raw research content from Perplexity
+        state: State name for context
+        product_name: Product name for relevance
+        citations: List of citation URLs from Perplexity response
+    
+    Returns:
+        List of compliance items with sources attached
+    """
     from openai import AsyncOpenAI
     
     openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+    
+    # Format citations for the prompt
+    citations_text = ""
+    if citations:
+        citations_text = "\n\nAvailable source citations:\n" + "\n".join(
+            f"[{i+1}] {url}" for i, url in enumerate(citations[:10])
+        )
     
     parse_prompt = f"""Extract specific compliance requirements from this research about {state}.
 
 For each compliance requirement, extract:
 - title: Name or brief identifier of the requirement
 - description: Brief description (1-2 sentences)
-- type: Category (certification, professional_development, reporting, assessment, legal)
+- type: Category (consent_decree, doj_inquiry, certification, professional_development, reporting, assessment, csi_tsi, legal)
 - deadline_or_frequency: When it applies (e.g., "annual", "by March 2026")
 - hours_required: Number of PD hours if applicable
+- urgency: "high" (legal/deadline-driven), "medium" (regulatory), or "low" (best practice)
 - relevance_to_product: How this relates to {product_name or 'EL programs'} (1 sentence)
+- sources: Array of source objects with "url" and optional "title" fields. Match each item to the most relevant citation URLs below. Include any URLs mentioned in the content itself.
+
+IMPORTANT: For each item, identify which citation URLs support it. If a URL is mentioned directly in the research for that requirement, include it.
+{citations_text}
 
 Return a JSON array of compliance requirements. Return empty array [] if none found.
 
@@ -379,11 +491,11 @@ JSON array:"""
         response = await openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "You are a data extraction assistant. Return only valid JSON."},
+                {"role": "system", "content": "You are a data extraction assistant. Return only valid JSON. Always include a 'sources' array for each item, even if empty."},
                 {"role": "user", "content": parse_prompt}
             ],
             temperature=0,
-            max_tokens=2000,
+            max_tokens=2500,
         )
         
         content_str = response.choices[0].message.content.strip()
@@ -395,7 +507,22 @@ JSON array:"""
             content_str = content_str.replace("```", "")
         
         items = json.loads(content_str)
-        return items if isinstance(items, list) else []
+        
+        # Ensure each item has a sources array
+        if isinstance(items, list):
+            for item in items:
+                if "sources" not in item:
+                    item["sources"] = []
+                # Normalize source format
+                normalized_sources = []
+                for src in item.get("sources", []):
+                    if isinstance(src, str):
+                        normalized_sources.append({"url": src})
+                    elif isinstance(src, dict) and "url" in src:
+                        normalized_sources.append(src)
+                item["sources"] = normalized_sources
+            return items
+        return []
         
     except Exception as e:
         print(f"Error parsing compliance items: {e}")

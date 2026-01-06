@@ -2,7 +2,62 @@
  * CurationStep component for selecting funding and compliance items.
  * Shows Top 3 scored items for user selection.
  */
-import { FundingItem, ComplianceItem } from '../lib/api'
+import { FundingItem, ComplianceItem, SourceLink } from '../lib/api'
+
+// External link icon component
+function ExternalLinkIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+    </svg>
+  )
+}
+
+// Helper to get display title for a source URL
+function getSourceDisplayTitle(source: SourceLink): string {
+  if (source.title) return source.title
+  try {
+    const url = new URL(source.url)
+    return url.hostname.replace('www.', '')
+  } catch {
+    return 'Source'
+  }
+}
+
+// Source links display component
+function SourceLinks({ sources, accentColor = 'slate' }: { sources?: SourceLink[], accentColor?: 'emerald' | 'blue' | 'slate' }) {
+  if (!sources || sources.length === 0) return null
+  
+  const colorClasses = {
+    emerald: 'text-emerald-400 hover:text-emerald-300 bg-emerald-900/30 hover:bg-emerald-900/50',
+    blue: 'text-blue-400 hover:text-blue-300 bg-blue-900/30 hover:bg-blue-900/50',
+    slate: 'text-slate-400 hover:text-slate-300 bg-slate-700/50 hover:bg-slate-700',
+  }
+  
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {sources.slice(0, 3).map((source, i) => (
+        <a
+          key={i}
+          href={source.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors ${colorClasses[accentColor]}`}
+          title={source.url}
+        >
+          <ExternalLinkIcon className="w-3 h-3" />
+          {getSourceDisplayTitle(source)}
+        </a>
+      ))}
+      {sources.length > 3 && (
+        <span className="text-xs text-slate-500 px-2 py-0.5">
+          +{sources.length - 3} more
+        </span>
+      )}
+    </div>
+  )
+}
 
 interface CurationStepProps {
   fundingItems: FundingItem[]
@@ -83,6 +138,9 @@ function FundingCard({
             </div>
           )}
           
+          {/* Source Links */}
+          <SourceLinks sources={item.sources} accentColor="emerald" />
+          
           <div className="mt-3">
             <ScoreBar score={item.score} />
           </div>
@@ -118,10 +176,13 @@ function ComplianceCard({
   onToggle: () => void
 }) {
   const typeColors: Record<string, string> = {
+    consent_decree: 'bg-red-900/50 text-red-400',
+    doj_inquiry: 'bg-red-900/50 text-red-400',
     certification: 'bg-blue-900/50 text-blue-400',
     professional_development: 'bg-purple-900/50 text-purple-400',
     reporting: 'bg-orange-900/50 text-orange-400',
     assessment: 'bg-cyan-900/50 text-cyan-400',
+    csi_tsi: 'bg-amber-900/50 text-amber-400',
     legal: 'bg-red-900/50 text-red-400',
   }
 
@@ -168,7 +229,20 @@ function ComplianceCard({
                 📅 {item.deadline_or_frequency}
               </span>
             )}
+            {item.urgency && (
+              <span className={`px-1.5 py-0.5 rounded ${
+                item.urgency === 'high' ? 'bg-red-900/50 text-red-400' :
+                item.urgency === 'medium' ? 'bg-yellow-900/50 text-yellow-400' :
+                'bg-slate-700 text-slate-400'
+              }`}>
+                {item.urgency === 'high' ? '🔴 High Priority' : 
+                 item.urgency === 'medium' ? '🟡 Medium' : '🟢 Low'}
+              </span>
+            )}
           </div>
+          
+          {/* Source Links */}
+          <SourceLinks sources={item.sources} accentColor="blue" />
           
           <div className="mt-3">
             <ScoreBar score={item.score} />

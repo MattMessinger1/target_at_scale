@@ -127,15 +127,22 @@ export interface StateInfo {
   is_wida: boolean
 }
 
+export interface SourceLink {
+  url: string
+  title?: string
+}
+
 export interface FundingItem {
   title: string
   description?: string
   amount?: string
   deadline?: string
-  source?: string
+  funding_type?: string  // state, federal_supplemental, foundation, regional, university, private
+  source?: string  // legacy field
   score: number
   score_reason: string
   email_hook: string
+  sources?: SourceLink[]  // Verifiable source links
   score_breakdown?: {
     product_fit: number
     audience_match: number
@@ -148,12 +155,14 @@ export interface FundingItem {
 export interface ComplianceItem {
   title: string
   description?: string
-  type?: string
+  type?: string  // consent_decree, doj_inquiry, certification, professional_development, reporting, assessment, csi_tsi, legal
   deadline_or_frequency?: string
   hours_required?: string
+  urgency?: 'high' | 'medium' | 'low'
   score: number
   score_reason: string
   email_hook: string
+  sources?: SourceLink[]  // Verifiable source links
   score_breakdown?: {
     product_fit: number
     audience_match: number
