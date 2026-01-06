@@ -51,13 +51,14 @@ export default function DistrictDetail() {
   const queryClient = useQueryClient()
   const [generatingEmail, setGeneratingEmail] = useState(false)
 
-  const { data: district, isLoading: districtLoading } = useQuery({
+  const districtQuery = useQuery({
     queryKey: ['district', districtId],
     queryFn: () => api.districts.get(districtId!),
     enabled: !!districtId,
-    refetchInterval: (data) => 
-      data?.scrape_status === 'in_progress' ? 2000 : false,
+    refetchInterval: (query) => 
+      query.state.data?.scrape_status === 'in_progress' ? 2000 : false,
   })
+  const { data: district, isLoading: districtLoading } = districtQuery
 
   const { data: snippets, isLoading: snippetsLoading } = useQuery({
     queryKey: ['snippets', districtId],
@@ -82,7 +83,7 @@ export default function DistrictDetail() {
     onSuccess: (data: ScrapeResult) => {
       toast({ 
         title: 'Scraping Complete',
-        description: `Extracted ${data.result?.snippets_extracted || 0} snippets`
+        description: `Scraping completed for district`
       })
       queryClient.invalidateQueries({ queryKey: ['district', districtId] })
       queryClient.invalidateQueries({ queryKey: ['snippets', districtId] })
@@ -495,11 +496,11 @@ export default function DistrictDetail() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {(district.identified_needs as { pain_points?: string[]; priorities?: string[] }).pain_points?.length > 0 && (
+                    {((district.identified_needs as { pain_points?: string[]; priorities?: string[] })?.pain_points?.length ?? 0) > 0 && (
                       <div>
                         <p className="text-xs font-medium text-muted-foreground mb-2">PAIN POINTS</p>
                         <div className="flex flex-wrap gap-1">
-                          {(district.identified_needs as { pain_points?: string[] }).pain_points?.slice(0, 4).map((need, i) => (
+                          {(district.identified_needs as { pain_points?: string[] })?.pain_points?.slice(0, 4).map((need, i) => (
                             <Badge key={i} variant="outline" className="text-xs">
                               {need}
                             </Badge>
@@ -507,11 +508,11 @@ export default function DistrictDetail() {
                         </div>
                       </div>
                     )}
-                    {(district.identified_needs as { priorities?: string[] }).priorities?.length > 0 && (
+                    {((district.identified_needs as { priorities?: string[] })?.priorities?.length ?? 0) > 0 && (
                       <div>
                         <p className="text-xs font-medium text-muted-foreground mb-2">PRIORITIES</p>
                         <div className="flex flex-wrap gap-1">
-                          {(district.identified_needs as { priorities?: string[] }).priorities?.slice(0, 4).map((priority, i) => (
+                          {(district.identified_needs as { priorities?: string[] })?.priorities?.slice(0, 4).map((priority, i) => (
                             <Badge key={i} variant="secondary" className="text-xs">
                               {priority}
                             </Badge>

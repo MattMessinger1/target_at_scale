@@ -4,7 +4,7 @@
  */
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api, StateInfo } from '../lib/api'
+import { api } from '../lib/api'
 
 interface StateSelectorProps {
   selectedState: string

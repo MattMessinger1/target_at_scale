@@ -33,7 +33,7 @@ export default function Districts() {
 
   const scrapeMutation = useMutation({
     mutationFn: (districtId: string) => api.districts.scrape(districtId),
-    onSuccess: (_, districtId) => {
+    onSuccess: () => {
       toast({
         title: 'Scraping started',
         description: `Started scraping district data`,
