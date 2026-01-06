@@ -21,6 +21,7 @@ pypdf==4.0.1
 
 # Vector Store (RAG)
 chromadb==0.4.22
+numpy<2.0  # Required for chromadb compatibility
 
 # Data Processing
 pydantic==2.5.3
