@@ -96,6 +96,41 @@ function ScoreBar({ score }: { score: number }) {
   )
 }
 
+// Source type badge - shows if item is from Knowledge Base or Web Research
+function SourceTypeBadge({ sourceType, status }: { sourceType?: string, status?: string }) {
+  const isKB = sourceType === 'knowledge_base'
+  
+  return (
+    <div className="flex items-center gap-1.5">
+      {/* Source type badge */}
+      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+        isKB 
+          ? 'bg-violet-900/50 text-violet-400 border border-violet-700/50' 
+          : 'bg-slate-700/50 text-slate-400 border border-slate-600/50'
+      }`}>
+        {isKB ? '📚 From KB' : '🌐 Web Research'}
+      </span>
+      
+      {/* Status badge */}
+      {status && (
+        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+          status === 'verified' ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-700/50' :
+          status === 'active' ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-700/50' :
+          status === 'upcoming' ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50' :
+          status === 'unverified' ? 'bg-amber-900/50 text-amber-400 border border-amber-700/50' :
+          'bg-slate-700/50 text-slate-400 border border-slate-600/50'
+        }`}>
+          {status === 'verified' ? '✓ Verified' :
+           status === 'active' ? '✓ Active' :
+           status === 'upcoming' ? '📅 Upcoming' :
+           status === 'unverified' ? '⚠ Unverified' :
+           status}
+        </span>
+      )}
+    </div>
+  )
+}
+
 function FundingCard({
   item,
   isSelected,
@@ -116,15 +151,18 @@ function FundingCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mb-1">
             <span className="text-lg">💰</span>
             <h4 className={`font-medium ${isSelected ? 'text-emerald-400' : 'text-slate-200'}`}>
               {item.title}
             </h4>
           </div>
           
+          {/* Source type badge */}
+          <SourceTypeBadge sourceType={item.source_type} status={item.status} />
+          
           {item.amount && (
-            <div className="mt-1 text-sm text-emerald-400 font-medium">
+            <div className="mt-2 text-sm text-emerald-400 font-medium">
               {item.amount}
             </div>
           )}
@@ -200,20 +238,22 @@ function ComplianceCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mb-1">
             <span className="text-lg">📋</span>
             <h4 className={`font-medium ${isSelected ? 'text-blue-400' : 'text-slate-200'}`}>
               {item.title}
             </h4>
           </div>
           
-          {item.type && (
-            <div className="mt-1">
+          {/* Source type and status badges */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <SourceTypeBadge sourceType={item.source_type} status={item.status} />
+            {item.type && (
               <span className={`text-xs px-2 py-0.5 rounded ${typeColors[item.type] || 'bg-slate-700 text-slate-400'}`}>
                 {item.type.replace('_', ' ')}
               </span>
-            </div>
-          )}
+            )}
+          </div>
           
           {item.description && (
             <p className="mt-2 text-sm text-slate-400 line-clamp-2">

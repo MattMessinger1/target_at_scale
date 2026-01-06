@@ -51,6 +51,11 @@ from .reranker import (
     rerank_results,
     rerank_with_scores,
 )
+from .kb_results import (
+    extract_kb_funding_items,
+    extract_kb_compliance_items,
+    merge_kb_and_perplexity_results,
+)
 
 __all__ = [
     # Embeddings
@@ -84,4 +89,8 @@ __all__ = [
     # Re-ranking
     "rerank_results",
     "rerank_with_scores",
+    # KB Results Extraction
+    "extract_kb_funding_items",
+    "extract_kb_compliance_items",
+    "merge_kb_and_perplexity_results",
 ]

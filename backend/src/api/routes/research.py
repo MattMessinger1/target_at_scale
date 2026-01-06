@@ -37,6 +37,11 @@ def get_scoring_function():
     from ...research.scoring import get_top_items
     return get_top_items
 
+def get_kb_results_functions():
+    """Lazy import for KB results extraction functions."""
+    from ...rag.kb_results import extract_kb_funding_items, extract_kb_compliance_items, merge_kb_and_perplexity_results
+    return extract_kb_funding_items, extract_kb_compliance_items, merge_kb_and_perplexity_results
+
 
 router = APIRouter()
 
@@ -266,8 +271,45 @@ async def research(
             product_context = {}
             context_summary = f"Product: {request.product}"
     
+    # Step 2a: Extract funding/compliance directly from KB content
+    kb_funding_items = []
+    kb_compliance_items = []
     try:
-        # Step 2: Research funding, compliance, and compliance-linked funding with product context
+        extract_kb_funding_items, extract_kb_compliance_items, merge_kb_and_perplexity_results = get_kb_results_functions()
+        
+        # Get the raw RAG results for KB extraction
+        rag_results = product_context.get("raw_results", [])
+        if not rag_results:
+            # Fallback: create results from the context content
+            rag_results = [
+                {"content": product_context.get("summary_for_research", "")},
+            ]
+            # Add any state-specific content
+            if product_context.get("state_specific"):
+                rag_results.extend([{"content": c} for c in product_context["state_specific"]])
+            # Add talking points
+            if product_context.get("talking_points"):
+                rag_results.extend([{"content": c} for c in product_context["talking_points"]])
+        
+        kb_funding_items = await extract_kb_funding_items(
+            rag_results=rag_results,
+            state=state_full,
+            product=request.product,
+        )
+        logger.info(f"Extracted {len(kb_funding_items)} funding items from KB")
+        
+        kb_compliance_items = await extract_kb_compliance_items(
+            rag_results=rag_results,
+            state=state_full,
+            product=request.product,
+        )
+        logger.info(f"Extracted {len(kb_compliance_items)} compliance items from KB")
+    except Exception as e:
+        logger.error(f"KB extraction failed: {e}")
+        merge_kb_and_perplexity_results = lambda kb, pp, **_: kb + pp  # Simple fallback merger
+    
+    # Step 2b: Research funding, compliance, and compliance-linked funding via Perplexity
+    try:
         research_state_funding, research_state_compliance, research_compliance_funding = get_perplexity_functions()
         
         funding_result = await research_state_funding(
@@ -284,7 +326,7 @@ async def research(
             product_context=product_context,
         )
         
-        # NEW: Research compliance-linked funding (CSI/TSI grants, consent decree funding, etc.)
+        # Research compliance-linked funding (CSI/TSI grants, consent decree funding, etc.)
         compliance_funding_result = await research_compliance_funding(
             state=request.state,
             state_full=state_full,
@@ -297,10 +339,24 @@ async def research(
         compliance_result = {"items": []}
         compliance_funding_result = {"items": []}
     
-    # Step 3: Score and get top items
-    funding_items = funding_result.get("items", [])
-    compliance_items = compliance_result.get("items", [])
+    # Step 3: Merge KB items with Perplexity items
+    perplexity_funding = funding_result.get("items", [])
+    perplexity_compliance = compliance_result.get("items", [])
     compliance_funding_items = compliance_funding_result.get("items", [])
+    
+    # Merge KB + Perplexity results (KB items prioritized, deduped)
+    funding_items = merge_kb_and_perplexity_results(
+        kb_items=kb_funding_items,
+        perplexity_items=perplexity_funding,
+        item_type="funding",
+    )
+    compliance_items = merge_kb_and_perplexity_results(
+        kb_items=kb_compliance_items,
+        perplexity_items=perplexity_compliance,
+        item_type="compliance",
+    )
+    
+    logger.info(f"Merged results: {len(funding_items)} funding, {len(compliance_items)} compliance")
     
     try:
         get_top_items = get_scoring_function()

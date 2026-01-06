@@ -370,7 +370,10 @@ async def get_product_context_optimized(
         use_reranking: Whether to use GPT re-ranking
     
     Returns:
-        Dict with product context
+        Dict with product context including:
+        - value_propositions, use_cases, case_studies, etc.
+        - raw_results: Full result objects for KB extraction
+        - summary_for_research: Concise summary for Perplexity
     """
     context = {
         "product_name": product_name,
@@ -382,6 +385,7 @@ async def get_product_context_optimized(
         "talking_points": [],
         "state_specific": [],
         "raw_content": [],
+        "raw_results": [],  # Store full results for KB extraction
     }
     
     # Query 1: General product info (most important)
@@ -399,6 +403,7 @@ async def get_product_context_optimized(
         content = r.get("document", "")
         metadata = r.get("metadata", {})
         context["raw_content"].append(content)
+        context["raw_results"].append(r)  # Store full result for KB extraction
         
         subcategory = metadata.get("subcategory", "")
         category = metadata.get("category", "")
@@ -426,6 +431,7 @@ async def get_product_context_optimized(
             content = r.get("document", "")
             if content and content not in context["raw_content"]:
                 context["raw_content"].append(content)
+                context["raw_results"].append(r)  # Store full result
                 context["talking_points"].append(content)
     
     # Query 3: Use cases
@@ -443,6 +449,7 @@ async def get_product_context_optimized(
         content = r.get("document", "")
         if content and content not in context["raw_content"]:
             context["use_cases"].append(content)
+            context["raw_results"].append(r)  # Store full result
     
     # Query 4: State-specific content
     if state:
@@ -461,6 +468,7 @@ async def get_product_context_optimized(
             content = r.get("document", "")
             if content:
                 context["state_specific"].append(content)
+                context["raw_results"].append(r)  # Store full result
         
         # Also search specifically for funding/compliance info
         funding_query = f"{state} funding grants CSI TSI school improvement EL English Learner"
@@ -476,6 +484,7 @@ async def get_product_context_optimized(
             content = r.get("document", "")
             if content and content not in context["state_specific"]:
                 context["state_specific"].append(content)
+                context["raw_results"].append(r)  # Store full result
     
     # Build summary for Perplexity research
     context["summary_for_research"] = _build_research_summary_enhanced(context)
