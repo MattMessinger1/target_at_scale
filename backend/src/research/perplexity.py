@@ -18,71 +18,81 @@ settings = get_settings()
 
 PERPLEXITY_BASE_URL = "https://api.perplexity.ai"
 
-# Research query templates - focused on GOVERNMENT funding sources (federal, state, district)
-# NO foundations or private grants - we want large-scale government money
+# Research query templates - focused on GOVERNMENT funding "hidden gems"
+# Look BEYOND Title I and Title III for additional federal, state, and district money
 
 FUNDING_QUERY_TEMPLATE = """
-Search for GOVERNMENT FUNDING SOURCES in {state} that could support {product_context}.
+Search for GOVERNMENT FUNDING "hidden gems" in {state} that could support {product_context}.
 
-IMPORTANT: Focus ONLY on government funding (federal, state, district). Do NOT include foundations, private grants, or corporate philanthropy.
+IMPORTANT: 
+- Focus ONLY on government funding (federal, state, district)
+- Do NOT include foundations, private grants, or corporate sources
+- Look BEYOND Title I and Title III - those are baseline programs everyone knows. Find the ADDITIONAL government funding sources!
 
-**Federal Funding Sources:**
-1. Title III allocations for {state} - current year amounts and how districts can access them
-2. ESSER/ARP remaining funds - any unspent pandemic relief money still available
-3. Refugee and immigrant education grants (federal programs for newcomer students)
-4. IDEA funds that can support EL students with disabilities
-5. 21st Century Community Learning Centers funds applicable to EL programs
+**Federal Funding - BEYOND Title I/III (find the hidden gems!):**
+1. ESSER/ARP remaining funds - unspent pandemic relief money districts can still access
+2. Refugee and immigrant education grants (federal programs for newcomer students)
+3. IDEA funds that can support EL students with disabilities
+4. 21st Century Community Learning Centers funds applicable to EL
+5. CSI/TSI school improvement funds that can support EL programs
+6. Federal literacy grants (Comprehensive Literacy State Development, etc.)
+7. Any other federal block grants or discretionary grants for EL
 
-**State Funding Sources:**
-6. State appropriations for EL/bilingual education in {state}
-7. State block grants or categorical funding for language services
-8. State literacy initiatives that include EL students
-9. Any NEW state funding announced in the past 12 months (since January 2025)
-10. Upcoming state budget allocations for FY2026-2027
+**State Funding - {state}-specific programs:**
+8. State appropriations for EL/bilingual education BEYOND federal pass-through
+9. State block grants or categorical funding for language services
+10. State literacy initiatives that include EL students
+11. Any NEW state funding announced in the past 12 months (since January 2025)
+12. Upcoming state budget allocations for FY2026-2027
+13. State-specific programs unique to {state}
 
 **District-Level Allocations:**
-11. How districts in {state} typically allocate EL funding
-12. Per-pupil funding formulas for EL students
+14. Local levy or bond funds allocated to EL programs
+15. Per-pupil funding formulas and supplemental weights for EL students
 
 For each funding source, provide:
-- Program name and administering agency (federal dept, state agency, etc.)
+- Program name and administering agency
 - Approximate funding amounts (total allocation or per-pupil)
 - Application deadline or budget cycle timing
 - How this relates to: {product_type}
 - Direct URL to program information
 
-Focus on LARGE funding sources - block grants and major allocations, not small grants.
+PRIORITIZE the lesser-known funding sources - the "hidden gems" that districts might miss.
 Look at both ACTIVE programs (past 12 months) and UPCOMING allocations (next 12 months).
 """
 
 FUNDING_QUERY_SIMPLE = """
-Search for GOVERNMENT FUNDING for English learner (EL/ELL) programs in {state}.
+Search for GOVERNMENT FUNDING "hidden gems" for English learner (EL/ELL) programs in {state}.
 
-IMPORTANT: Focus ONLY on government funding. NO foundations, private grants, or corporate sources.
+IMPORTANT: 
+- Government funding ONLY - NO foundations, private grants, or corporate sources
+- Look BEYOND Title I and Title III - find ADDITIONAL government funding!
 
-**Federal Funding:**
-1. Title III allocations for {state}
-2. ESSER/ARP remaining funds still available
-3. Refugee/immigrant education grants
-4. IDEA funds for EL students with disabilities
-5. 21st Century funds applicable to EL
+**Federal Funding (beyond Title I/III):**
+1. ESSER/ARP remaining funds still available
+2. Refugee/immigrant education grants
+3. IDEA funds for EL students with disabilities
+4. 21st Century funds applicable to EL
+5. CSI/TSI school improvement funds
+6. Other federal block grants for EL
 
-**State Funding:**
-6. State appropriations for EL/bilingual education
-7. State block grants for language services
-8. NEW state funding (past 12 months)
-9. Upcoming state budget allocations (next 12 months)
+**State Funding ({state}-specific):**
+7. State appropriations for EL/bilingual education
+8. State block grants for language services
+9. NEW state funding (past 12 months)
+10. Upcoming state budget allocations (next 12 months)
 
 **District Allocations:**
-10. Per-pupil funding formulas for EL students
+11. Local levy/bond funds for EL programs
+12. Per-pupil funding formulas for EL students
 
 For each source, include:
 - Program name and agency
-- Funding amounts (total or per-pupil)
+- Funding amounts
 - Deadline or budget cycle
 - Direct URL to program info
 
-Focus on LARGE government funding sources, not small grants.
+PRIORITIZE lesser-known "hidden gems" that districts might miss.
 """
 
 COMPLIANCE_QUERY_TEMPLATE = """
