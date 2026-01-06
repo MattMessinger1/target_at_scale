@@ -438,11 +438,14 @@ For each funding opportunity, extract:
 - description: Brief description (1-2 sentences)
 - amount: Funding amount if mentioned (e.g., "$2.4M", "up to $50,000")
 - deadline: Application deadline if mentioned
-- funding_type: Category (state, federal_supplemental, foundation, regional, university, private)
+- funding_type: Category (federal, state, district)
 - relevance_to_product: How this relates to {product_name or 'EL programs'} (1 sentence)
-- sources: Array of source objects with "url" and optional "title" fields. Match each item to the most relevant citation URLs below. Include any URLs mentioned in the content itself.
+- sources: Array of source objects with:
+  - "url": The citation URL
+  - "title": Optional title for the source
+  - "highlight_text": A SHORT phrase (3-6 words) that appears on that source page and relates to this funding item. This will be used to scroll to the relevant section.
 
-IMPORTANT: For each item, identify which citation URLs support it. If a URL is mentioned directly in the research for that program, include it.
+IMPORTANT: For each source, include a highlight_text that would help find the relevant information on that page.
 {citations_text}
 
 Return a JSON array of funding opportunities. Return empty array [] if none found.
@@ -456,7 +459,7 @@ JSON array:"""
         response = await openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "You are a data extraction assistant. Return only valid JSON. Always include a 'sources' array for each item, even if empty."},
+                {"role": "system", "content": "You are a data extraction assistant. Return only valid JSON. Always include a 'sources' array for each item, even if empty. For each source, include a highlight_text field with a short phrase to find on the page."},
                 {"role": "user", "content": parse_prompt}
             ],
             temperature=0,
@@ -473,18 +476,27 @@ JSON array:"""
         
         items = json.loads(content_str)
         
-        # Ensure each item has a sources array
+        # Ensure each item has a sources array with text fragment URLs
         if isinstance(items, list):
             for item in items:
                 if "sources" not in item:
                     item["sources"] = []
-                # Normalize source format
+                # Normalize source format and add text fragments
                 normalized_sources = []
                 for src in item.get("sources", []):
                     if isinstance(src, str):
                         normalized_sources.append({"url": src})
                     elif isinstance(src, dict) and "url" in src:
-                        normalized_sources.append(src)
+                        # Add text fragment to URL if highlight_text is provided
+                        url = src["url"]
+                        if src.get("highlight_text") and "#" not in url:
+                            from urllib.parse import quote
+                            highlight = quote(src["highlight_text"])
+                            url = f"{url}#:~:text={highlight}"
+                        normalized_sources.append({
+                            "url": url,
+                            "title": src.get("title")
+                        })
                 item["sources"] = normalized_sources
             return items
         return []
@@ -531,10 +543,14 @@ For each compliance requirement, extract:
 - deadline_or_frequency: When it applies (e.g., "annual", "by March 2026")
 - hours_required: Number of PD hours if applicable
 - urgency: "high" (legal/deadline-driven), "medium" (regulatory), or "low" (best practice)
+- districts_affected: List of specific district names if mentioned (for DOJ cases, CSI/TSI schools, etc.)
 - relevance_to_product: How this relates to {product_name or 'EL programs'} (1 sentence)
-- sources: Array of source objects with "url" and optional "title" fields. Match each item to the most relevant citation URLs below. Include any URLs mentioned in the content itself.
+- sources: Array of source objects with:
+  - "url": The citation URL
+  - "title": Optional title for the source
+  - "highlight_text": A SHORT phrase (3-6 words) that appears on that source page and relates to this compliance item. This will be used to scroll to the relevant section.
 
-IMPORTANT: For each item, identify which citation URLs support it. If a URL is mentioned directly in the research for that requirement, include it.
+IMPORTANT: For each source, include a highlight_text that would help find the relevant information on that page.
 {citations_text}
 
 Return a JSON array of compliance requirements. Return empty array [] if none found.
@@ -548,7 +564,7 @@ JSON array:"""
         response = await openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "You are a data extraction assistant. Return only valid JSON. Always include a 'sources' array for each item, even if empty."},
+                {"role": "system", "content": "You are a data extraction assistant. Return only valid JSON. Always include a 'sources' array for each item, even if empty. For each source, include a highlight_text field with a short phrase to find on the page."},
                 {"role": "user", "content": parse_prompt}
             ],
             temperature=0,
@@ -565,18 +581,27 @@ JSON array:"""
         
         items = json.loads(content_str)
         
-        # Ensure each item has a sources array
+        # Ensure each item has a sources array with text fragment URLs
         if isinstance(items, list):
             for item in items:
                 if "sources" not in item:
                     item["sources"] = []
-                # Normalize source format
+                # Normalize source format and add text fragments
                 normalized_sources = []
                 for src in item.get("sources", []):
                     if isinstance(src, str):
                         normalized_sources.append({"url": src})
                     elif isinstance(src, dict) and "url" in src:
-                        normalized_sources.append(src)
+                        # Add text fragment to URL if highlight_text is provided
+                        url = src["url"]
+                        if src.get("highlight_text") and "#" not in url:
+                            from urllib.parse import quote
+                            highlight = quote(src["highlight_text"])
+                            url = f"{url}#:~:text={highlight}"
+                        normalized_sources.append({
+                            "url": url,
+                            "title": src.get("title")
+                        })
                 item["sources"] = normalized_sources
             return items
         return []
