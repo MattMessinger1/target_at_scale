@@ -6,9 +6,14 @@ from ..config import get_settings
 
 settings = get_settings()
 
+# Ensure we use async driver for SQLite
+database_url = settings.database_url
+if database_url.startswith("sqlite://") and "+aiosqlite" not in database_url:
+    database_url = database_url.replace("sqlite://", "sqlite+aiosqlite://")
+
 # Create async engine
 engine = create_async_engine(
-    settings.database_url,
+    database_url,
     echo=settings.debug,
 )
 
