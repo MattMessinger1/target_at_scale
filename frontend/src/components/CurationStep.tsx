@@ -1,8 +1,8 @@
 /**
- * CurationStep component for selecting funding and compliance items.
- * Shows Top 3 scored items for user selection.
+ * CurationStep component for selecting funding, compliance-linked funding, and compliance items.
+ * Shows Top 3 scored items for user selection in each category.
  */
-import { FundingItem, ComplianceItem, SourceLink } from '../lib/api'
+import { FundingItem, ComplianceItem, ComplianceFundingItem, SourceLink } from '../lib/api'
 
 // External link icon component
 function ExternalLinkIcon({ className }: { className?: string }) {
@@ -61,10 +61,13 @@ function SourceLinks({ sources, accentColor = 'slate' }: { sources?: SourceLink[
 
 interface CurationStepProps {
   fundingItems: FundingItem[]
+  complianceFundingItems: ComplianceFundingItem[]
   complianceItems: ComplianceItem[]
   selectedFunding: FundingItem[]
+  selectedComplianceFunding: ComplianceFundingItem[]
   selectedCompliance: ComplianceItem[]
   onSelectFunding: (items: FundingItem[]) => void
+  onSelectComplianceFunding: (items: ComplianceFundingItem[]) => void
   onSelectCompliance: (items: ComplianceItem[]) => void
   isLoading?: boolean
 }
@@ -269,12 +272,112 @@ function ComplianceCard({
   )
 }
 
+function ComplianceFundingCard({
+  item,
+  isSelected,
+  onToggle,
+}: {
+  item: ComplianceFundingItem
+  isSelected: boolean
+  onToggle: () => void
+}) {
+  return (
+    <div
+      onClick={onToggle}
+      className={`p-4 rounded-lg border cursor-pointer transition-all ${
+        isSelected
+          ? 'bg-amber-600/20 border-amber-500 ring-2 ring-amber-500/50'
+          : 'bg-slate-800/50 border-slate-700 hover:bg-slate-700/50'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🎯</span>
+            <h4 className={`font-medium ${isSelected ? 'text-amber-400' : 'text-slate-200'}`}>
+              {item.title}
+            </h4>
+          </div>
+          
+          {/* Compliance trigger badge */}
+          {item.compliance_trigger && (
+            <div className="mt-1">
+              <span className="text-xs px-2 py-0.5 rounded bg-amber-900/50 text-amber-400">
+                📋 Requires: {item.compliance_trigger}
+              </span>
+            </div>
+          )}
+          
+          {item.amount && (
+            <div className="mt-1 text-sm text-emerald-400 font-medium">
+              {item.amount}
+            </div>
+          )}
+          
+          {item.description && (
+            <p className="mt-2 text-sm text-slate-400 line-clamp-2">
+              {item.description}
+            </p>
+          )}
+          
+          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+            {item.deadline && (
+              <span className="text-orange-400">
+                📅 {item.deadline}
+              </span>
+            )}
+            {item.action_required && (
+              <span className="text-cyan-400">
+                ⚡ {item.action_required}
+              </span>
+            )}
+          </div>
+          
+          {/* Districts affected */}
+          {item.districts_affected && item.districts_affected.length > 0 && (
+            <div className="mt-2 text-xs text-slate-500">
+              🏫 Affects: {item.districts_affected.slice(0, 3).join(', ')}
+              {item.districts_affected.length > 3 && ` +${item.districts_affected.length - 3} more`}
+            </div>
+          )}
+          
+          {/* Source Links */}
+          <SourceLinks sources={item.sources} accentColor="slate" />
+          
+          <div className="mt-3">
+            <ScoreBar score={item.score} />
+          </div>
+          
+          <div className="mt-2 text-xs text-slate-500">
+            {item.score_reason}
+          </div>
+        </div>
+        
+        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+          isSelected 
+            ? 'bg-amber-500 border-amber-500 text-white' 
+            : 'border-slate-500'
+        }`}>
+          {isSelected && (
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function CurationStep({
   fundingItems,
+  complianceFundingItems,
   complianceItems,
   selectedFunding,
+  selectedComplianceFunding,
   selectedCompliance,
   onSelectFunding,
+  onSelectComplianceFunding,
   onSelectCompliance,
   isLoading,
 }: CurationStepProps) {
@@ -284,6 +387,15 @@ export function CurationStep({
       onSelectFunding(selectedFunding.filter(f => f.title !== item.title))
     } else if (selectedFunding.length < 3) {
       onSelectFunding([...selectedFunding, item])
+    }
+  }
+
+  const toggleComplianceFunding = (item: ComplianceFundingItem) => {
+    const isSelected = selectedComplianceFunding.some(cf => cf.title === item.title)
+    if (isSelected) {
+      onSelectComplianceFunding(selectedComplianceFunding.filter(cf => cf.title !== item.title))
+    } else if (selectedComplianceFunding.length < 3) {
+      onSelectComplianceFunding([...selectedComplianceFunding, item])
     }
   }
 
@@ -336,12 +448,20 @@ export function CurationStep({
                   Our research found no special funding sources beyond the "table stakes" 
                   (Title I, Title III, and standard state categorical funding) for this state and product.
                 </p>
-                <p className="text-sm text-slate-300">
-                  <strong className="text-emerald-400">Good news:</strong> Districts can use their existing 
-                  table stakes funding to address the compliance requirements below. Focus on highlighting 
-                  how your product helps them meet mandates — that's a compelling reason to allocate their 
-                  baseline EL funding to you.
-                </p>
+                {complianceFundingItems.length > 0 ? (
+                  <p className="text-sm text-slate-300">
+                    <strong className="text-amber-400">However:</strong> Check the{' '}
+                    <strong>Compliance-Linked Funding</strong> section below — schools with CSI/TSI designations 
+                    or under compliance oversight have access to dedicated improvement funds that could support this product.
+                  </p>
+                ) : (
+                  <p className="text-sm text-slate-300">
+                    <strong className="text-emerald-400">Good news:</strong> Districts can use their existing 
+                    table stakes funding to address the compliance requirements below. Focus on highlighting 
+                    how your product helps them meet mandates — that's a compelling reason to allocate their 
+                    baseline EL funding to you.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -353,6 +473,46 @@ export function CurationStep({
                 item={item}
                 isSelected={selectedFunding.some(f => f.title === item.title)}
                 onToggle={() => toggleFunding(item)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Compliance-Linked Funding Section */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
+            🎯 Compliance-Linked Funding
+            <span className="text-sm font-normal text-slate-500">
+              (select up to 3)
+            </span>
+          </h3>
+          <span className="text-sm text-amber-400">
+            {selectedComplianceFunding.length}/3 selected
+          </span>
+        </div>
+        
+        {complianceFundingItems.length === 0 ? (
+          <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700">
+            <div className="flex items-start gap-3">
+              <span className="text-xl">ℹ️</span>
+              <div>
+                <p className="text-sm text-slate-400">
+                  No compliance-linked funding found (CSI/TSI improvement grants, consent decree funding, etc.) 
+                  for this state and product combination.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {complianceFundingItems.map((item, i) => (
+              <ComplianceFundingCard
+                key={`${item.title}-${i}`}
+                item={item}
+                isSelected={selectedComplianceFunding.some(cf => cf.title === item.title)}
+                onToggle={() => toggleComplianceFunding(item)}
               />
             ))}
           </div>

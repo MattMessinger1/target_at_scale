@@ -14,6 +14,7 @@ import {
   api, 
   FundingItem, 
   ComplianceItem, 
+  ComplianceFundingItem,
   ResearchResponse,
   GenerateEmailResponse 
 } from '../lib/api'
@@ -98,6 +99,7 @@ export default function EmailGenerator() {
   
   // Curation state
   const [selectedFunding, setSelectedFunding] = useState<FundingItem[]>([])
+  const [selectedComplianceFunding, setSelectedComplianceFunding] = useState<ComplianceFundingItem[]>([])
   const [selectedCompliance, setSelectedCompliance] = useState<ComplianceItem[]>([])
   
   // Generated email
@@ -141,6 +143,14 @@ export default function EmailGenerator() {
         type: c.type,
         email_hook: c.email_hook,
       })),
+      selected_compliance_funding: selectedComplianceFunding.map(cf => ({
+        title: cf.title,
+        description: cf.description,
+        amount: cf.amount,
+        compliance_trigger: cf.compliance_trigger,
+        action_required: cf.action_required,
+        email_hook: cf.email_hook,
+      })),
     }),
     onSuccess: (data) => {
       setGeneratedEmail(data)
@@ -149,7 +159,7 @@ export default function EmailGenerator() {
   })
 
   const canResearch = selectedProducts.length > 0 && selectedStates.length > 0 && selectedAudiences.length > 0
-  const canGenerate = selectedFunding.length > 0 || selectedCompliance.length > 0
+  const canGenerate = selectedFunding.length > 0 || selectedComplianceFunding.length > 0 || selectedCompliance.length > 0
 
   const handleStartResearch = () => {
     setCurrentStep('research')
@@ -176,6 +186,7 @@ export default function EmailGenerator() {
     setSelectedAudiences([])
     setResearchResults(null)
     setSelectedFunding([])
+    setSelectedComplianceFunding([])
     setSelectedCompliance([])
     setGeneratedEmail(null)
   }
@@ -454,10 +465,13 @@ export default function EmailGenerator() {
             {/* Curation UI */}
             <CurationStep
               fundingItems={researchResults.funding_items}
+              complianceFundingItems={researchResults.compliance_funding_items || []}
               complianceItems={researchResults.compliance_items}
               selectedFunding={selectedFunding}
+              selectedComplianceFunding={selectedComplianceFunding}
               selectedCompliance={selectedCompliance}
               onSelectFunding={setSelectedFunding}
+              onSelectComplianceFunding={setSelectedComplianceFunding}
               onSelectCompliance={setSelectedCompliance}
             />
 

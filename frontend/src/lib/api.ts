@@ -172,6 +172,34 @@ export interface ComplianceItem {
   }
 }
 
+/**
+ * Compliance-Linked Funding Item
+ * 
+ * These are funding sources that REQUIRE a compliance trigger to access,
+ * like CSI/TSI school improvement grants or consent decree funding.
+ * Different from general "hidden gem" funding - these funds are tied to compliance status.
+ */
+export interface ComplianceFundingItem {
+  title: string
+  description?: string
+  amount?: string
+  compliance_trigger: string  // e.g., "CSI/TSI designation", "DOJ consent decree"
+  deadline?: string
+  action_required?: string    // e.g., "Amend CSG application to include EL PD"
+  districts_affected?: string[]
+  score: number
+  score_reason: string
+  email_hook: string
+  sources?: SourceLink[]
+  score_breakdown?: {
+    product_fit: number
+    audience_match: number
+    recency: number
+    specificity: number
+    actionability: number
+  }
+}
+
 export interface ResearchRequest {
   product: string
   state: string
@@ -192,8 +220,10 @@ export interface ResearchResponse {
   product_context_summary: string
   funding_items: FundingItem[]
   compliance_items: ComplianceItem[]
+  compliance_funding_items: ComplianceFundingItem[]  // Funding tied to compliance status (CSI/TSI grants, etc.)
   raw_funding_content?: string
   raw_compliance_content?: string
+  raw_compliance_funding_content?: string
 }
 
 export interface GenerateEmailRequest {
@@ -211,6 +241,14 @@ export interface GenerateEmailRequest {
     title: string
     description?: string
     type?: string
+    email_hook?: string
+  }>
+  selected_compliance_funding: Array<{
+    title: string
+    description?: string
+    amount?: string
+    compliance_trigger?: string
+    action_required?: string
     email_hook?: string
   }>
   recipient_name?: string

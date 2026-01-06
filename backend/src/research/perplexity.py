@@ -185,6 +185,77 @@ For each requirement:
 Prioritize naming districts under federal oversight or with many underperforming schools.
 """
 
+# Compliance-Linked Funding - funding that requires compliance status to access
+COMPLIANCE_FUNDING_QUERY_TEMPLATE = """
+Search for COMPLIANCE-LINKED FUNDING in {state} for EL programs.
+
+These are funding sources ONLY available to schools/districts with specific compliance designations.
+This is different from general "hidden gem" funding - these funds REQUIRE a compliance trigger.
+
+**1. CSI/TSI/ATSI School Improvement Grants (PRIORITY):**
+- What is {state}'s school improvement grant program called?
+- How much funding per CSI/TSI/ATSI school? (federal requirement: 7% of Title I set aside)
+- Total funding available for school improvement in {state}?
+- Can these funds be used for EL professional development?
+- Application deadline or amendment process?
+- Which specific districts have CSI/TSI schools with EL subgroup issues?
+
+**2. Consent Decree or DOJ Settlement Funding:**
+- Are any {state} districts under consent decrees with dedicated EL funding?
+- DOJ settlement agreements requiring EL spending?
+- OCR resolution agreements with mandated funding?
+- NAME SPECIFIC DISTRICTS under oversight
+
+**3. State Corrective Action Funding:**
+- State intervention funding for underperforming EL programs?
+- State-mandated improvement funds?
+- Low-performing school turnaround grants?
+
+**4. Underperforming Subgroup Funding:**
+- Dedicated funding for schools underperforming with EL subgroup?
+- Subgroup-specific improvement grants?
+
+For each funding source:
+- Name of the grant/program
+- Amount available (total and per-school if applicable)
+- Compliance trigger required (e.g., "CSI designation", "DOJ consent decree")
+- Can funds be used for: {product_type}
+- Application/amendment deadline
+- Action districts should take (e.g., "Amend CSG application to include EL PD")
+- Direct URL to program information
+
+Focus on ACTIONABLE funding - where districts with compliance issues can actually apply or amend applications.
+"""
+
+COMPLIANCE_FUNDING_QUERY_SIMPLE = """
+Search for COMPLIANCE-LINKED FUNDING in {state} for EL programs.
+
+These funds REQUIRE a compliance designation to access:
+
+**CSI/TSI/ATSI School Improvement Grants:**
+- {state}'s school improvement grant program name?
+- Funding per school?
+- Can funds support EL professional development?
+- Application/amendment deadlines?
+
+**Consent Decree/DOJ Funding:**
+- Districts under consent decrees with EL funding?
+- Settlement-mandated spending?
+
+**State Corrective Action Funding:**
+- State intervention funding for EL programs?
+- Low-performing school grants?
+
+For each source:
+- Program name
+- Amount available
+- Compliance trigger required
+- Deadline or amendment process
+- Direct URL
+
+Focus on actionable funding for districts with compliance designations.
+"""
+
 ELL_CONTACT_QUERY_TEMPLATE = """
 Who is the Director of English Learners (or ELL/ESL/ESOL/Multilingual Education Director) at {district_name} in {state}?
 
@@ -400,6 +471,183 @@ async def research_state_compliance(
         await cache_research(cache_key, research_result, db, state)
     
     return research_result
+
+
+async def research_compliance_funding(
+    state: str,
+    state_full: str,
+    db: Optional[AsyncSession] = None,
+    product_context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Research compliance-linked funding opportunities for a state.
+    
+    This searches for funding that REQUIRES a compliance trigger (CSI/TSI designation,
+    consent decree, etc.) to access. Different from general funding "hidden gems".
+    
+    Args:
+        state: Two-letter state code
+        state_full: Full state name
+        db: Optional database session for caching
+        product_context: Optional product context from RAG for targeted research
+    
+    Returns:
+        Dict with compliance-linked funding information and structured items
+    """
+    # Build cache key
+    product_name = product_context.get("product_name") if product_context else None
+    cache_key = f"compliance_funding_{state}_{product_name}" if product_name else f"compliance_funding_{state}"
+    
+    # Check cache if db provided
+    if db:
+        cached = await get_cached_research(cache_key, db)
+        if cached:
+            return cached
+    
+    client = PerplexityClient()
+    
+    # Build query based on context
+    if product_context and product_context.get("summary_for_research"):
+        query = COMPLIANCE_FUNDING_QUERY_TEMPLATE.format(
+            state=state_full,
+            product_type=_get_product_type_description(product_context.get("product_name")),
+        )
+    else:
+        query = COMPLIANCE_FUNDING_QUERY_SIMPLE.format(state=state_full)
+    
+    result = await client.search(query)
+    
+    # Parse structured items from response
+    items = await _parse_compliance_funding_items(
+        result["content"], 
+        state_full, 
+        product_name,
+        citations=result.get("citations", [])
+    )
+    
+    research_result = {
+        "state": state,
+        "state_full": state_full,
+        "type": "compliance_funding",
+        "product": product_name,
+        "content": result["content"],
+        "citations": result["citations"],
+        "items": items,
+        "researched_at": datetime.utcnow().isoformat(),
+    }
+    
+    # Cache result if db provided
+    if db:
+        await cache_research(cache_key, research_result, db, state)
+    
+    return research_result
+
+
+async def _parse_compliance_funding_items(
+    content: str,
+    state: str,
+    product_name: Optional[str],
+    citations: Optional[List[str]] = None
+) -> List[Dict[str, Any]]:
+    """Parse structured compliance-linked funding items from Perplexity response.
+    
+    Args:
+        content: Raw research content from Perplexity
+        state: State name for context
+        product_name: Product name for relevance
+        citations: List of citation URLs from Perplexity response
+    
+    Returns:
+        List of compliance-linked funding items with sources attached
+    """
+    from openai import AsyncOpenAI
+    
+    openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+    
+    # Format citations for the prompt
+    citations_text = ""
+    if citations:
+        citations_text = "\n\nAvailable source citations:\n" + "\n".join(
+            f"[{i+1}] {url}" for i, url in enumerate(citations[:10])
+        )
+    
+    parse_prompt = f"""Extract compliance-linked funding opportunities from this research about {state}.
+
+These are funding sources that REQUIRE a compliance trigger to access.
+
+For each compliance-linked funding opportunity, extract:
+- title: Name of the funding program (e.g., "Comprehensive Support Grant (CSG)")
+- description: Brief description (1-2 sentences)
+- amount: Funding amount (e.g., "$79,000 per school", "$39M total")
+- compliance_trigger: What compliance status is required (e.g., "CSI/TSI school designation", "DOJ consent decree")
+- deadline: Application deadline or amendment window
+- action_required: What districts should do (e.g., "Amend CSG application to include EL PD")
+- districts_affected: List of specific district names that could access this funding
+- relevance_to_product: How this relates to {product_name or 'EL programs'} (1 sentence)
+- sources: Array of source objects with:
+  - "url": The citation URL
+  - "title": Optional title for the source
+  - "highlight_text": A SHORT phrase (3-6 words) from the source page
+
+IMPORTANT: Only include funding that REQUIRES a compliance designation to access.
+{citations_text}
+
+Return a JSON array of compliance-linked funding opportunities. Return empty array [] if none found.
+
+Research content:
+{content[:6000]}
+
+JSON array:"""
+
+    try:
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a data extraction assistant. Return only valid JSON. Focus on funding that requires compliance triggers like CSI/TSI designation, consent decrees, or corrective action status."},
+                {"role": "user", "content": parse_prompt}
+            ],
+            temperature=0,
+            max_tokens=2500,
+        )
+        
+        content_str = response.choices[0].message.content.strip()
+        
+        # Clean JSON
+        if content_str.startswith("```"):
+            import re
+            content_str = re.sub(r"```json?\n?", "", content_str)
+            content_str = content_str.replace("```", "")
+        
+        items = json.loads(content_str)
+        
+        # Ensure each item has required fields and normalize sources
+        if isinstance(items, list):
+            for item in items:
+                if "sources" not in item:
+                    item["sources"] = []
+                if "compliance_trigger" not in item:
+                    item["compliance_trigger"] = "Unknown compliance requirement"
+                # Normalize source format and add text fragments
+                normalized_sources = []
+                for src in item.get("sources", []):
+                    if isinstance(src, str):
+                        normalized_sources.append({"url": src})
+                    elif isinstance(src, dict) and "url" in src:
+                        url = src["url"]
+                        if src.get("highlight_text") and "#" not in url:
+                            from urllib.parse import quote
+                            highlight = quote(src["highlight_text"])
+                            url = f"{url}#:~:text={highlight}"
+                        normalized_sources.append({
+                            "url": url,
+                            "title": src.get("title")
+                        })
+                item["sources"] = normalized_sources
+            return items
+        return []
+        
+    except Exception as e:
+        print(f"Error parsing compliance-linked funding items: {e}")
+        return []
 
 
 def _get_product_type_description(product_name: Optional[str]) -> str:
@@ -872,7 +1120,7 @@ async def full_state_research(
     db: AsyncSession,
     product_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Perform full research for a state (funding + compliance).
+    """Perform full research for a state (funding + compliance + compliance-linked funding).
     
     Args:
         state: Two-letter state code
@@ -881,10 +1129,14 @@ async def full_state_research(
         product_context: Optional product context from RAG
     
     Returns:
-        Combined research results with structured items
+        Combined research results with structured items including:
+        - funding: Hidden gem funding opportunities
+        - compliance: Compliance requirements/mandates  
+        - compliance_funding: Funding tied to compliance status (CSI/TSI grants, etc.)
     """
     funding = await research_state_funding(state, state_full, db, product_context)
     compliance = await research_state_compliance(state, state_full, db, product_context)
+    compliance_funding = await research_compliance_funding(state, state_full, db, product_context)
     
     return {
         "state": state,
@@ -892,5 +1144,6 @@ async def full_state_research(
         "product": product_context.get("product_name") if product_context else None,
         "funding": funding,
         "compliance": compliance,
+        "compliance_funding": compliance_funding,
         "researched_at": datetime.utcnow().isoformat(),
     }

@@ -24,8 +24,8 @@ def get_rag_query():
 
 def get_perplexity_functions():
     """Lazy import for Perplexity functions."""
-    from ...research.perplexity import research_state_funding, research_state_compliance
-    return research_state_funding, research_state_compliance
+    from ...research.perplexity import research_state_funding, research_state_compliance, research_compliance_funding
+    return research_state_funding, research_state_compliance, research_compliance_funding
 
 def get_scoring_function():
     """Lazy import for scoring function."""
@@ -119,6 +119,24 @@ class ComplianceItem(BaseModel):
     email_hook: str
 
 
+class ComplianceFundingItem(BaseModel):
+    """Compliance-linked funding item.
+    
+    These are funding sources that REQUIRE a compliance trigger to access,
+    like CSI/TSI school improvement grants or consent decree funding.
+    """
+    title: str
+    description: Optional[str]
+    amount: Optional[str]
+    compliance_trigger: str  # e.g., "CSI/TSI designation", "DOJ consent decree"
+    deadline: Optional[str]
+    action_required: Optional[str]  # e.g., "Amend CSG application to include EL PD"
+    districts_affected: Optional[List[str]]
+    score: int
+    score_reason: str
+    email_hook: str
+
+
 class ResearchResponse(BaseModel):
     """Response model for research endpoint."""
     product: str
@@ -128,8 +146,10 @@ class ResearchResponse(BaseModel):
     product_context_summary: str
     funding_items: List[dict]
     compliance_items: List[dict]
+    compliance_funding_items: List[dict]  # NEW: Funding tied to compliance status
     raw_funding_content: Optional[str]
     raw_compliance_content: Optional[str]
+    raw_compliance_funding_content: Optional[str]
 
 
 @router.get("/products")
@@ -227,8 +247,8 @@ async def research(
         context_summary = f"Product: {request.product}"
     
     try:
-        # Step 2: Research funding and compliance with product context
-        research_state_funding, research_state_compliance = get_perplexity_functions()
+        # Step 2: Research funding, compliance, and compliance-linked funding with product context
+        research_state_funding, research_state_compliance, research_compliance_funding = get_perplexity_functions()
         
         funding_result = await research_state_funding(
             state=request.state,
@@ -243,19 +263,29 @@ async def research(
             db=db,
             product_context=product_context,
         )
+        
+        # NEW: Research compliance-linked funding (CSI/TSI grants, consent decree funding, etc.)
+        compliance_funding_result = await research_compliance_funding(
+            state=request.state,
+            state_full=state_full,
+            db=db,
+            product_context=product_context,
+        )
     except Exception as e:
         logger.error(f"Perplexity research failed: {e}")
         funding_result = {"items": []}
         compliance_result = {"items": []}
+        compliance_funding_result = {"items": []}
     
     # Step 3: Score and get top items
     funding_items = funding_result.get("items", [])
     compliance_items = compliance_result.get("items", [])
+    compliance_funding_items = compliance_funding_result.get("items", [])
     
     try:
         get_top_items = get_scoring_function()
         
-        # Score funding items
+        # Score funding items (hidden gems)
         if funding_items:
             top_funding = await get_top_items(
                 items=funding_items,
@@ -284,10 +314,26 @@ async def research(
             )
         else:
             top_compliance = []
+        
+        # Score compliance-linked funding items (CSI/TSI grants, etc.)
+        if compliance_funding_items:
+            top_compliance_funding = await get_top_items(
+                items=compliance_funding_items,
+                item_type="compliance_funding",
+                product=request.product,
+                audience=request.audience,
+                state=state_full,
+                product_context=context_summary,
+                top_n=request.top_n,
+                min_score=request.min_score,
+            )
+        else:
+            top_compliance_funding = []
     except Exception as e:
         logger.error(f"Scoring failed: {e}")
         top_funding = funding_items[:request.top_n]
         top_compliance = compliance_items[:request.top_n]
+        top_compliance_funding = compliance_funding_items[:request.top_n]
     
     return ResearchResponse(
         product=request.product,
@@ -297,8 +343,10 @@ async def research(
         product_context_summary=context_summary,
         funding_items=top_funding,
         compliance_items=top_compliance,
+        compliance_funding_items=top_compliance_funding,
         raw_funding_content=funding_result.get("content"),
         raw_compliance_content=compliance_result.get("content"),
+        raw_compliance_funding_content=compliance_funding_result.get("content"),
     )
 
 

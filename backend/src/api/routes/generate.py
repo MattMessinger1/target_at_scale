@@ -97,6 +97,19 @@ class ComplianceItemInput(BaseModel):
     email_hook: Optional[str]
 
 
+class ComplianceFundingItemInput(BaseModel):
+    """Selected compliance-linked funding item for email.
+    
+    These are funding sources tied to compliance status (CSI/TSI grants, etc.)
+    """
+    title: str
+    description: Optional[str]
+    amount: Optional[str]
+    compliance_trigger: Optional[str]  # e.g., "CSI/TSI designation"
+    action_required: Optional[str]  # e.g., "Amend CSG application"
+    email_hook: Optional[str]
+
+
 class GenerateEmailRequest(BaseModel):
     """Request to generate an email."""
     product: str
@@ -105,6 +118,7 @@ class GenerateEmailRequest(BaseModel):
     audience: str
     selected_funding: List[FundingItemInput] = []
     selected_compliance: List[ComplianceItemInput] = []
+    selected_compliance_funding: List[ComplianceFundingItemInput] = []
     recipient_name: Optional[str] = None
     recipient_title: Optional[str] = None
     custom_instructions: Optional[str] = None
@@ -146,6 +160,7 @@ async def generate_email(
         state=request.state_full,
         product_context=product_context,
         funding_items=request.selected_funding,
+        compliance_funding_items=request.selected_compliance_funding,
         compliance_items=request.selected_compliance,
         recipient_name=request.recipient_name,
         recipient_title=request.recipient_title,
@@ -200,6 +215,7 @@ def build_email_prompt(
     state: str,
     product_context: dict,
     funding_items: List[FundingItemInput],
+    compliance_funding_items: List[ComplianceFundingItemInput],
     compliance_items: List[ComplianceItemInput],
     recipient_name: Optional[str],
     recipient_title: Optional[str],
@@ -231,7 +247,7 @@ PRODUCT CONTEXT (from Knowledge Base):
         for tp in product_context["talking_points"][:2]:
             product_section += f"- {tp[:200]}...\n"
     
-    # Build funding section
+    # Build funding section (hidden gems)
     funding_section = ""
     if funding_items:
         funding_section = "\nFUNDING OPPORTUNITIES TO REFERENCE:\n"
@@ -242,6 +258,22 @@ PRODUCT CONTEXT (from Knowledge Base):
             funding_section += "\n"
             if item.email_hook:
                 funding_section += f"  Hook: {item.email_hook}\n"
+    
+    # Build compliance-linked funding section (CSI/TSI grants, etc.)
+    compliance_funding_section = ""
+    if compliance_funding_items:
+        compliance_funding_section = "\nCOMPLIANCE-LINKED FUNDING TO REFERENCE (funding tied to compliance status):\n"
+        for item in compliance_funding_items:
+            compliance_funding_section += f"- {item.title}"
+            if item.amount:
+                compliance_funding_section += f" ({item.amount})"
+            compliance_funding_section += "\n"
+            if item.compliance_trigger:
+                compliance_funding_section += f"  Requires: {item.compliance_trigger}\n"
+            if item.action_required:
+                compliance_funding_section += f"  Action: {item.action_required}\n"
+            if item.email_hook:
+                compliance_funding_section += f"  Hook: {item.email_hook}\n"
     
     # Build compliance section
     compliance_section = ""
@@ -269,6 +301,7 @@ PRODUCT CONTEXT (from Knowledge Base):
 
 {product_section}
 {funding_section}
+{compliance_funding_section}
 {compliance_section}
 {recipient_section}
 

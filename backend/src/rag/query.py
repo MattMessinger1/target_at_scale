@@ -182,7 +182,7 @@ class RAGService:
             if r["content"] not in context["raw_content"]:
                 context["use_cases"].append(r["content"])
         
-        # Query 4: State-specific content
+        # Query 4: State-specific content (filter by state)
         if state:
             state_query = f"{product_name} {state} English Learner programs requirements"
             state_results = self.query(
@@ -193,13 +193,54 @@ class RAGService:
             for r in state_results:
                 context["state_specific"].append(r["content"])
         
+        # Query 5: State funding and compliance info (broader search for state documents)
+        if state:
+            # Search for any KB content about state funding, grants, CSI/TSI, compliance
+            funding_query = f"{state} funding grants CSI TSI school improvement Title I Title III EL programs"
+            funding_results = self.query(
+                funding_query,
+                n_results=5,
+                filter_state=state,
+            )
+            for r in funding_results:
+                if r["content"] not in context["state_specific"]:
+                    context["state_specific"].append(r["content"])
+            
+            # Search for compliance/requirements
+            compliance_query = f"{state} compliance requirements certification ESOL endorsement professional development EL"
+            compliance_results = self.query(
+                compliance_query,
+                n_results=5,
+                filter_state=state,
+            )
+            for r in compliance_results:
+                if r["content"] not in context["state_specific"]:
+                    context["state_specific"].append(r["content"])
+            
+            # Also search without state filter but with state name in query
+            # This catches documents that mention the state but aren't tagged with it
+            broader_query = f"{state} state funding grants school improvement CSI TSI"
+            broader_results = self.query(
+                broader_query,
+                n_results=5,
+            )
+            for r in broader_results:
+                content = r["content"]
+                # Only include if it actually mentions the state
+                if state.lower() in content.lower() and content not in context["state_specific"]:
+                    context["state_specific"].append(content)
+        
         # Build summary for Perplexity
         context["summary_for_research"] = self._build_research_summary(context)
         
         return context
     
     def _build_research_summary(self, context: Dict[str, Any]) -> str:
-        """Build a concise summary for Perplexity research queries."""
+        """Build a concise summary for Perplexity research queries.
+        
+        This summary includes product info AND state-specific context from KB
+        to inform Perplexity's research with our internal knowledge.
+        """
         parts = [f"Product: {context['product_name']}"]
         
         if context["value_propositions"]:
@@ -210,6 +251,15 @@ class RAGService:
         
         if context["audience"]:
             parts.append(f"Target audience: {context['audience']}")
+        
+        # Include state-specific KB content to inform research
+        if context["state_specific"]:
+            state_info = "\n\nKnown state information from our knowledge base:"
+            for i, content in enumerate(context["state_specific"][:3]):
+                # Truncate each piece but include key info
+                truncated = content[:400] if len(content) > 400 else content
+                state_info += f"\n- {truncated}"
+            parts.append(state_info)
         
         return "\n".join(parts)
 
