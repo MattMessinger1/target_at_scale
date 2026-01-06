@@ -211,18 +211,31 @@ def process_kb_item(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 async def load_and_index_kb(db: AsyncSession) -> int:
     """Load knowledge base from JSON and index into database."""
-    kb_path = Path(settings.knowledge_base_path)
+    kb_filename = "knowledge-base-export-2026-01-05.json"
     
-    # Handle relative path
-    if not kb_path.is_absolute():
-        kb_path = Path(__file__).parent.parent.parent.parent / settings.knowledge_base_path.lstrip("../")
+    # Try multiple possible locations for the KB file
+    possible_paths = [
+        # Explicit settings path
+        Path(settings.knowledge_base_path) if settings.knowledge_base_path else None,
+        # Railway deployment: backend/data/ becomes /app/data/
+        Path(__file__).parent.parent.parent / "data" / kb_filename,
+        # Local development: repo_root/data/
+        Path(__file__).parent.parent.parent.parent / "data" / kb_filename,
+        # Direct in backend directory
+        Path(__file__).parent.parent.parent / kb_filename,
+        # Repo root
+        Path(__file__).parent.parent.parent.parent / kb_filename,
+    ]
     
-    if not kb_path.exists():
-        # Try finding it in the data directory
-        kb_path = Path(__file__).parent.parent.parent.parent / "data" / "knowledge-base-export-2026-01-05.json"
+    kb_path = None
+    for path in possible_paths:
+        if path and path.exists():
+            kb_path = path
+            break
     
-    if not kb_path.exists():
-        raise FileNotFoundError(f"Knowledge base not found at {kb_path}")
+    if not kb_path:
+        tried_paths = [str(p) for p in possible_paths if p]
+        raise FileNotFoundError(f"Knowledge base not found. Tried: {tried_paths}")
     
     # Load JSON
     with open(kb_path, "r", encoding="utf-8") as f:
