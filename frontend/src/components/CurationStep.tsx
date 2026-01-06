@@ -334,10 +334,16 @@ function ComplianceFundingCard({
           </div>
           
           {/* Districts affected */}
-          {item.districts_affected && item.districts_affected.length > 0 && (
+          {item.districts_affected && Array.isArray(item.districts_affected) && item.districts_affected.length > 0 && (
             <div className="mt-2 text-xs text-slate-500">
               🏫 Affects: {item.districts_affected.slice(0, 3).join(', ')}
               {item.districts_affected.length > 3 && ` +${item.districts_affected.length - 3} more`}
+            </div>
+          )}
+          {/* Handle string format */}
+          {item.districts_affected && typeof item.districts_affected === 'string' && (
+            <div className="mt-2 text-xs text-slate-500">
+              🏫 Affects: {item.districts_affected}
             </div>
           )}
           
