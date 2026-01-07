@@ -1,6 +1,11 @@
 """Knowledge Base API routes."""
+import io
+import json
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Header
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, UploadFile, File, Form
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from pydantic import BaseModel
@@ -160,6 +165,291 @@ async def index_knowledge_base(db: AsyncSession = Depends(get_db)):
     count = await load_and_index_kb(db)
     
     return {"message": f"Indexed {count} knowledge base items"}
+
+
+@router.get("/email-examples/export")
+async def export_email_examples(
+    product: Optional[str] = Query(default=None, description="Optional product display name or key"),
+    audience: Optional[str] = Query(default=None, description="Optional audience display name"),
+    state: Optional[str] = Query(default=None, description="Optional two-letter state code"),
+    limit: int = Query(default=500, le=5000),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export uploaded good-email exemplars as JSONL for future fine-tuning."""
+    # Build base query
+    query = select(KnowledgeBaseItem).where(KnowledgeBaseItem.category == "email_example")
+
+    product_key: Optional[str] = None
+    if product and product.strip():
+        from ...research.product_briefs import normalize_product_key
+        product_key = normalize_product_key(product.strip())
+        query = query.where(
+            or_(
+                KnowledgeBaseItem.product_name == product_key,
+                KnowledgeBaseItem.product_name.is_(None),
+            )
+        )
+
+    result = await db.execute(query.limit(limit))
+    items = result.scalars().all()
+
+    state_norm = state.strip().upper() if state and state.strip() else None
+    audience_norm = audience.strip() if audience and audience.strip() else None
+
+    def _extract_tag(tags_list: Optional[list], prefix: str) -> Optional[str]:
+        if not tags_list:
+            return None
+        pfx = prefix.lower() + ":"
+        for t in tags_list:
+            if not t:
+                continue
+            s = str(t).strip()
+            if s.lower().startswith(pfx):
+                return s.split(":", 1)[1].strip() or None
+        return None
+
+    # Reverse mapping for nicer prompts (best-effort)
+    key_to_display = {
+        "care_coaching": "CARE Coaching",
+        "webbalign": "WebbAlign",
+        "wida_model": "WIDA MODEL Online",
+        "call": "CALL",
+        "discussion_project": "The Discussion Project",
+        "wida_sis": "WIDA SIS",
+    }
+
+    lines: List[str] = []
+    for it in items:
+        if not it.title or not it.content:
+            continue
+
+        # Filter by state if requested (post-query due to SQLite JSON quirks)
+        if state_norm:
+            if it.applicable_states and state_norm not in it.applicable_states:
+                continue
+
+        # Filter by audience if requested (stored as tags)
+        it_audience = _extract_tag(it.tags, "audience")
+        if audience_norm and it_audience and it_audience != audience_norm:
+            continue
+        if audience_norm and not it_audience:
+            # If caller asked for an audience, skip exemplars that don't declare one
+            continue
+
+        it_message = _extract_tag(it.tags, "message")
+        it_timing = _extract_tag(it.tags, "timing")
+        it_notes = _extract_tag(it.tags, "notes")
+
+        # Best-effort product display name for prompt
+        it_product_key = it.product_name or product_key
+        it_product_display = key_to_display.get(it_product_key or "", None)
+        if not it_product_display and it_product_key:
+            it_product_display = it_product_key.replace("_", " ").title()
+
+        # Best-effort state for prompt
+        prompt_state = state_norm or (it.applicable_states[0] if it.applicable_states else "")
+
+        assistant_text = f"SUBJECT: {it.title.strip()}\n\n{it.content.strip()}"
+
+        metadata = {
+            "kb_id": it.id,
+            "product_key": it.product_name,
+            "states": it.applicable_states,
+            "audience": it_audience,
+            "message": it_message,
+            "timing": it_timing,
+            "notes": it_notes,
+            "tags": it.tags,
+            "document_type": it.document_type,
+            "file_name": it.file_name,
+        }
+
+        user_prompt = "Generate a high-performing WCEPS sales email."
+        if it_product_display:
+            user_prompt += f"\nProduct: {it_product_display}"
+        if it_audience:
+            user_prompt += f"\nAudience: {it_audience}"
+        if prompt_state:
+            user_prompt += f"\nState: {prompt_state}"
+        if it_message:
+            user_prompt += f"\nMessage focus: {it_message}"
+        if it_timing:
+            user_prompt += f"\nTiming: {it_timing}"
+
+        record = {
+            "kb_id": it.id,
+            "subject_line": it.title.strip(),
+            "email_body": it.content.strip(),
+            "metadata": metadata,
+            # Optional: chat-style format for fine-tuning
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are WCEPS. Write plain-text, empathetic, credible, action-oriented outreach emails.",
+                },
+                {"role": "user", "content": user_prompt},
+                {"role": "assistant", "content": assistant_text},
+            ],
+        }
+        lines.append(json.dumps(record, ensure_ascii=False))
+
+    payload = "\n".join(lines) + ("\n" if lines else "")
+    fname = "wceps_email_examples.jsonl"
+    return StreamingResponse(
+        io.StringIO(payload),
+        media_type="application/jsonl",
+        headers={"Content-Disposition": f"attachment; filename={fname}"},
+    )
+
+
+@router.post("/upload")
+async def upload_kb_item(
+    file: UploadFile = File(..., description="A .docx or .pdf file"),
+    category: str = Form(..., description="KB category (e.g., email_example, state_content, product, general)"),
+    title: Optional[str] = Form(default=None),
+    subcategory: Optional[str] = Form(default=None),
+    product: Optional[str] = Form(default=None, description="Optional product display name"),
+    states: List[str] = Form(default=[]),
+    audience: Optional[str] = Form(default=None),
+    message: Optional[str] = Form(default=None, description="Message type, e.g. funding/compliance/product"),
+    timing: Optional[str] = Form(default=None, description="Timing, e.g. back_to_school/end_of_year"),
+    tags: List[str] = Form(default=[]),
+    notes: Optional[str] = Form(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload a docx/pdf into the knowledge base with structured metadata.
+
+    Uploaded items are stored with ids prefixed by `kb-upl-` so that core KB re-indexing
+    can safely replace export-backed items without deleting uploads.
+    """
+    if not category or not category.strip():
+        raise HTTPException(status_code=400, detail="category is required")
+
+    filename = file.filename or "upload"
+    try:
+        data = await file.read()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to read upload: {e}")
+
+    if not data:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    # Parse content from bytes
+    try:
+        from ...kb.document_parser import parse_document_bytes
+        document_type, content_text = parse_document_bytes(filename, data)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse document: {e}")
+
+    content_text = (content_text or "").strip()
+    if len(content_text) < 20:
+        raise HTTPException(status_code=400, detail="Parsed content is too short")
+
+    # Title fallback: use provided title or derive from filename stem.
+    if title and title.strip():
+        final_title = title.strip()
+    else:
+        import os
+        stem = os.path.splitext(filename)[0]
+        final_title = stem.replace("_", " ").replace("-", " ").strip() or "Untitled"
+
+    # Normalize product (display name -> canonical key)
+    product_key: Optional[str] = None
+    if product and product.strip():
+        try:
+            from ...research.product_briefs import normalize_product_key
+            product_key = normalize_product_key(product.strip())
+        except Exception:
+            # Fall back to simple normalization if mapping fails
+            product_key = product.strip().lower().replace(" ", "_")
+
+    # Normalize states
+    norm_states = []
+    for s in states or []:
+        if not s:
+            continue
+        code = str(s).strip().upper()
+        if not code:
+            continue
+        norm_states.append(code)
+    norm_states = sorted(list(dict.fromkeys(norm_states)))  # stable dedupe
+    if not norm_states:
+        norm_states = None
+
+    # Build tags: user-provided + structured prefixed tags
+    all_tags: List[str] = []
+
+    def _add_tag(v: Optional[str]) -> None:
+        if v is None:
+            return
+        t = str(v).strip()
+        if not t:
+            return
+        if t not in all_tags:
+            all_tags.append(t)
+
+    for t in tags or []:
+        _add_tag(t)
+
+    if audience and audience.strip():
+        _add_tag(f"audience:{audience.strip()}")
+    if message and message.strip():
+        _add_tag(f"message:{message.strip()}")
+    if timing and timing.strip():
+        _add_tag(f"timing:{timing.strip()}")
+
+    # Light convention: mark which tool uses these exemplars.
+    if category.strip().lower() == "email_example":
+        _add_tag("tool:email_generator")
+
+    if notes and notes.strip():
+        # Keep notes short so they don't bloat retrieval context
+        _add_tag(f"notes:{notes.strip()[:220]}")
+
+    item_id = f"kb-upl-{uuid4().hex}"
+
+    # Generate a short summary (same style as core KB)
+    from ...kb.loader import generate_summary
+    summary = generate_summary(content_text, max_length=500)
+
+    kb_item = KnowledgeBaseItem(
+        id=item_id,
+        category=category.strip(),
+        subcategory=subcategory.strip() if subcategory and subcategory.strip() else None,
+        title=final_title,
+        content=content_text,
+        summary=summary,
+        document_type=document_type,
+        file_name=filename,
+        tags=all_tags or None,
+        applicable_states=norm_states,
+        product_name=product_key,
+    )
+
+    db.add(kb_item)
+    await db.commit()
+
+    embedding_result = None
+    try:
+        # Incremental embedding so uploads are immediately retrievable via RAG.
+        from ...rag.embeddings import embed_kb_item_by_id
+        embedding_result = await embed_kb_item_by_id(db, item_id)
+    except Exception as e:
+        # Never fail the upload if embeddings fail (missing key, transient errors, etc.)
+        embedding_result = {"error": str(e), "embedded": 0}
+
+    return {
+        "message": "Uploaded KB item",
+        "id": item_id,
+        "title": final_title,
+        "category": kb_item.category,
+        "product_name": kb_item.product_name,
+        "applicable_states": kb_item.applicable_states,
+        "document_type": kb_item.document_type,
+        "embedding": embedding_result,
+    }
 
 
 def _require_admin_token(x_admin_token: Optional[str]) -> None:

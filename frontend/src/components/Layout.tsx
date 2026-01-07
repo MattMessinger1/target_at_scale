@@ -9,10 +9,10 @@ import {
 import { cn } from '@/lib/utils'
 
 const navigation = [
-  { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { name: 'Districts', href: '/districts', icon: Building2 },
-  { name: 'Knowledge Base', href: '/knowledge-base', icon: BookOpen },
-  { name: 'Export', href: '/export', icon: Download },
+  { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+  { name: 'Districts', href: '/admin/districts', icon: Building2 },
+  { name: 'Knowledge Base', href: '/admin/knowledge-base', icon: BookOpen },
+  { name: 'Export', href: '/admin/export', icon: Download },
 ]
 
 export default function Layout() {

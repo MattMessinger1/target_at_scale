@@ -241,8 +241,9 @@ async def load_and_index_kb(db: AsyncSession) -> int:
     with open(kb_path, "r", encoding="utf-8") as f:
         raw_items = json.load(f)
     
-    # Clear existing KB items
-    await db.execute(delete(KnowledgeBaseItem))
+    # Clear existing KB items loaded from the core export, but preserve any user uploads.
+    # Uploaded items are stored with ids prefixed by `kb-upl-`.
+    await db.execute(delete(KnowledgeBaseItem).where(~KnowledgeBaseItem.id.like("kb-upl-%")))
     
     # Process and insert items
     indexed_count = 0

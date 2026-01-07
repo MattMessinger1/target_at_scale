@@ -3,6 +3,7 @@
 This module handles parsing various document formats and extracting
 structured content for the KB.
 """
+import io
 import os
 import re
 from pathlib import Path
@@ -122,6 +123,55 @@ def parse_pdf(file_path: str) -> str:
             pages.append(text.strip())
     
     return "\n\n".join(pages)
+
+
+def parse_docx_bytes(data: bytes) -> str:
+    """Parse a .docx file from bytes and extract text content."""
+    doc = DocxDocument(io.BytesIO(data))
+    paragraphs = []
+
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if text:
+            paragraphs.append(text)
+
+    # Also extract text from tables
+    for table in doc.tables:
+        for row in table.rows:
+            row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
+            if row_text:
+                paragraphs.append(row_text)
+
+    return "\n\n".join(paragraphs)
+
+
+def parse_pdf_bytes(data: bytes) -> str:
+    """Parse a .pdf file from bytes and extract text content."""
+    reader = PdfReader(io.BytesIO(data))
+    pages = []
+
+    for page in reader.pages:
+        text = page.extract_text()
+        if text:
+            pages.append(text.strip())
+
+    return "\n\n".join(pages)
+
+
+def parse_document_bytes(filename: str, data: bytes) -> tuple[str, str]:
+    """Parse an uploaded document from bytes.
+
+    Returns:
+        (document_type, content_text)
+    """
+    extension = Path(filename).suffix.lower()
+
+    if extension == ".docx":
+        return "docx", parse_docx_bytes(data)
+    if extension == ".pdf":
+        return "pdf", parse_pdf_bytes(data)
+
+    raise ValueError(f"Unsupported file type: {extension}")
 
 
 def detect_state(file_path: str, content: str) -> Optional[str]:

@@ -286,6 +286,17 @@ export interface GenerateEmailResponse {
   word_count: number
 }
 
+export interface KbUploadResponse {
+  message: string
+  id: string
+  title: string
+  category: string
+  product_name?: string | null
+  applicable_states?: string[] | null
+  document_type?: string | null
+  embedding?: unknown
+}
+
 // API functions
 async function fetchApi<T>(
   endpoint: string,
@@ -400,6 +411,54 @@ export const api = {
     },
     index: () => fetchApi<{ message: string }>('/kb/index', { method: 'POST' }),
     stats: () => fetchApi<{ total_items: number; by_category: Record<string, number> }>('/kb/stats'),
+
+    upload: async (formData: FormData) => {
+      const response = await fetch(`${API_BASE}/kb/upload`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        let message = `HTTP ${response.status}`
+        try {
+          const errorData = (await response.json()) as { detail?: unknown; message?: unknown }
+          const detail = errorData?.detail
+          if (typeof detail === 'string') message = detail
+          else if (detail != null) message = JSON.stringify(detail)
+          else if (typeof errorData?.message === 'string') message = errorData.message
+        } catch {
+          // ignore
+        }
+        throw new Error(message)
+      }
+
+      return (await response.json()) as KbUploadResponse
+    },
+
+    exportEmailExamples: async (params?: { product?: string; audience?: string; state?: string }) => {
+      const sp = new URLSearchParams()
+      if (params?.product) sp.set('product', params.product)
+      if (params?.audience) sp.set('audience', params.audience)
+      if (params?.state) sp.set('state', params.state)
+      const query = sp.toString()
+
+      const response = await fetch(`${API_BASE}/kb/email-examples/export${query ? `?${query}` : ''}`)
+      if (!response.ok) {
+        let message = `HTTP ${response.status}`
+        try {
+          const errorData = (await response.json()) as { detail?: unknown; message?: unknown }
+          const detail = errorData?.detail
+          if (typeof detail === 'string') message = detail
+          else if (detail != null) message = JSON.stringify(detail)
+          else if (typeof errorData?.message === 'string') message = errorData.message
+        } catch {
+          // ignore
+        }
+        throw new Error(message)
+      }
+
+      return response.blob()
+    },
   },
 
   snippets: {

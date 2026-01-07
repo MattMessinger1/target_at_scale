@@ -299,3 +299,69 @@ async def embed_kb_items(db: AsyncSession, batch_size: int = 50) -> Dict[str, An
         "avg_chunks_per_item": len(all_chunks) / len(items) if items else 0,
         "errors": errors if errors else None,
     }
+
+
+async def embed_kb_item_by_id(db: AsyncSession, item_id: str) -> Dict[str, Any]:
+    """Embed a single KB item and add it to ChromaDB without clearing the collection.
+
+    Useful for incremental updates (e.g., newly uploaded KB items).
+    """
+    if not item_id:
+        return {"error": "item_id is required", "embedded": 0}
+
+    # Fetch the KB item
+    result = await db.execute(select(KnowledgeBaseItem).where(KnowledgeBaseItem.id == item_id))
+    item = result.scalar_one_or_none()
+    if not item:
+        return {"error": f"KB item not found: {item_id}", "embedded": 0}
+
+    service = EmbeddingService()
+
+    # Base metadata mirrors embed_kb_items()
+    base_metadata = {
+        "category": item.category or "",
+        "subcategory": item.subcategory or "",
+        "product_name": item.product_name or "",
+        "document_type": item.document_type or "",
+        "applicable_states": ",".join(item.applicable_states) if item.applicable_states else "",
+        "title": item.title or "",
+        "source_id": item.id,
+    }
+
+    # Build text for chunking
+    text_parts = [item.title or ""]
+    if item.summary:
+        text_parts.append(item.summary)
+    if item.content:
+        text_parts.append(item.content)
+    full_text = "\n\n".join(filter(None, text_parts))
+
+    chunks = chunk_text(full_text, chunk_size=1500, overlap=200)
+    if not chunks:
+        return {"error": "No content to embed", "embedded": 0}
+
+    ids: List[str] = []
+    texts: List[str] = []
+    metadatas: List[Dict[str, Any]] = []
+
+    for chunk_idx, chunk in enumerate(chunks):
+        chunk_id = f"{item.id}_chunk_{chunk_idx}" if len(chunks) > 1 else item.id
+        ids.append(chunk_id)
+        texts.append(chunk)
+        metadatas.append(
+            {
+                **base_metadata,
+                "chunk_index": chunk_idx,
+                "total_chunks": len(chunks),
+            }
+        )
+
+    embeddings = service.embed_batch(texts)
+    service.add_to_collection(ids, embeddings, texts, metadatas)
+
+    return {
+        "item_id": item.id,
+        "embedded": len(ids),
+        "total_chunks": len(chunks),
+        "collection_count": service.get_collection_count(),
+    }

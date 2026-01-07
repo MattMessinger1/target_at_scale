@@ -8,6 +8,7 @@ This endpoint generates personalized sales emails using:
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from pydantic import BaseModel
 
 from ...db import get_db
@@ -136,6 +137,101 @@ class GenerateEmailResponse(BaseModel):
     word_count: int
 
 
+async def get_email_exemplars(
+    *,
+    db: AsyncSession,
+    product_display_name: str,
+    state_code: Optional[str],
+    audience: Optional[str],
+    limit: int = 3,
+) -> List[dict]:
+    """Retrieve up to N 'good email' exemplars from the KB.
+
+    We store uploaded, high-performing emails as KnowledgeBaseItem rows with:
+    - category = 'email_example'
+    - title = subject line
+    - content = email body
+    - tags include e.g. 'audience:District Leadership', 'message:funding', 'timing:back_to_school'
+    """
+    from ...db.models import KnowledgeBaseItem
+    from ...research.product_briefs import normalize_product_key
+
+    product_key = normalize_product_key(product_display_name) if product_display_name else None
+    state_code_norm = state_code.strip().upper() if state_code and state_code.strip() else None
+    audience_norm = audience.strip() if audience and audience.strip() else None
+
+    result = await db.execute(select(KnowledgeBaseItem).where(KnowledgeBaseItem.category == "email_example"))
+    items = result.scalars().all()
+    if not items:
+        return []
+
+    desired_aud_tag = f"audience:{audience_norm}".lower() if audience_norm else None
+
+    candidates: List[tuple[int, KnowledgeBaseItem]] = []
+    for it in items:
+        # Basic sanity
+        if not it.title or not it.content:
+            continue
+
+        # Hard filter: if an exemplar is explicitly tied to a different product, skip it.
+        if product_key and it.product_name and it.product_name != product_key:
+            continue
+
+        score = 0
+
+        # Prefer exact product match, then generic exemplars.
+        if product_key:
+            if it.product_name == product_key:
+                score += 3
+            elif not it.product_name:
+                score += 1
+
+        # Prefer matching state, then generic exemplars (no state).
+        if state_code_norm:
+            if it.applicable_states and state_code_norm in it.applicable_states:
+                score += 2
+            elif not it.applicable_states:
+                score += 0
+            else:
+                score -= 1
+
+        # Prefer matching audience tag, then generic exemplars (no audience tag).
+        tags = it.tags or []
+        tags_l = {str(t).strip().lower() for t in tags if t}
+        has_any_audience_tag = any(t.startswith("audience:") for t in tags_l)
+        if desired_aud_tag:
+            if desired_aud_tag in tags_l:
+                score += 2
+            elif not has_any_audience_tag:
+                score += 0
+            else:
+                score -= 1
+
+        candidates.append((score, it))
+
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    top = [it for score, it in candidates if it is not None][: max(1, limit)]
+
+    exemplars: List[dict] = []
+    for it in top[:limit]:
+        body = (it.content or "").strip()
+        # Keep exemplars short to protect prompt budget.
+        if len(body) > 1800:
+            body = body[:1800] + "…"
+        exemplars.append(
+            {
+                "subject_line": it.title.strip(),
+                "email_body": body,
+                "product_name": it.product_name,
+                "applicable_states": it.applicable_states,
+                "tags": it.tags,
+                "kb_id": it.id,
+            }
+        )
+
+    return exemplars
+
+
 @router.post("/", response_model=GenerateEmailResponse)
 async def generate_email(
     request: GenerateEmailRequest,
@@ -157,6 +253,15 @@ async def generate_email(
     # Get merged ProductBrief (stored + overrides) for product-expert generation
     from ...research.product_briefs import get_product_brief
     product_context = await get_product_brief(db, primary_product, state_code=primary_state_code or None)
+
+    # Retrieve up to 3 exemplars of previously successful emails (uploaded into KB).
+    email_exemplars = await get_email_exemplars(
+        db=db,
+        product_display_name=primary_product,
+        state_code=primary_state_code or None,
+        audience=primary_audience,
+        limit=3,
+    )
     
     # Build the generation prompt
     prompt = build_email_prompt(
@@ -164,6 +269,7 @@ async def generate_email(
         audience=primary_audience,
         state=primary_state_full,
         product_context=product_context,
+        email_exemplars=email_exemplars,
         funding_items=request.selected_funding,
         compliance_funding_items=request.selected_compliance_funding,
         compliance_items=request.selected_compliance,
@@ -239,6 +345,7 @@ def build_email_prompt(
     audience: str,
     state: str,
     product_context: dict,
+    email_exemplars: List[dict],
     funding_items: List[FundingItemInput],
     compliance_funding_items: List[ComplianceFundingItemInput],
     compliance_items: List[ComplianceItemInput],
@@ -318,6 +425,20 @@ PRODUCT BRIEF (WCEPS internal):
         product_section += "\nAvoid these phrases (tone):\n"
         for a in product_context["avoid_phrases"][:6]:
             product_section += f"- {str(a)[:80]}\n"
+
+    exemplar_section = ""
+    if email_exemplars:
+        exemplar_section = "\nEXEMPLAR EMAILS (previously successful; use as style references):\n"
+        exemplar_section += (
+            "- Imitate their structure, pacing, and voice.\n"
+            "- Do NOT copy district names, outcomes, or specific claims verbatim.\n"
+            "- Write a NEW email tailored to the provided product + state + audience.\n"
+        )
+        for i, ex in enumerate(email_exemplars[:3], start=1):
+            subj = (ex.get("subject_line") or "").strip()
+            body = (ex.get("email_body") or "").strip()
+            if subj and body:
+                exemplar_section += f"\nEXAMPLE {i}\nSUBJECT: {subj}\n\n{body}\n"
     
     # Build funding section (hidden gems)
     funding_section = ""
@@ -375,6 +496,7 @@ PRODUCT BRIEF (WCEPS internal):
     prompt = f"""Generate a personalized sales email for {product} targeting {audience} in {state}.
 
 {product_section}
+{exemplar_section}
 {funding_section}
 {compliance_funding_section}
 {compliance_section}
@@ -384,6 +506,7 @@ TARGET AUDIENCE: {audience}
 STATE: {state}
 
 CONTENT REQUIREMENTS (CRITICAL):
+- If exemplar emails are provided above, follow their structure and voice (without copying specifics).
 - Use at least ONE exact phrase copied verbatim from the "Specific offerings/modules to reference" list.
 - If "Case study evidence" is provided above, include ONE short proof sentence. Do not invent outcomes or district names.
 - Bullet points must be concrete (no vague bullets like "maximize opportunities").

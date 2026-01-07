@@ -17,9 +17,37 @@ export default function KnowledgeBase() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
 
+  // Upload form state
+  const [uploadFile, setUploadFile] = useState<File | null>(null)
+  const [uploadCategory, setUploadCategory] = useState('email_example')
+  const [uploadTitle, setUploadTitle] = useState('')
+  const [uploadSubcategory, setUploadSubcategory] = useState('')
+  const [uploadProduct, setUploadProduct] = useState('')
+  const [uploadStatesInput, setUploadStatesInput] = useState('')
+  const [uploadAudience, setUploadAudience] = useState('')
+  const [uploadMessage, setUploadMessage] = useState('')
+  const [uploadTiming, setUploadTiming] = useState('')
+  const [uploadTagsInput, setUploadTagsInput] = useState('')
+  const [uploadNotes, setUploadNotes] = useState('')
+
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['kb-stats'],
     queryFn: api.kb.stats,
+  })
+
+  const { data: researchProducts } = useQuery({
+    queryKey: ['research-products'],
+    queryFn: api.research.getProducts,
+  })
+
+  const { data: researchStates } = useQuery({
+    queryKey: ['research-states'],
+    queryFn: api.research.getStates,
+  })
+
+  const { data: researchAudiences } = useQuery({
+    queryKey: ['research-audiences'],
+    queryFn: api.research.getAudiences,
   })
 
   const { data: products } = useQuery({
@@ -59,6 +87,93 @@ export default function KnowledgeBase() {
     },
   })
 
+  const uploadMutation = useMutation({
+    mutationFn: async () => {
+      if (!uploadFile) {
+        throw new Error('Please choose a .docx or .pdf file')
+      }
+
+      const formData = new FormData()
+      formData.append('file', uploadFile)
+      formData.append('category', uploadCategory)
+      if (uploadTitle.trim()) formData.append('title', uploadTitle.trim())
+      if (uploadSubcategory.trim()) formData.append('subcategory', uploadSubcategory.trim())
+      if (uploadProduct.trim()) formData.append('product', uploadProduct.trim())
+
+      // Comma-separated inputs -> repeated form fields
+      const states = uploadStatesInput
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      states.forEach((s) => formData.append('states', s))
+
+      if (uploadAudience.trim()) formData.append('audience', uploadAudience.trim())
+      if (uploadMessage.trim()) formData.append('message', uploadMessage.trim())
+      if (uploadTiming.trim()) formData.append('timing', uploadTiming.trim())
+
+      const tags = uploadTagsInput
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
+      tags.forEach((t) => formData.append('tags', t))
+
+      if (uploadNotes.trim()) formData.append('notes', uploadNotes.trim())
+
+      return api.kb.upload(formData)
+    },
+    onSuccess: (data) => {
+      toast({ title: 'Uploaded to knowledge base', description: data.id })
+      setUploadFile(null)
+      setUploadTitle('')
+      setUploadSubcategory('')
+      setUploadProduct('')
+      setUploadStatesInput('')
+      setUploadAudience('')
+      setUploadMessage('')
+      setUploadTiming('')
+      setUploadTagsInput('')
+      setUploadNotes('')
+      queryClient.invalidateQueries({ queryKey: ['kb-stats'] })
+      queryClient.invalidateQueries({ queryKey: ['kb-search'] })
+      queryClient.invalidateQueries({ queryKey: ['kb-items'] })
+      queryClient.invalidateQueries({ queryKey: ['kb-products'] })
+      queryClient.invalidateQueries({ queryKey: ['kb-states'] })
+    },
+    onError: (error) => {
+      toast({
+        title: 'Upload failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const exportEmailExamples = async () => {
+    try {
+      const state = uploadStatesInput
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)[0]
+      const blob = await api.kb.exportEmailExamples({
+        product: uploadProduct.trim() || undefined,
+        audience: uploadAudience.trim() || undefined,
+        state: state || undefined,
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'wceps_email_examples.jsonl'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      toast({
+        title: 'Export failed',
+        description: e instanceof Error ? e.message : 'Unknown error',
+        variant: 'destructive',
+      })
+    }
+  }
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -80,6 +195,186 @@ export default function KnowledgeBase() {
           Re-index KB
         </Button>
       </div>
+
+      {/* Upload */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Upload to Knowledge Base</CardTitle>
+          <CardDescription>
+            Add docs (including “good email” examples) with structured tags so the generator can learn from them.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">File (.docx or .pdf)</label>
+              <input
+                type="file"
+                accept=".docx,.pdf"
+                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+              />
+              {uploadFile && (
+                <p className="text-xs text-muted-foreground">Selected: {uploadFile.name}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Category</label>
+              <select
+                value={uploadCategory}
+                onChange={(e) => setUploadCategory(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg"
+              >
+                <option value="email_example">email_example (good email)</option>
+                <option value="state_content">state_content</option>
+                <option value="product">product</option>
+                <option value="case_study">case_study</option>
+                <option value="testimonial">testimonial</option>
+                <option value="general">general</option>
+              </select>
+              {uploadCategory === 'email_example' && (
+                <p className="text-xs text-muted-foreground">
+                  Tip: set <b>Title</b> to the subject line; file content becomes the email body.
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Title</label>
+              <input
+                type="text"
+                placeholder={uploadCategory === 'email_example' ? 'Subject line' : 'Document title (optional)'}
+                value={uploadTitle}
+                onChange={(e) => setUploadTitle(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Subcategory (optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. care_coaching, florida, value_proposition"
+                value={uploadSubcategory}
+                onChange={(e) => setUploadSubcategory(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Product (optional)</label>
+              <select
+                value={uploadProduct}
+                onChange={(e) => setUploadProduct(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg"
+              >
+                <option value="">(none)</option>
+                {(researchProducts?.products || []).map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">States (optional)</label>
+              <input
+                type="text"
+                placeholder="Comma-separated codes, e.g. FL, CO"
+                value={uploadStatesInput}
+                onChange={(e) => setUploadStatesInput(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg"
+                list="kb-upload-states"
+              />
+              <datalist id="kb-upload-states">
+                {(researchStates?.states || []).map((s) => (
+                  <option key={s.code} value={s.code} />
+                ))}
+              </datalist>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Audience (optional)</label>
+              <select
+                value={uploadAudience}
+                onChange={(e) => setUploadAudience(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg"
+              >
+                <option value="">(none)</option>
+                {(researchAudiences?.audiences || []).map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Message type (optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. funding, compliance, product"
+                value={uploadMessage}
+                onChange={(e) => setUploadMessage(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Timing (optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. back_to_school, budget_planning"
+                value={uploadTiming}
+                onChange={(e) => setUploadTiming(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg"
+              />
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-sm font-medium">Tags (optional)</label>
+              <input
+                type="text"
+                placeholder="Comma-separated tags"
+                value={uploadTagsInput}
+                onChange={(e) => setUploadTagsInput(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg"
+              />
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <label className="text-sm font-medium">Notes (optional)</label>
+              <textarea
+                placeholder="Short internal note (kept out of prompt as much as possible)"
+                value={uploadNotes}
+                onChange={(e) => setUploadNotes(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg min-h-[88px]"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3 mt-4">
+            <Button
+              onClick={() => uploadMutation.mutate()}
+              disabled={uploadMutation.isPending}
+            >
+              {uploadMutation.isPending && (
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Upload
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={exportEmailExamples}
+              disabled={uploadMutation.isPending}
+            >
+              Export email examples (JSONL)
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Stats */}
       {statsLoading ? (
