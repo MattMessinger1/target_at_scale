@@ -329,6 +329,7 @@ async def research(
         from ...research.perplexity import (
             research_state_funding_simple,
             research_state_compliance_simple,
+            research_state_takeovers_simple,
             research_compliance_funding_simple,
         )
         
@@ -348,15 +349,21 @@ async def research(
             state_full=state_full,
             product_context=context_for_perplexity,
         )
+        takeover_task = research_state_takeovers_simple(
+            state=state_code,
+            state_full=state_full,
+            product_context=context_for_perplexity,
+        )
         compliance_funding_task = research_compliance_funding_simple(
             state=state_code,
             state_full=state_full,
             product_context=context_for_perplexity,
         )
         
-        funding_result, compliance_result, compliance_funding_result = await asyncio.gather(
+        funding_result, compliance_result, takeover_result, compliance_funding_result = await asyncio.gather(
             funding_task,
             compliance_task,
+            takeover_task,
             compliance_funding_task,
             return_exceptions=True,
         )
@@ -376,6 +383,15 @@ async def research(
             web_compliance = compliance_result.get("items", [])
             raw_compliance_content = compliance_result.get("content")
             logger.info(f"Web compliance: {len(web_compliance)} items")
+
+        # Process takeover/intervention result (merged into compliance list)
+        if isinstance(takeover_result, Exception):
+            logger.error(f"State takeover research failed: {takeover_result}")
+        else:
+            takeover_items = takeover_result.get("items", [])
+            if takeover_items:
+                web_compliance = (web_compliance or []) + takeover_items
+            logger.info(f"Web state takeovers: {len(takeover_items)} items")
 
         # Process compliance-linked funding result
         if isinstance(compliance_funding_result, Exception):

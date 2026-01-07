@@ -1257,7 +1257,7 @@ Focus on:
 1. DOJ investigations or consent decrees - NAME SPECIFIC DISTRICTS
 2. CSI/TSI/ATSI schools for EL outcomes - NAME DISTRICTS with many on the list
 3. State interventions / district takeovers / receivership / conservators / boards of managers:
-   - Find NEWS or official announcements about the state taking over a school district (replacing board, appointing conservator/board of managers, receivership, state intervention)
+   - Search broadly for NEWS or official announcements about the state taking over a school district (replacing board, appointing conservator/receiver/board of managers, receivership, state intervention)
    - NAME THE SPECIFIC DISTRICTS and the intervention type
    - For each takeover/intervention, explicitly answer: "Is the stated rationale connected to English learners / bilingual / ESL / multilingual learners?" If yes, summarize; if not explicit, say "EL link not explicit"
 4. Teacher certification/endorsement requirements for EL
@@ -1274,6 +1274,23 @@ For each requirement:
 - Direct URL to official guidance
 
 Verify all requirements are currently in effect as of January 2026.
+"""
+
+# Dedicated "state takeover" query to ensure these items are not missed inside the broader compliance prompt.
+SIMPLE_STATE_TAKEOVER_QUERY = """
+Find school district takeovers / state interventions / receivership actions in {state} in the past 24 months.
+
+We mean actions where the state education agency (or equivalent) replaces an elected board, appoints a conservator/receiver, creates a "board of managers", or otherwise takes governance control of a district or campuses.
+
+Return 1-5 items. For each item, include:
+- District name(s)
+- Agency name (state education agency)
+- What triggered the intervention (e.g., accountability failures, special investigation, financial governance, etc.)
+- Status (announced, active, appealed, resolved)
+- Whether English learners / bilingual / ESL / multilingual learners are explicitly mentioned as part of the stated rationale. If not mentioned, say "EL link not explicit".
+- Direct URL (news article or official announcement)
+
+Prefer credible local/regional reporting and official state education agency releases.
 """
 
 SIMPLE_COMPLIANCE_FUNDING_QUERY = """
@@ -1379,6 +1396,38 @@ async def research_state_compliance_simple(
         result.get("citations", [])
     )
     
+    return {
+        "items": items,
+        "content": raw_content,
+        "citations": result.get("citations", []),
+    }
+
+
+async def research_state_takeovers_simple(
+    state: str,
+    state_full: str,
+    product_context: str = "",
+) -> Dict[str, Any]:
+    """Dedicated state takeover / intervention research (Perplexity)."""
+    import re
+
+    client = PerplexityClient()
+
+    query = SIMPLE_STATE_TAKEOVER_QUERY.format(state=state_full)
+    if product_context:
+        query = f"Product context: {product_context}\n\n{query}"
+
+    result = await client.search(query)
+    raw_content = result["content"]
+
+    raw_content_clean = re.sub(r"<think>.*?</think>", "", raw_content, flags=re.DOTALL).strip()
+
+    items = await _parse_state_takeover_items_simple(
+        raw_content_clean,
+        state_full,
+        result.get("citations", []),
+    )
+
     return {
         "items": items,
         "content": raw_content,
@@ -1572,6 +1621,88 @@ JSON:"""
         
     except Exception as e:
         print(f"Error parsing compliance: {e}")
+        return []
+
+
+async def _parse_state_takeover_items_simple(
+    content: str,
+    state: str,
+    citations: List[str],
+) -> List[Dict[str, Any]]:
+    """Parse state takeover/intervention items into the compliance schema."""
+    from openai import AsyncOpenAI
+    import re
+
+    openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+    citations_text = ""
+    if citations:
+        citations_text = "\nSource URLs:\n" + "\n".join(citations[:8])
+
+    prompt = f"""Extract state takeover / intervention items for {state}.
+
+These are compliance pressure signals (governance intervention, board replacement, receivership, conservator, board of managers).
+
+Return a JSON array of objects with:
+- title: Short headline-style title (include district name)
+- description: 1-3 sentences including (a) what happened, (b) status (announced/active/appealed/resolved if known), and (c) EL connection: either "EL connection: ..." or "EL link not explicit"
+- type: MUST be "state_takeover"
+- deadline: If there is a stated hearing/appeal timeline or effective date, include it; else null
+- hours_required: null
+- districts_affected: Array of district names (at least 1 if known)
+- status: "active", "unverified", or "resolved" (exclude resolved)
+- source_url: Best direct URL
+- source_type: "web_research"
+
+Do NOT include WIDA ACCESS.
+{citations_text}
+
+Research content:
+{content[:5000]}
+
+JSON array:"""
+
+    try:
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "Return only valid JSON array. Do not include markdown."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0,
+            max_tokens=1800,
+        )
+
+        text = response.choices[0].message.content.strip()
+        if text.startswith("```"):
+            text = re.sub(r"```json?\n?", "", text)
+            text = text.replace("```", "").strip()
+
+        items = json.loads(text)
+
+        if not isinstance(items, list):
+            return []
+
+        normalized: List[Dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            item["type"] = "state_takeover"
+            item["source_type"] = "web_research"
+            if "status" not in item:
+                item["status"] = "unverified"
+            if item.get("status") == "resolved":
+                continue
+            if not item.get("source_url") and citations:
+                item["source_url"] = citations[0]
+            if not isinstance(item.get("districts_affected"), list):
+                item["districts_affected"] = []
+            normalized.append(item)
+
+        return normalized
+
+    except Exception as e:
+        print(f"Error parsing state takeovers: {e}")
         return []
 
 
