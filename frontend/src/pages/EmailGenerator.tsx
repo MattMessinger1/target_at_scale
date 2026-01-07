@@ -9,6 +9,7 @@
  * 5. Copy / Export
  */
 import { useState } from 'react'
+import { useEffect } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { 
   api, 
@@ -85,6 +86,67 @@ function ResearchProgressStep({
   )
 }
 
+type ResearchRunCriteria = {
+  products: string[]
+  states: SelectedState[]
+  audiences: string[]
+}
+
+type ResearchRunSelections = {
+  selectedFunding: FundingItem[]
+  selectedComplianceFunding: ComplianceFundingItem[]
+  selectedCompliance: ComplianceItem[]
+}
+
+type ResearchRunSnapshot = {
+  id: string
+  createdAt: string
+  criteria: ResearchRunCriteria
+  results: ResearchResponse
+  selections: ResearchRunSelections
+}
+
+const RESEARCH_RUNS_STORAGE_KEY = 'wceps_emailgen_research_runs_v1'
+const MAX_SAVED_RUNS = 3
+
+const safeJsonParse = <T,>(raw: string | null): T | null => {
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return null
+  }
+}
+
+const getNowIso = (): string => new Date().toISOString()
+
+const makeId = (): string => {
+  try {
+    return crypto.randomUUID()
+  } catch {
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  }
+}
+
+const loadSavedRuns = (): ResearchRunSnapshot[] => {
+  try {
+    const parsed = safeJsonParse<ResearchRunSnapshot[]>(
+      window.localStorage.getItem(RESEARCH_RUNS_STORAGE_KEY)
+    )
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+const saveRuns = (runs: ResearchRunSnapshot[]) => {
+  try {
+    window.localStorage.setItem(RESEARCH_RUNS_STORAGE_KEY, JSON.stringify(runs))
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
 export default function EmailGenerator() {
   // Step state
   const [currentStep, setCurrentStep] = useState<Step>('select')
@@ -96,6 +158,8 @@ export default function EmailGenerator() {
   
   // Research results
   const [researchResults, setResearchResults] = useState<ResearchResponse | null>(null)
+  const [savedRuns, setSavedRuns] = useState<ResearchRunSnapshot[]>([])
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
   
   // Curation state
   const [selectedFunding, setSelectedFunding] = useState<FundingItem[]>([])
@@ -120,6 +184,40 @@ export default function EmailGenerator() {
     }),
     onSuccess: (data) => {
       setResearchResults(data)
+      // Create a saved snapshot so results are stable to revisit later
+      const snapshot: ResearchRunSnapshot = {
+        id: makeId(),
+        createdAt: getNowIso(),
+        criteria: {
+          products: selectedProducts,
+          states: selectedStates,
+          audiences: selectedAudiences,
+        },
+        // Avoid persisting large raw debug fields in localStorage
+        results: {
+          ...data,
+          raw_kb_content: undefined,
+          raw_funding_content: undefined,
+          raw_compliance_funding_content: undefined,
+          raw_compliance_content: undefined,
+        },
+        selections: {
+          selectedFunding: [],
+          selectedComplianceFunding: [],
+          selectedCompliance: [],
+        },
+      }
+
+      setActiveRunId(snapshot.id)
+      setSelectedFunding([])
+      setSelectedComplianceFunding([])
+      setSelectedCompliance([])
+
+      setSavedRuns((prev) => {
+        const next = [snapshot, ...(prev || [])].slice(0, MAX_SAVED_RUNS)
+        saveRuns(next)
+        return next
+      })
       setCurrentStep('curate')
     },
   })
@@ -185,6 +283,7 @@ export default function EmailGenerator() {
     setSelectedStates([])
     setSelectedAudiences([])
     setResearchResults(null)
+    setActiveRunId(null)
     setSelectedFunding([])
     setSelectedComplianceFunding([])
     setSelectedCompliance([])
@@ -212,6 +311,56 @@ export default function EmailGenerator() {
     a.download = `email-${selectedProducts[0]?.toLowerCase().replace(/\s+/g, '-') || 'wceps'}-${selectedStates[0]?.code || 'multi'}.csv`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  // Load saved runs once on mount
+  useEffect(() => {
+    const runs = loadSavedRuns()
+    if (runs.length > 0) {
+      setSavedRuns(runs)
+    }
+  }, [])
+
+  // Persist curation selections into the active saved run snapshot
+  useEffect(() => {
+    if (!activeRunId) return
+    setSavedRuns((prev) => {
+      const next = (prev || []).map((run) => {
+        if (run.id !== activeRunId) return run
+        return {
+          ...run,
+          selections: {
+            selectedFunding,
+            selectedComplianceFunding,
+            selectedCompliance,
+          },
+        }
+      })
+      saveRuns(next)
+      return next
+    })
+  }, [activeRunId, selectedFunding, selectedComplianceFunding, selectedCompliance])
+
+  const resumeRun = (run: ResearchRunSnapshot) => {
+    setSelectedProducts(run.criteria.products || [])
+    setSelectedStates(run.criteria.states || [])
+    setSelectedAudiences(run.criteria.audiences || [])
+    setResearchResults(run.results)
+    setSelectedFunding(run.selections.selectedFunding || [])
+    setSelectedComplianceFunding(run.selections.selectedComplianceFunding || [])
+    setSelectedCompliance(run.selections.selectedCompliance || [])
+    setActiveRunId(run.id)
+    setCurrentStep('curate')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const clearSavedRuns = () => {
+    setSavedRuns([])
+    try {
+      window.localStorage.removeItem(RESEARCH_RUNS_STORAGE_KEY)
+    } catch {
+      // ignore
+    }
   }
 
   // Handle clicking on a step to navigate
@@ -306,6 +455,50 @@ export default function EmailGenerator() {
         {/* Step 1: Selection */}
         {currentStep === 'select' && (
           <div className="space-y-6">
+            {/* Saved runs (stable snapshots) */}
+            {savedRuns.length > 0 && (
+              <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-medium text-slate-200">Recent research runs</h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Resume an earlier run to see the exact same results you liked (no re-search).
+                    </p>
+                  </div>
+                  <button
+                    onClick={clearSavedRuns}
+                    className="text-xs text-slate-400 hover:text-slate-200 transition-colors"
+                  >
+                    Clear
+                  </button>
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  {savedRuns.map((run) => (
+                    <div
+                      key={run.id}
+                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-slate-900/40 rounded-lg p-3 border border-slate-700/60"
+                    >
+                      <div className="text-sm">
+                        <div className="text-slate-200">
+                          {run.criteria.products?.[0] || 'Product'} · {run.criteria.states?.[0]?.name || 'State'} · {run.criteria.audiences?.[0] || 'Audience'}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          Saved {new Date(run.createdAt).toLocaleString()}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => resumeRun(run)}
+                        className="px-3 py-2 rounded-md bg-emerald-600/20 text-emerald-300 border border-emerald-600/40 hover:bg-emerald-600/30 transition-colors text-sm"
+                      >
+                        Resume results
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-1">
                 <ProductSelector
@@ -367,6 +560,18 @@ export default function EmailGenerator() {
                 🔍 Start Research
               </button>
             </div>
+
+            {/* Quick return to active run (if user clicked edit from curation) */}
+            {researchResults && activeRunId && (
+              <div className="flex justify-center">
+                <button
+                  onClick={() => setCurrentStep('curate')}
+                  className="text-sm text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  Back to last results (no re-search)
+                </button>
+              </div>
+            )}
           </div>
         )}
 
