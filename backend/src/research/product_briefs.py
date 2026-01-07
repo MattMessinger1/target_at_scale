@@ -225,28 +225,28 @@ KB MATERIAL:
 
 JSON:"""
 
-response = await openai_client.chat.completions.create(
-    model=settings.openai_model,
-    messages=[
-        {"role": "system", "content": "Return only valid JSON. No markdown."},
-        {"role": "user", "content": prompt},
-    ],
-    temperature=0,
-    max_tokens=3500,
-)
-text = response.choices[0].message.content.strip()
-brief = json.loads(text)
+    response = await openai_client.chat.completions.create(
+        model=settings.openai_model,
+        messages=[
+            {"role": "system", "content": "Return only valid JSON. No markdown."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0,
+        max_tokens=3500,
+    )
+    text = response.choices[0].message.content.strip()
+    brief = json.loads(text)
 
-# Inject metadata
-brief["_meta"] = {
-    "product_key": product_key,
-    "product_display_name": product_display_name,
-    "state_code": state_code,
-    "built_at": datetime.utcnow().isoformat(),
-    "kb_sources": [it.id for it in kb_items[:20]],
-}
+    # Inject metadata
+    brief["_meta"] = {
+        "product_key": product_key,
+        "product_display_name": product_display_name,
+        "state_code": state_code,
+        "built_at": datetime.utcnow().isoformat(),
+        "kb_sources": [it.id for it in kb_items[:20]],
+    }
 
-return brief
+    return brief
 
 
 async def upsert_product_brief(
