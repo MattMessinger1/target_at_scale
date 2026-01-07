@@ -195,6 +195,13 @@ def _has_actionability(item: Dict[str, Any], text: str, item_type: ItemType) -> 
         return True
     if item_type == "compliance_funding" and item.get("compliance_trigger"):
         return True
+    # Treat state takeover / intervention signals as inherently actionable pressure.
+    if item_type == "compliance" and re.search(
+        r"\b(takeover|receivership|conservator|board of managers|state intervention)\b",
+        text,
+        re.I,
+    ):
+        return True
     # Text-based
     return bool(
         re.search(
@@ -218,7 +225,25 @@ def _has_specificity(item: Dict[str, Any], text: str, item_type: ItemType) -> bo
     elif item_type == "compliance_funding":
         markers = ["csi", "tsi", "atsi", "school improvement", "grant", "set-aside", "set aside", "consent decree"]
     else:
-        markers = ["consent decree", "doj", "ocr", "endorsement", "certification", "requirement", "mandate", "csi", "tsi", "atsi", "reporting"]
+        markers = [
+            "consent decree",
+            "doj",
+            "ocr",
+            "endorsement",
+            "certification",
+            "requirement",
+            "mandate",
+            "csi",
+            "tsi",
+            "atsi",
+            "reporting",
+            # State interventions / takeovers
+            "takeover",
+            "receivership",
+            "board of managers",
+            "conservator",
+            "state intervention",
+        ]
     return any(m in title or m in text for m in markers)
 
 

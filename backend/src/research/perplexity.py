@@ -1256,10 +1256,14 @@ Find compliance requirements for English learner (EL) programs in {state}.
 Focus on:
 1. DOJ investigations or consent decrees - NAME SPECIFIC DISTRICTS
 2. CSI/TSI/ATSI schools for EL outcomes - NAME DISTRICTS with many on the list
-3. Teacher certification/endorsement requirements for EL
-4. Mandatory professional development hours
-5. State-specific EL service mandates
-6. Assessment and reporting deadlines (exclude WIDA ACCESS - we know about that)
+3. State interventions / district takeovers / receivership / conservators / boards of managers:
+   - Find NEWS or official announcements about the state taking over a school district (replacing board, appointing conservator/board of managers, receivership, state intervention)
+   - NAME THE SPECIFIC DISTRICTS and the intervention type
+   - For each takeover/intervention, explicitly answer: "Is the stated rationale connected to English learners / bilingual / ESL / multilingual learners?" If yes, summarize; if not explicit, say "EL link not explicit"
+4. Teacher certification/endorsement requirements for EL
+5. Mandatory professional development hours
+6. State-specific EL service mandates
+7. Assessment and reporting deadlines (exclude WIDA ACCESS - we know about that)
 
 For each requirement:
 - Requirement name
@@ -1513,8 +1517,8 @@ Do NOT include WIDA ACCESS testing - we already know about that.
 
 For each requirement, return JSON with:
 - title: Requirement name
-- description: Brief description (1-2 sentences)
-- type: "consent_decree", "certification", "professional_development", "reporting", "csi_tsi", or "state_mandate"
+- description: Brief description (1-3 sentences). If this is a state takeover/intervention item, include a sentence: "EL connection: ..." or "EL link not explicit".
+- type: "consent_decree", "certification", "professional_development", "reporting", "csi_tsi", "state_mandate", or "state_takeover"
 - deadline: When it applies
 - hours_required: PD hours if applicable
 - districts_affected: List of specific district names if mentioned
