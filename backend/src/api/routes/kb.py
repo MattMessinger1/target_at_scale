@@ -302,6 +302,129 @@ async def export_email_examples(
     )
 
 
+class EmailExampleCreateRequest(BaseModel):
+    """Create a 'good email' exemplar from text (no file upload)."""
+
+    subject_line: str
+    email_body: str
+    product: Optional[str] = None  # display name
+    states: Optional[List[str]] = None
+    audience: Optional[str] = None
+    message: Optional[str] = None
+    timing: Optional[str] = None
+    tags: Optional[List[str]] = None
+    notes: Optional[str] = None
+
+
+@router.post("/email-examples")
+async def create_email_example(
+    request: EmailExampleCreateRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Create an email exemplar KB item directly from text.
+
+    This is used by the main email tool to save model emails without requiring a .docx/.pdf.
+    """
+    subject_line = (request.subject_line or "").strip()
+    email_body = (request.email_body or "").strip()
+
+    if not subject_line:
+        raise HTTPException(status_code=400, detail="subject_line is required")
+    if len(subject_line) > 200:
+        raise HTTPException(status_code=400, detail="subject_line must be <= 200 characters")
+    if not email_body or len(email_body) < 20:
+        raise HTTPException(status_code=400, detail="email_body is required (min 20 chars)")
+
+    # Normalize product (display name -> canonical key)
+    product_key: Optional[str] = None
+    if request.product and request.product.strip():
+        try:
+            from ...research.product_briefs import normalize_product_key
+            product_key = normalize_product_key(request.product.strip())
+        except Exception:
+            product_key = request.product.strip().lower().replace(" ", "_")
+
+    # Normalize states
+    norm_states: Optional[List[str]] = None
+    if request.states:
+        cleaned = []
+        for s in request.states or []:
+            if not s:
+                continue
+            code = str(s).strip().upper()
+            if code:
+                cleaned.append(code)
+        cleaned = sorted(list(dict.fromkeys(cleaned)))
+        norm_states = cleaned or None
+
+    # Build tags: user-provided + structured prefixed tags
+    all_tags: List[str] = []
+
+    def _add_tag(v: Optional[str]) -> None:
+        if v is None:
+            return
+        t = str(v).strip()
+        if not t:
+            return
+        if t not in all_tags:
+            all_tags.append(t)
+
+    for t in request.tags or []:
+        _add_tag(t)
+
+    if request.audience and request.audience.strip():
+        _add_tag(f"audience:{request.audience.strip()}")
+    if request.message and request.message.strip():
+        _add_tag(f"message:{request.message.strip()}")
+    if request.timing and request.timing.strip():
+        _add_tag(f"timing:{request.timing.strip()}")
+
+    _add_tag("tool:email_generator")
+
+    if request.notes and request.notes.strip():
+        _add_tag(f"notes:{request.notes.strip()[:220]}")
+
+    item_id = f"kb-upl-{uuid4().hex}"
+
+    from ...kb.loader import generate_summary
+    summary = generate_summary(email_body, max_length=500)
+
+    kb_item = KnowledgeBaseItem(
+        id=item_id,
+        category="email_example",
+        subcategory=None,
+        title=subject_line,
+        content=email_body,
+        summary=summary,
+        document_type="email",
+        file_name=None,
+        tags=all_tags or None,
+        applicable_states=norm_states,
+        product_name=product_key,
+    )
+
+    db.add(kb_item)
+    await db.commit()
+
+    embedding_result = None
+    try:
+        from ...rag.embeddings import embed_kb_item_by_id
+        embedding_result = await embed_kb_item_by_id(db, item_id)
+    except Exception as e:
+        embedding_result = {"error": str(e), "embedded": 0}
+
+    return {
+        "message": "Created email example",
+        "id": item_id,
+        "title": subject_line,
+        "category": kb_item.category,
+        "product_name": kb_item.product_name,
+        "applicable_states": kb_item.applicable_states,
+        "document_type": kb_item.document_type,
+        "embedding": embedding_result,
+    }
+
+
 @router.post("/upload")
 async def upload_kb_item(
     file: UploadFile = File(..., description="A .docx or .pdf file"),

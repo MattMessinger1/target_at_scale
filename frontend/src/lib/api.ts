@@ -297,6 +297,18 @@ export interface KbUploadResponse {
   embedding?: unknown
 }
 
+export interface CreateEmailExampleRequest {
+  subject_line: string
+  email_body: string
+  product?: string
+  states?: string[]
+  audience?: string
+  message?: string
+  timing?: string
+  tags?: string[]
+  notes?: string
+}
+
 // API functions
 async function fetchApi<T>(
   endpoint: string,
@@ -459,6 +471,12 @@ export const api = {
 
       return response.blob()
     },
+
+    createEmailExample: (data: CreateEmailExampleRequest) =>
+      fetchApi<KbUploadResponse>('/kb/email-examples', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
   },
 
   snippets: {

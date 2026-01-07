@@ -19,6 +19,7 @@ import {
   ResearchResponse,
   GenerateEmailResponse 
 } from '../lib/api'
+import { toast } from '@/components/ui/use-toast'
 import { ProductSelector } from '../components/ProductSelector'
 import { StateSelector, SelectedState } from '../components/StateSelector'
 import { AudienceSelector } from '../components/AudienceSelector'
@@ -170,6 +171,18 @@ export default function EmailGenerator() {
   const [generatedEmail, setGeneratedEmail] = useState<GenerateEmailResponse | null>(null)
   const [copied, setCopied] = useState(false)
 
+  // Save/Upload model emails (good exemplars) into the KB
+  const [showModelEmailUploader, setShowModelEmailUploader] = useState(false)
+  const [modelSubjectLine, setModelSubjectLine] = useState('')
+  const [modelEmailBody, setModelEmailBody] = useState('')
+  const [modelProduct, setModelProduct] = useState('')
+  const [modelStatesInput, setModelStatesInput] = useState('')
+  const [modelAudience, setModelAudience] = useState('')
+  const [modelMessage, setModelMessage] = useState('')
+  const [modelTiming, setModelTiming] = useState('')
+  const [modelTagsInput, setModelTagsInput] = useState('')
+  const [modelNotes, setModelNotes] = useState('')
+
   // Research mutation - for multi-select, we use the first selection as primary
   // and include others in the context
   const researchMutation = useMutation({
@@ -253,6 +266,58 @@ export default function EmailGenerator() {
     onSuccess: (data) => {
       setGeneratedEmail(data)
       setCurrentStep('done')
+    },
+  })
+
+  const parseCommaList = (raw: string): string[] => {
+    return raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+
+  const openModelEmailUploader = (opts?: { prefillFromGenerated?: boolean }) => {
+    const prefillFromGenerated = Boolean(opts?.prefillFromGenerated)
+
+    // Prefill metadata from current selections
+    setModelProduct(selectedProducts[0] || '')
+    setModelStatesInput(selectedStates.map((s) => s.code).join(', '))
+    setModelAudience(selectedAudiences[0] || '')
+
+    if (prefillFromGenerated && generatedEmail) {
+      setModelSubjectLine(generatedEmail.subject_line || '')
+      setModelEmailBody(generatedEmail.email_body || '')
+    } else {
+      setModelSubjectLine('')
+      setModelEmailBody('')
+    }
+
+    setShowModelEmailUploader(true)
+  }
+
+  const saveModelEmailMutation = useMutation({
+    mutationFn: () =>
+      api.kb.createEmailExample({
+        subject_line: modelSubjectLine,
+        email_body: modelEmailBody,
+        product: modelProduct.trim() || undefined,
+        states: parseCommaList(modelStatesInput).map((s) => s.toUpperCase()),
+        audience: modelAudience.trim() || undefined,
+        message: modelMessage.trim() || undefined,
+        timing: modelTiming.trim() || undefined,
+        tags: parseCommaList(modelTagsInput),
+        notes: modelNotes.trim() || undefined,
+      }),
+    onSuccess: (data) => {
+      toast({ title: 'Saved model email', description: data.id })
+      setShowModelEmailUploader(false)
+    },
+    onError: (error) => {
+      toast({
+        title: 'Save failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      })
     },
   })
 
@@ -390,6 +455,173 @@ export default function EmailGenerator() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      {/* Model email upload modal */}
+      {showModelEmailUploader && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+          onClick={() => setShowModelEmailUploader(false)}
+        >
+          <div
+            className="w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-900 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 border-b border-slate-700/60 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-100">Upload model email</h2>
+                <p className="text-sm text-slate-400 mt-1">
+                  Save a high-performing email so the generator can imitate its structure and voice.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowModelEmailUploader(false)}
+                className="text-slate-400 hover:text-slate-200 transition-colors"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs text-slate-400 uppercase tracking-wide mb-2">
+                  Subject line
+                </label>
+                <input
+                  type="text"
+                  value={modelSubjectLine}
+                  onChange={(e) => setModelSubjectLine(e.target.value)}
+                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  placeholder="Subject line"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-400 uppercase tracking-wide mb-2">
+                  Email body
+                </label>
+                <textarea
+                  value={modelEmailBody}
+                  onChange={(e) => setModelEmailBody(e.target.value)}
+                  className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 min-h-[180px]"
+                  placeholder="Paste the full email body here"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-slate-400 uppercase tracking-wide mb-2">
+                    Product (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={modelProduct}
+                    onChange={(e) => setModelProduct(e.target.value)}
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                    placeholder="e.g. CARE Coaching"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 uppercase tracking-wide mb-2">
+                    States (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={modelStatesInput}
+                    onChange={(e) => setModelStatesInput(e.target.value)}
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                    placeholder="Comma-separated codes, e.g. FL, CO"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 uppercase tracking-wide mb-2">
+                    Audience (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={modelAudience}
+                    onChange={(e) => setModelAudience(e.target.value)}
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                    placeholder="e.g. District Leadership"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 uppercase tracking-wide mb-2">
+                    Message + timing (optional)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={modelMessage}
+                      onChange={(e) => setModelMessage(e.target.value)}
+                      className="w-1/2 px-3 py-2 rounded-md bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                      placeholder="message"
+                    />
+                    <input
+                      type="text"
+                      value={modelTiming}
+                      onChange={(e) => setModelTiming(e.target.value)}
+                      className="w-1/2 px-3 py-2 rounded-md bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                      placeholder="timing"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs text-slate-400 uppercase tracking-wide mb-2">
+                    Tags (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={modelTagsInput}
+                    onChange={(e) => setModelTagsInput(e.target.value)}
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                    placeholder="Comma-separated tags"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-400 uppercase tracking-wide mb-2">
+                    Notes (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={modelNotes}
+                    onChange={(e) => setModelNotes(e.target.value)}
+                    className="w-full px-3 py-2 rounded-md bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                    placeholder="Short internal note"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  onClick={() => setShowModelEmailUploader(false)}
+                  className="px-4 py-2 rounded-md bg-slate-800 text-slate-200 hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => saveModelEmailMutation.mutate()}
+                  disabled={saveModelEmailMutation.isPending}
+                  className={`px-4 py-2 rounded-md font-medium transition-colors ${
+                    saveModelEmailMutation.isPending
+                      ? 'bg-emerald-700/40 text-emerald-200 cursor-not-allowed'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  }`}
+                >
+                  {saveModelEmailMutation.isPending ? 'Saving…' : 'Save to KB'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="border-b border-slate-700/50 bg-slate-900/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-6 py-4">
@@ -403,48 +635,58 @@ export default function EmailGenerator() {
               </p>
             </div>
             
-            {/* Progress Steps - Clickable */}
-            <div className="flex items-center gap-2">
-              {STEP_ORDER.map((step, i) => {
-                const status = getStepStatus(step)
-                const isClickable = status === 'completed' || status === 'current'
-                const isTransitional = step === 'research' || step === 'generate'
-                
-                return (
-                  <div
-                    key={step}
-                    className={`flex items-center ${i > 0 ? 'ml-2' : ''}`}
-                  >
-                    {i > 0 && (
-                      <div className={`w-8 h-0.5 mr-2 ${
-                        STEP_ORDER.indexOf(currentStep) >= i
-                          ? 'bg-emerald-500'
-                          : 'bg-slate-700'
-                      }`} />
-                    )}
-                    <button
-                      onClick={() => handleStepClick(step)}
-                      disabled={!isClickable || isTransitional}
-                      className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
-                        status === 'current'
-                          ? 'bg-emerald-500 text-white'
-                          : status === 'completed'
-                            ? 'bg-emerald-600/50 text-emerald-300 hover:bg-emerald-600/70 cursor-pointer'
-                            : 'bg-slate-700 text-slate-400'
-                      } ${isClickable && !isTransitional ? 'hover:ring-2 hover:ring-emerald-500/50' : ''}`}
-                      title={`${STEP_LABELS[step]}${isClickable && !isTransitional ? ' (click to edit)' : ''}`}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => openModelEmailUploader()}
+                className="px-3 py-2 rounded-md bg-slate-800/60 text-slate-200 border border-slate-700 hover:bg-slate-800 transition-colors text-sm"
+                title="Upload a high-performing email so the generator can learn from it"
+              >
+                Upload model email
+              </button>
+
+              {/* Progress Steps - Clickable */}
+              <div className="flex items-center gap-2">
+                {STEP_ORDER.map((step, i) => {
+                  const status = getStepStatus(step)
+                  const isClickable = status === 'completed' || status === 'current'
+                  const isTransitional = step === 'research' || step === 'generate'
+                  
+                  return (
+                    <div
+                      key={step}
+                      className={`flex items-center ${i > 0 ? 'ml-2' : ''}`}
                     >
-                      {status === 'completed' ? (
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      ) : (
-                        i + 1
+                      {i > 0 && (
+                        <div className={`w-8 h-0.5 mr-2 ${
+                          STEP_ORDER.indexOf(currentStep) >= i
+                            ? 'bg-emerald-500'
+                            : 'bg-slate-700'
+                        }`} />
                       )}
-                    </button>
-                  </div>
-                )
-              })}
+                      <button
+                        onClick={() => handleStepClick(step)}
+                        disabled={!isClickable || isTransitional}
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium transition-all ${
+                          status === 'current'
+                            ? 'bg-emerald-500 text-white'
+                            : status === 'completed'
+                              ? 'bg-emerald-600/50 text-emerald-300 hover:bg-emerald-600/70 cursor-pointer'
+                              : 'bg-slate-700 text-slate-400'
+                        } ${isClickable && !isTransitional ? 'hover:ring-2 hover:ring-emerald-500/50' : ''}`}
+                        title={`${STEP_LABELS[step]}${isClickable && !isTransitional ? ' (click to edit)' : ''}`}
+                      >
+                        {status === 'completed' ? (
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        ) : (
+                          i + 1
+                        )}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </div>
         </div>
@@ -817,6 +1059,13 @@ export default function EmailGenerator() {
                 className="px-6 py-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors flex items-center gap-2"
               >
                 📥 Export CSV
+              </button>
+
+              <button
+                onClick={() => openModelEmailUploader({ prefillFromGenerated: true })}
+                className="px-6 py-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors flex items-center gap-2"
+              >
+                💾 Save as Model Email
               </button>
               
               <button
