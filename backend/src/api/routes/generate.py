@@ -83,17 +83,17 @@ OPENING:
 class FundingItemInput(BaseModel):
     """Selected funding item for email."""
     title: str
-    description: Optional[str]
-    amount: Optional[str]
-    email_hook: Optional[str]
+    description: Optional[str] = None
+    amount: Optional[str] = None
+    email_hook: Optional[str] = None
 
 
 class ComplianceItemInput(BaseModel):
     """Selected compliance item for email."""
     title: str
-    description: Optional[str]
-    type: Optional[str]
-    email_hook: Optional[str]
+    description: Optional[str] = None
+    type: Optional[str] = None
+    email_hook: Optional[str] = None
 
 
 class ComplianceFundingItemInput(BaseModel):
@@ -102,11 +102,11 @@ class ComplianceFundingItemInput(BaseModel):
     These are funding sources tied to compliance status (CSI/TSI grants, etc.)
     """
     title: str
-    description: Optional[str]
-    amount: Optional[str]
-    compliance_trigger: Optional[str]  # e.g., "CSI/TSI designation"
-    action_required: Optional[str]  # e.g., "Amend CSG application"
-    email_hook: Optional[str]
+    description: Optional[str] = None
+    amount: Optional[str] = None
+    compliance_trigger: Optional[str] = None  # e.g., "CSI/TSI designation"
+    action_required: Optional[str] = None  # e.g., "Amend CSG application"
+    email_hook: Optional[str] = None
 
 
 class GenerateEmailRequest(BaseModel):
