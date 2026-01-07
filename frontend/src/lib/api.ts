@@ -221,13 +221,22 @@ export interface ResearchResponse {
   state: string
   state_full: string
   audience: string
-  product_context_summary: string
-  funding_items: FundingItem[]
-  compliance_items: ComplianceItem[]
-  compliance_funding_items: ComplianceFundingItem[]  // Funding tied to compliance status (CSI/TSI grants, etc.)
+  product_context: {
+    product_name: string
+    description: string
+    use_cases: string[]
+    value_propositions: string[]
+  }
+  // KB items (from our knowledge base - direct SQL lookup)
+  kb_funding: FundingItem[]
+  kb_compliance: ComplianceItem[]
+  // Web items (from Perplexity research)
+  web_funding: FundingItem[]
+  web_compliance: ComplianceItem[]
+  // Raw content for debugging
+  raw_kb_content?: string
   raw_funding_content?: string
   raw_compliance_content?: string
-  raw_compliance_funding_content?: string
 }
 
 export interface GenerateEmailRequest {

@@ -60,14 +60,22 @@ function SourceLinks({ sources, accentColor = 'slate' }: { sources?: SourceLink[
 }
 
 interface CurationStepProps {
-  fundingItems: FundingItem[]
-  complianceFundingItems: ComplianceFundingItem[]
-  complianceItems: ComplianceItem[]
+  // KB items (from our knowledge base)
+  kbFunding: FundingItem[]
+  kbCompliance: ComplianceItem[]
+  // Web items (from Perplexity research)
+  webFunding: FundingItem[]
+  webCompliance: ComplianceItem[]
+  // Legacy: combined items (for backwards compatibility)
+  fundingItems?: FundingItem[]
+  complianceFundingItems?: ComplianceFundingItem[]
+  complianceItems?: ComplianceItem[]
+  // Selection state
   selectedFunding: FundingItem[]
-  selectedComplianceFunding: ComplianceFundingItem[]
+  selectedComplianceFunding?: ComplianceFundingItem[]
   selectedCompliance: ComplianceItem[]
   onSelectFunding: (items: FundingItem[]) => void
-  onSelectComplianceFunding: (items: ComplianceFundingItem[]) => void
+  onSelectComplianceFunding?: (items: ComplianceFundingItem[]) => void
   onSelectCompliance: (items: ComplianceItem[]) => void
   isLoading?: boolean
 }
@@ -416,27 +424,36 @@ function ComplianceFundingCard({
 }
 
 export function CurationStep({
-  fundingItems,
-  complianceFundingItems,
-  complianceItems,
+  kbFunding = [],
+  kbCompliance = [],
+  webFunding = [],
+  webCompliance = [],
+  fundingItems = [],
+  complianceFundingItems = [],
+  complianceItems = [],
   selectedFunding,
-  selectedComplianceFunding,
+  selectedComplianceFunding = [],
   selectedCompliance,
   onSelectFunding,
   onSelectComplianceFunding,
   onSelectCompliance,
   isLoading,
 }: CurationStepProps) {
+  // Combine KB and Web items for display (with KB items first)
+  const allFunding = [...kbFunding, ...webFunding, ...fundingItems]
+  const allCompliance = [...kbCompliance, ...webCompliance, ...complianceItems]
+  
   const toggleFunding = (item: FundingItem) => {
     const isSelected = selectedFunding.some(f => f.title === item.title)
     if (isSelected) {
       onSelectFunding(selectedFunding.filter(f => f.title !== item.title))
-    } else if (selectedFunding.length < 3) {
+    } else if (selectedFunding.length < 5) {
       onSelectFunding([...selectedFunding, item])
     }
   }
 
   const toggleComplianceFunding = (item: ComplianceFundingItem) => {
+    if (!onSelectComplianceFunding) return
     const isSelected = selectedComplianceFunding.some(cf => cf.title === item.title)
     if (isSelected) {
       onSelectComplianceFunding(selectedComplianceFunding.filter(cf => cf.title !== item.title))
@@ -449,7 +466,7 @@ export function CurationStep({
     const isSelected = selectedCompliance.some(c => c.title === item.title)
     if (isSelected) {
       onSelectCompliance(selectedCompliance.filter(c => c.title !== item.title))
-    } else if (selectedCompliance.length < 3) {
+    } else if (selectedCompliance.length < 5) {
       onSelectCompliance([...selectedCompliance, item])
     }
   }
@@ -467,55 +484,65 @@ export function CurationStep({
   }
 
   return (
-    <div className="space-y-6">
-      {/* Funding Items */}
+    <div className="space-y-8">
+      {/* Funding Items - KB and Web combined */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
             💰 Funding Opportunities
             <span className="text-sm font-normal text-slate-500">
-              (select up to 3)
+              (select up to 5)
             </span>
           </h3>
           <span className="text-sm text-emerald-400">
-            {selectedFunding.length}/3 selected
+            {selectedFunding.length}/5 selected
           </span>
         </div>
         
-        {fundingItems.length === 0 ? (
-          <div className="p-6 bg-slate-800/30 rounded-lg border border-amber-700/50">
-            <div className="flex items-start gap-3">
-              <span className="text-2xl">💡</span>
-              <div>
-                <h4 className="font-medium text-amber-400 mb-2">
-                  No Unique Funding "Hidden Gems" Found
-                </h4>
-                <p className="text-sm text-slate-400 mb-3">
-                  Our research found no special funding sources beyond the "table stakes" 
-                  (Title I, Title III, and standard state categorical funding) for this state and product.
-                </p>
-                {complianceFundingItems.length > 0 ? (
-                  <p className="text-sm text-slate-300">
-                    <strong className="text-amber-400">However:</strong> Check the{' '}
-                    <strong>Compliance-Linked Funding</strong> section below — schools with CSI/TSI designations 
-                    or under compliance oversight have access to dedicated improvement funds that could support this product.
-                  </p>
-                ) : (
-                  <p className="text-sm text-slate-300">
-                    <strong className="text-emerald-400">Good news:</strong> Districts can use their existing 
-                    table stakes funding to address the compliance requirements below. Focus on highlighting 
-                    how your product helps them meet mandates — that's a compelling reason to allocate their 
-                    baseline EL funding to you.
-                  </p>
-                )}
-              </div>
+        {/* KB Funding Section */}
+        {kbFunding.length > 0 && (
+          <div className="mb-4">
+            <h4 className="text-sm font-medium text-violet-400 mb-2 flex items-center gap-1.5">
+              <span>📚</span> From Knowledge Base
+            </h4>
+            <div className="space-y-3">
+              {kbFunding.map((item, i) => (
+                <FundingCard
+                  key={`kb-${item.title}-${i}`}
+                  item={{ ...item, source_type: 'knowledge_base' }}
+                  isSelected={selectedFunding.some(f => f.title === item.title)}
+                  onToggle={() => toggleFunding(item)}
+                />
+              ))}
             </div>
           </div>
-        ) : (
+        )}
+        
+        {/* Web Funding Section */}
+        {webFunding.length > 0 && (
+          <div className="mb-4">
+            <h4 className="text-sm font-medium text-slate-400 mb-2 flex items-center gap-1.5">
+              <span>🌐</span> From Web Research
+            </h4>
+            <div className="space-y-3">
+              {webFunding.map((item, i) => (
+                <FundingCard
+                  key={`web-${item.title}-${i}`}
+                  item={{ ...item, source_type: 'web_research' as const }}
+                  isSelected={selectedFunding.some(f => f.title === item.title)}
+                  onToggle={() => toggleFunding(item)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* Legacy funding items (backwards compat) */}
+        {fundingItems.length > 0 && kbFunding.length === 0 && webFunding.length === 0 && (
           <div className="space-y-3">
             {fundingItems.map((item, i) => (
               <FundingCard
-                key={`${item.title}-${i}`}
+                key={`legacy-${item.title}-${i}`}
                 item={item}
                 isSelected={selectedFunding.some(f => f.title === item.title)}
                 onToggle={() => toggleFunding(item)}
@@ -523,89 +550,137 @@ export function CurationStep({
             ))}
           </div>
         )}
-      </div>
-
-      {/* Compliance-Linked Funding Section */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
-            🎯 Compliance-Linked Funding
-            <span className="text-sm font-normal text-slate-500">
-              (select up to 3)
-            </span>
-          </h3>
-          <span className="text-sm text-amber-400">
-            {selectedComplianceFunding.length}/3 selected
-          </span>
-        </div>
         
-        {complianceFundingItems.length === 0 ? (
-          <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700">
+        {allFunding.length === 0 && (
+          <div className="p-6 bg-slate-800/30 rounded-lg border border-amber-700/50">
             <div className="flex items-start gap-3">
-              <span className="text-xl">ℹ️</span>
+              <span className="text-2xl">💡</span>
               <div>
-                <p className="text-sm text-slate-400">
-                  No compliance-linked funding found (CSI/TSI improvement grants, consent decree funding, etc.) 
-                  for this state and product combination.
+                <h4 className="font-medium text-amber-400 mb-2">
+                  No Funding Opportunities Found
+                </h4>
+                <p className="text-sm text-slate-400 mb-3">
+                  Our research found no special funding sources beyond "table stakes" 
+                  (Title I, Title III, standard state funding) for this state and product.
+                </p>
+                <p className="text-sm text-slate-300">
+                  <strong className="text-emerald-400">Good news:</strong> Districts can use existing 
+                  funding to address compliance requirements. Focus on how your product helps meet mandates.
                 </p>
               </div>
             </div>
           </div>
-        ) : (
+        )}
+      </div>
+
+      {/* Compliance-Linked Funding Section (if available) */}
+      {complianceFundingItems.length > 0 && onSelectComplianceFunding && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
+              🎯 Compliance-Linked Funding
+              <span className="text-sm font-normal text-slate-500">
+                (select up to 3)
+              </span>
+            </h3>
+            <span className="text-sm text-amber-400">
+              {selectedComplianceFunding.length}/3 selected
+            </span>
+          </div>
+          
           <div className="space-y-3">
             {complianceFundingItems.map((item, i) => (
               <ComplianceFundingCard
-                key={`${item.title}-${i}`}
+                key={`cf-${item.title}-${i}`}
                 item={item}
                 isSelected={selectedComplianceFunding.some(cf => cf.title === item.title)}
                 onToggle={() => toggleComplianceFunding(item)}
               />
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Compliance Items */}
+      {/* Compliance Items - KB and Web combined */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
             📋 Compliance Requirements
             <span className="text-sm font-normal text-slate-500">
-              (select up to 3)
+              (select up to 5)
             </span>
           </h3>
           <span className="text-sm text-blue-400">
-            {selectedCompliance.length}/3 selected
+            {selectedCompliance.length}/5 selected
           </span>
         </div>
         
-        {complianceItems.length === 0 ? (
-          <div className="p-6 bg-slate-800/30 rounded-lg border border-slate-700">
-            <div className="flex items-start gap-3">
-              <span className="text-2xl">ℹ️</span>
-              <div>
-                <h4 className="font-medium text-slate-300 mb-2">
-                  No High-Signal Compliance Requirements Found
-                </h4>
-                <p className="text-sm text-slate-400">
-                  Our research didn't find DOJ investigations, consent decrees, CSI/TSI schools, 
-                  or other urgent compliance drivers in this state that strongly match your product. 
-                  This is still useful — your email can focus on proactive value rather than 
-                  compliance pressure.
-                </p>
-              </div>
+        {/* KB Compliance Section */}
+        {kbCompliance.length > 0 && (
+          <div className="mb-4">
+            <h4 className="text-sm font-medium text-violet-400 mb-2 flex items-center gap-1.5">
+              <span>📚</span> From Knowledge Base
+            </h4>
+            <div className="space-y-3">
+              {kbCompliance.map((item, i) => (
+                <ComplianceCard
+                  key={`kb-${item.title}-${i}`}
+                  item={{ ...item, source_type: 'knowledge_base' }}
+                  isSelected={selectedCompliance.some(c => c.title === item.title)}
+                  onToggle={() => toggleCompliance(item)}
+                />
+              ))}
             </div>
           </div>
-        ) : (
+        )}
+        
+        {/* Web Compliance Section */}
+        {webCompliance.length > 0 && (
+          <div className="mb-4">
+            <h4 className="text-sm font-medium text-slate-400 mb-2 flex items-center gap-1.5">
+              <span>🌐</span> From Web Research
+            </h4>
+            <div className="space-y-3">
+              {webCompliance.map((item, i) => (
+                <ComplianceCard
+                  key={`web-${item.title}-${i}`}
+                  item={{ ...item, source_type: 'web_research' as const }}
+                  isSelected={selectedCompliance.some(c => c.title === item.title)}
+                  onToggle={() => toggleCompliance(item)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* Legacy compliance items (backwards compat) */}
+        {complianceItems.length > 0 && kbCompliance.length === 0 && webCompliance.length === 0 && (
           <div className="space-y-3">
             {complianceItems.map((item, i) => (
               <ComplianceCard
-                key={`${item.title}-${i}`}
+                key={`legacy-${item.title}-${i}`}
                 item={item}
                 isSelected={selectedCompliance.some(c => c.title === item.title)}
                 onToggle={() => toggleCompliance(item)}
               />
             ))}
+          </div>
+        )}
+        
+        {allCompliance.length === 0 && (
+          <div className="p-6 bg-slate-800/30 rounded-lg border border-slate-700">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl">ℹ️</span>
+              <div>
+                <h4 className="font-medium text-slate-300 mb-2">
+                  No Compliance Requirements Found
+                </h4>
+                <p className="text-sm text-slate-400">
+                  Our research didn't find DOJ investigations, consent decrees, CSI/TSI schools, 
+                  or other urgent compliance drivers. Your email can focus on proactive value.
+                </p>
+              </div>
+            </div>
           </div>
         )}
       </div>

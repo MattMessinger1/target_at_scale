@@ -11,6 +11,11 @@ from .scoring import (
     score_items,
     get_top_items,
 )
+from .kb_extractor import (
+    extract_from_kb,
+    get_product_context,
+    build_perplexity_context,
+)
 
 __all__ = [
     "PerplexityClient",
@@ -21,4 +26,7 @@ __all__ = [
     "score_item",
     "score_items",
     "get_top_items",
+    "extract_from_kb",
+    "get_product_context",
+    "build_perplexity_context",
 ]

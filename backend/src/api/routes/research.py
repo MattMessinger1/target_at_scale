@@ -1,47 +1,26 @@
 """Research API routes for funding and compliance research.
 
-This is the main endpoint for the V1 email tool flow:
-1. RAG query for product context
-2. Perplexity research for funding + compliance
-3. GPT scoring for relevance
-4. Returns Top 3 of each for curation
+SIMPLIFIED ARCHITECTURE (V2):
+1. Direct SQL query to get KB content for state (no RAG pipeline)
+2. GPT extraction from KB content
+3. Perplexity research for fresh web content
+4. GPT parsing of Perplexity results
+5. User picks what's relevant (no automated scoring)
+
+This replaces the fragile RAG pipeline with reliable direct queries.
 """
+import asyncio
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from ...db import get_db
+from ...db.models import KnowledgeBaseItem
 
 logger = logging.getLogger(__name__)
-
-# Lazy imports - only load heavy modules when needed
-def get_rag_query():
-    """Lazy import for RAG query to avoid startup issues."""
-    from ...rag.query import query_product_context
-    return query_product_context
-
-def get_rag_query_optimized():
-    """Lazy import for optimized RAG query with hybrid search + re-ranking."""
-    from ...rag.query import get_product_context_optimized
-    return get_product_context_optimized
-
-def get_perplexity_functions():
-    """Lazy import for Perplexity functions."""
-    from ...research.perplexity import research_state_funding, research_state_compliance, research_compliance_funding
-    return research_state_funding, research_state_compliance, research_compliance_funding
-
-def get_scoring_function():
-    """Lazy import for scoring function."""
-    from ...research.scoring import get_top_items
-    return get_top_items
-
-def get_kb_results_functions():
-    """Lazy import for KB results extraction functions."""
-    from ...rag.kb_results import extract_kb_funding_items, extract_kb_compliance_items, merge_kb_and_perplexity_results
-    return extract_kb_funding_items, extract_kb_compliance_items, merge_kb_and_perplexity_results
-
 
 router = APIRouter()
 
@@ -101,50 +80,7 @@ class ResearchRequest(BaseModel):
     product: str
     state: str  # Two-letter code
     audience: str
-    top_n: int = 3
-    min_score: int = 40
-
-
-class FundingItem(BaseModel):
-    """Funding opportunity item."""
-    title: str
-    description: Optional[str]
-    amount: Optional[str]
-    deadline: Optional[str]
-    source: Optional[str]
-    score: int
-    score_reason: str
-    email_hook: str
-
-
-class ComplianceItem(BaseModel):
-    """Compliance requirement item."""
-    title: str
-    description: Optional[str]
-    type: Optional[str]
-    deadline_or_frequency: Optional[str]
-    hours_required: Optional[str]
-    score: int
-    score_reason: str
-    email_hook: str
-
-
-class ComplianceFundingItem(BaseModel):
-    """Compliance-linked funding item.
-    
-    These are funding sources that REQUIRE a compliance trigger to access,
-    like CSI/TSI school improvement grants or consent decree funding.
-    """
-    title: str
-    description: Optional[str]
-    amount: Optional[str]
-    compliance_trigger: str  # e.g., "CSI/TSI designation", "DOJ consent decree"
-    deadline: Optional[str]
-    action_required: Optional[str]  # e.g., "Amend CSG application to include EL PD"
-    districts_affected: Optional[List[str]]
-    score: int
-    score_reason: str
-    email_hook: str
+    top_n: int = 5  # Default to 5 items per category
 
 
 class ResearchResponse(BaseModel):
@@ -153,14 +89,102 @@ class ResearchResponse(BaseModel):
     state: str
     state_full: str
     audience: str
-    product_context_summary: str
-    funding_items: List[dict]
-    compliance_items: List[dict]
-    compliance_funding_items: List[dict]  # NEW: Funding tied to compliance status
+    product_context: dict
+    # KB items (from our knowledge base)
+    kb_funding: List[dict]
+    kb_compliance: List[dict]
+    # Web items (from Perplexity research)
+    web_funding: List[dict]
+    web_compliance: List[dict]
+    # Raw content for debugging
+    raw_kb_content: Optional[str]
     raw_funding_content: Optional[str]
     raw_compliance_content: Optional[str]
-    raw_compliance_funding_content: Optional[str]
 
+
+# ============================================================================
+# Helper functions - Direct SQL queries (no RAG)
+# ============================================================================
+
+async def get_state_kb_content(db: AsyncSession, state_code: str) -> str:
+    """
+    Get all KB content for a state - direct SQL, no embeddings.
+    
+    This replaces the complex RAG pipeline with a simple, reliable query.
+    """
+    query = select(KnowledgeBaseItem).where(
+        KnowledgeBaseItem.category == "state_content"
+    )
+    result = await db.execute(query)
+    items = result.scalars().all()
+    
+    # Filter by state code (e.g., "FL", "CO")
+    state_items = [i for i in items if state_code in (i.applicable_states or [])]
+    
+    logger.info(f"Found {len(state_items)} KB items for state {state_code}")
+    
+    if not state_items:
+        return ""
+    
+    # Combine all content
+    return "\n\n---\n\n".join([
+        f"Document: {item.title}\n{item.content}" 
+        for item in state_items
+        if item.content
+    ])
+
+
+async def get_product_info(db: AsyncSession, product_name: str) -> dict:
+    """
+    Get product information from KB.
+    
+    Simple SQL query - no embeddings needed.
+    """
+    # Normalize product name for matching
+    product_key = product_name.lower().replace(" ", "_") if product_name else None
+    
+    context = {
+        "product_name": product_name,
+        "description": "",
+        "use_cases": [],
+        "value_propositions": [],
+    }
+    
+    if not product_key:
+        return context
+    
+    try:
+        # Try to get product KB items
+        query = select(KnowledgeBaseItem).where(
+            KnowledgeBaseItem.product_name == product_key
+        )
+        result = await db.execute(query)
+        items = result.scalars().all()
+        
+        for item in items:
+            if item.content:
+                if item.subcategory == "description":
+                    context["description"] = item.content[:500]
+                elif item.subcategory == "use_case":
+                    context["use_cases"].append(item.content[:300])
+                elif item.subcategory == "value_proposition":
+                    context["value_propositions"].append(item.content[:300])
+        
+        # If no structured items, use any product content
+        if not context["description"] and items:
+            context["description"] = items[0].content[:500] if items[0].content else ""
+        
+        logger.info(f"Got product info for {product_name}: {len(items)} KB items")
+        
+    except Exception as e:
+        logger.error(f"Error getting product info: {e}")
+    
+    return context
+
+
+# ============================================================================
+# API Endpoints
+# ============================================================================
 
 @router.get("/products")
 async def list_products():
@@ -200,20 +224,22 @@ async def research(
     request: ResearchRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Main research endpoint.
+    """
+    Main research endpoint - SIMPLIFIED ARCHITECTURE.
     
-    This is the core endpoint for the V1 email tool:
-    1. Gets product context via RAG
-    2. Runs Perplexity research informed by product context
-    3. Scores results by relevance
-    4. Returns Top N items for user curation
+    Flow:
+    1. Direct SQL query for KB content (no RAG)
+    2. GPT extraction from KB
+    3. Parallel Perplexity research
+    4. GPT parsing of Perplexity
+    5. Return all items - user picks what's relevant
     
     Args:
         request: ResearchRequest with product, state, audience
         db: Database session
     
     Returns:
-        ResearchResponse with top funding and compliance items
+        ResearchResponse with KB items and web research items
     """
     # Validate inputs
     if request.product not in WCEPS_PRODUCTS:
@@ -225,204 +251,115 @@ async def research(
     if request.audience not in AUDIENCES:
         raise HTTPException(400, f"Invalid audience. Must be one of: {AUDIENCES}")
     
-    state_full = STATE_NAMES[request.state]
+    state_code = request.state
+    state_full = STATE_NAMES[state_code]
     
-    # Clear cache before each search to ensure fresh results
-    try:
-        from sqlalchemy import delete
-        from ...db import ScrapedContent
-        
-        await db.execute(
-            delete(ScrapedContent)
-            .where(ScrapedContent.content_type == "research_cache")
-            .where(ScrapedContent.title.like(f"%{request.state}%"))
-        )
-        await db.commit()
-        logger.info(f"Cleared research cache for {request.state}")
-    except Exception as e:
-        logger.warning(f"Failed to clear cache: {e}")
+    logger.info(f"Research request: {request.product} in {state_full} for {request.audience}")
     
-    try:
-        # Step 1: Get product context via optimized RAG
-        # Uses: query expansion + hybrid search (semantic+keyword) + GPT re-ranking
-        get_product_context_optimized = get_rag_query_optimized()
-        product_context = await get_product_context_optimized(
-            product_name=request.product,
-            audience=request.audience,
-            state=state_full,
-            db=db,
-            use_reranking=True,  # Enable GPT re-ranking for best quality
-        )
-        context_summary = product_context.get("summary_for_research", "")
-        logger.info(f"RAG context retrieved: {len(context_summary)} chars")
-    except Exception as e:
-        logger.error(f"Optimized RAG query failed, falling back to basic: {e}")
-        # Fallback to basic RAG query
+    # =========================================================================
+    # Step 1: Get KB content (direct SQL - instant, always works)
+    # =========================================================================
+    kb_content = await get_state_kb_content(db, state_code)
+    product_info = await get_product_info(db, request.product)
+    
+    logger.info(f"KB content length: {len(kb_content)} chars")
+    
+    # =========================================================================
+    # Step 2: Extract from KB (GPT call if we have content)
+    # =========================================================================
+    kb_funding = []
+    kb_compliance = []
+    
+    if kb_content:
         try:
-            query_product_context = get_rag_query()
-            product_context = query_product_context(
-                product_name=request.product,
-                audience=request.audience,
+            from ...research.kb_extractor import extract_from_kb
+            
+            kb_results = await extract_from_kb(
+                kb_content=kb_content,
                 state=state_full,
+                product=request.product,
             )
-            context_summary = product_context.get("summary_for_research", "")
-        except Exception as e2:
-            logger.error(f"Basic RAG query also failed: {e2}")
-            product_context = {}
-            context_summary = f"Product: {request.product}"
+            
+            kb_funding = kb_results.get("funding", [])
+            kb_compliance = kb_results.get("compliance", [])
+            
+            logger.info(f"KB extraction: {len(kb_funding)} funding, {len(kb_compliance)} compliance")
+            
+        except Exception as e:
+            logger.error(f"KB extraction failed: {e}")
     
-    # Step 2a: Extract funding/compliance directly from KB content
-    kb_funding_items = []
-    kb_compliance_items = []
-    try:
-        extract_kb_funding_items, extract_kb_compliance_items, merge_kb_and_perplexity_results = get_kb_results_functions()
-        
-        # Get the raw RAG results for KB extraction
-        rag_results = product_context.get("raw_results", [])
-        if not rag_results:
-            # Fallback: create results from the context content
-            rag_results = [
-                {"content": product_context.get("summary_for_research", "")},
-            ]
-            # Add any state-specific content
-            if product_context.get("state_specific"):
-                rag_results.extend([{"content": c} for c in product_context["state_specific"]])
-            # Add talking points
-            if product_context.get("talking_points"):
-                rag_results.extend([{"content": c} for c in product_context["talking_points"]])
-        
-        kb_funding_items = await extract_kb_funding_items(
-            rag_results=rag_results,
-            state=state_full,
-            product=request.product,
-        )
-        logger.info(f"Extracted {len(kb_funding_items)} funding items from KB")
-        
-        kb_compliance_items = await extract_kb_compliance_items(
-            rag_results=rag_results,
-            state=state_full,
-            product=request.product,
-        )
-        logger.info(f"Extracted {len(kb_compliance_items)} compliance items from KB")
-    except Exception as e:
-        logger.error(f"KB extraction failed: {e}")
-        merge_kb_and_perplexity_results = lambda kb, pp, **_: kb + pp  # Simple fallback merger
+    # =========================================================================
+    # Step 3: Perplexity research (parallel calls for speed)
+    # =========================================================================
+    web_funding = []
+    web_compliance = []
+    raw_funding_content = None
+    raw_compliance_content = None
     
-    # Step 2b: Research funding, compliance, and compliance-linked funding via Perplexity
     try:
-        research_state_funding, research_state_compliance, research_compliance_funding = get_perplexity_functions()
-        
-        funding_result = await research_state_funding(
-            state=request.state,
-            state_full=state_full,
-            db=db,
-            product_context=product_context,
+        from ...research.perplexity import (
+            research_state_funding_simple,
+            research_state_compliance_simple,
         )
         
-        compliance_result = await research_state_compliance(
-            state=request.state,
+        # Build context for Perplexity
+        context_for_perplexity = f"Product: {request.product}"
+        if product_info.get("description"):
+            context_for_perplexity += f"\nDescription: {product_info['description'][:300]}"
+        
+        # Run both Perplexity queries in parallel
+        funding_task = research_state_funding_simple(
+            state=state_code,
             state_full=state_full,
-            db=db,
-            product_context=product_context,
+            product_context=context_for_perplexity,
+        )
+        compliance_task = research_state_compliance_simple(
+            state=state_code,
+            state_full=state_full,
+            product_context=context_for_perplexity,
         )
         
-        # Research compliance-linked funding (CSI/TSI grants, consent decree funding, etc.)
-        compliance_funding_result = await research_compliance_funding(
-            state=request.state,
-            state_full=state_full,
-            db=db,
-            product_context=product_context,
+        funding_result, compliance_result = await asyncio.gather(
+            funding_task,
+            compliance_task,
+            return_exceptions=True,
         )
+        
+        # Process funding result
+        if isinstance(funding_result, Exception):
+            logger.error(f"Funding research failed: {funding_result}")
+        else:
+            web_funding = funding_result.get("items", [])
+            raw_funding_content = funding_result.get("content")
+            logger.info(f"Web funding: {len(web_funding)} items")
+        
+        # Process compliance result
+        if isinstance(compliance_result, Exception):
+            logger.error(f"Compliance research failed: {compliance_result}")
+        else:
+            web_compliance = compliance_result.get("items", [])
+            raw_compliance_content = compliance_result.get("content")
+            logger.info(f"Web compliance: {len(web_compliance)} items")
+        
     except Exception as e:
         logger.error(f"Perplexity research failed: {e}")
-        funding_result = {"items": []}
-        compliance_result = {"items": []}
-        compliance_funding_result = {"items": []}
     
-    # Step 3: Merge KB items with Perplexity items
-    perplexity_funding = funding_result.get("items", [])
-    perplexity_compliance = compliance_result.get("items", [])
-    compliance_funding_items = compliance_funding_result.get("items", [])
-    
-    # Merge KB + Perplexity results (KB items prioritized, deduped)
-    funding_items = merge_kb_and_perplexity_results(
-        kb_items=kb_funding_items,
-        perplexity_items=perplexity_funding,
-        item_type="funding",
-    )
-    compliance_items = merge_kb_and_perplexity_results(
-        kb_items=kb_compliance_items,
-        perplexity_items=perplexity_compliance,
-        item_type="compliance",
-    )
-    
-    logger.info(f"Merged results: {len(funding_items)} funding, {len(compliance_items)} compliance")
-    
-    try:
-        get_top_items = get_scoring_function()
-        
-        # Score funding items (hidden gems)
-        if funding_items:
-            top_funding = await get_top_items(
-                items=funding_items,
-                item_type="funding",
-                product=request.product,
-                audience=request.audience,
-                state=state_full,
-                product_context=context_summary,
-                top_n=request.top_n,
-                min_score=request.min_score,
-            )
-        else:
-            top_funding = []
-        
-        # Score compliance items
-        if compliance_items:
-            top_compliance = await get_top_items(
-                items=compliance_items,
-                item_type="compliance",
-                product=request.product,
-                audience=request.audience,
-                state=state_full,
-                product_context=context_summary,
-                top_n=request.top_n,
-                min_score=request.min_score,
-            )
-        else:
-            top_compliance = []
-        
-        # Score compliance-linked funding items (CSI/TSI grants, etc.)
-        if compliance_funding_items:
-            top_compliance_funding = await get_top_items(
-                items=compliance_funding_items,
-                item_type="compliance_funding",
-                product=request.product,
-                audience=request.audience,
-                state=state_full,
-                product_context=context_summary,
-                top_n=request.top_n,
-                min_score=request.min_score,
-            )
-        else:
-            top_compliance_funding = []
-    except Exception as e:
-        logger.error(f"Scoring failed: {e}")
-        top_funding = funding_items[:request.top_n]
-        top_compliance = compliance_items[:request.top_n]
-        top_compliance_funding = compliance_funding_items[:request.top_n]
-    
+    # =========================================================================
+    # Step 4: Return all items - user picks what's relevant
+    # =========================================================================
     return ResearchResponse(
         product=request.product,
-        state=request.state,
+        state=state_code,
         state_full=state_full,
         audience=request.audience,
-        product_context_summary=context_summary,
-        funding_items=top_funding,
-        compliance_items=top_compliance,
-        compliance_funding_items=top_compliance_funding,
-        raw_funding_content=funding_result.get("content"),
-        raw_compliance_content=compliance_result.get("content"),
-        raw_compliance_funding_content=compliance_funding_result.get("content"),
+        product_context=product_info,
+        kb_funding=kb_funding[:request.top_n],
+        kb_compliance=kb_compliance[:request.top_n],
+        web_funding=web_funding[:request.top_n],
+        web_compliance=web_compliance[:request.top_n],
+        raw_kb_content=kb_content[:2000] if kb_content else None,
+        raw_funding_content=raw_funding_content,
+        raw_compliance_content=raw_compliance_content,
     )
 
 

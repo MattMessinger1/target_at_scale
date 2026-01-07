@@ -1223,3 +1223,278 @@ async def full_state_research(
         "compliance_funding": compliance_funding,
         "researched_at": datetime.utcnow().isoformat(),
     }
+
+
+# ============================================================================
+# SIMPLIFIED PERPLEXITY FUNCTIONS (V2 Architecture)
+# ============================================================================
+
+# Simple, focused query templates
+SIMPLE_FUNDING_QUERY = """
+Find active government funding in {state} for English learner (EL) professional development programs.
+
+Focus on:
+1. Competitive grants (not Title I/III basics)
+2. School improvement funds (CSI/TSI/ATSI grants)  
+3. State appropriations for EL programs
+4. Federal programs with current applications open
+5. Any new funding announced in past 12 months
+
+For each funding source:
+- Program name
+- Funding amount available
+- Application deadline
+- Direct URL to apply or learn more
+
+If no significant funding beyond standard allocations, say so clearly.
+Verify all sources are current as of January 2026.
+"""
+
+SIMPLE_COMPLIANCE_QUERY = """
+Find compliance requirements for English learner (EL) programs in {state}.
+
+Focus on:
+1. DOJ investigations or consent decrees - NAME SPECIFIC DISTRICTS
+2. CSI/TSI/ATSI schools for EL outcomes - NAME DISTRICTS with many on the list
+3. Teacher certification/endorsement requirements for EL
+4. Mandatory professional development hours
+5. State-specific EL service mandates
+6. Assessment and reporting deadlines (exclude WIDA ACCESS - we know about that)
+
+For each requirement:
+- Requirement name
+- Deadline or frequency
+- Who it affects
+- Consequences of non-compliance
+- Specific district names when applicable
+- Direct URL to official guidance
+
+Verify all requirements are currently in effect as of January 2026.
+"""
+
+
+async def research_state_funding_simple(
+    state: str,
+    state_full: str,
+    product_context: str = "",
+) -> Dict[str, Any]:
+    """
+    Simplified funding research - no caching, no complex context.
+    
+    Args:
+        state: Two-letter state code
+        state_full: Full state name  
+        product_context: Simple string context about the product
+    
+    Returns:
+        Dict with items and raw content
+    """
+    import re
+    
+    client = PerplexityClient()
+    
+    # Build simple query
+    query = SIMPLE_FUNDING_QUERY.format(state=state_full)
+    if product_context:
+        query = f"Product context: {product_context}\n\n{query}"
+    
+    result = await client.search(query)
+    raw_content = result["content"]
+    
+    # Strip <think> blocks from reasoning model
+    raw_content_clean = re.sub(r'<think>.*?</think>', '', raw_content, flags=re.DOTALL).strip()
+    
+    # Parse items
+    items = await _parse_funding_items_simple(
+        raw_content_clean,
+        state_full,
+        result.get("citations", [])
+    )
+    
+    return {
+        "items": items,
+        "content": raw_content,
+        "citations": result.get("citations", []),
+    }
+
+
+async def research_state_compliance_simple(
+    state: str,
+    state_full: str,
+    product_context: str = "",
+) -> Dict[str, Any]:
+    """
+    Simplified compliance research - no caching, no complex context.
+    
+    Args:
+        state: Two-letter state code
+        state_full: Full state name
+        product_context: Simple string context about the product
+    
+    Returns:
+        Dict with items and raw content
+    """
+    import re
+    
+    client = PerplexityClient()
+    
+    # Build simple query
+    query = SIMPLE_COMPLIANCE_QUERY.format(state=state_full)
+    if product_context:
+        query = f"Product context: {product_context}\n\n{query}"
+    
+    result = await client.search(query)
+    raw_content = result["content"]
+    
+    # Strip <think> blocks from reasoning model
+    raw_content_clean = re.sub(r'<think>.*?</think>', '', raw_content, flags=re.DOTALL).strip()
+    
+    # Parse items
+    items = await _parse_compliance_items_simple(
+        raw_content_clean,
+        state_full,
+        result.get("citations", [])
+    )
+    
+    return {
+        "items": items,
+        "content": raw_content,
+        "citations": result.get("citations", []),
+    }
+
+
+async def _parse_funding_items_simple(
+    content: str,
+    state: str,
+    citations: List[str],
+) -> List[Dict[str, Any]]:
+    """Parse funding items with simple, clean prompts."""
+    from openai import AsyncOpenAI
+    import re
+    
+    openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+    
+    # Format citations
+    citations_text = ""
+    if citations:
+        citations_text = "\nSource URLs:\n" + "\n".join(citations[:8])
+    
+    prompt = f"""Extract funding opportunities from this research about {state}.
+
+For each funding source, return JSON with:
+- title: Program name
+- description: Brief description (1-2 sentences)
+- amount: Funding amount if mentioned
+- deadline: Application deadline if mentioned
+- funding_type: "federal", "state", or "district"
+- source_url: Direct URL to program info
+- source_type: "web_research"
+
+{citations_text}
+
+Research content:
+{content[:5000]}
+
+Return a JSON array. If no funding found, return [].
+JSON:"""
+
+    try:
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "Extract funding data. Return only valid JSON array."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0,
+            max_tokens=2000,
+        )
+        
+        text = response.choices[0].message.content.strip()
+        
+        # Clean markdown
+        if text.startswith("```"):
+            text = re.sub(r"```json?\n?", "", text)
+            text = text.replace("```", "").strip()
+        
+        items = json.loads(text)
+        
+        # Ensure source_type on all items
+        if isinstance(items, list):
+            for item in items:
+                item["source_type"] = "web_research"
+        
+        return items if isinstance(items, list) else []
+        
+    except Exception as e:
+        print(f"Error parsing funding: {e}")
+        return []
+
+
+async def _parse_compliance_items_simple(
+    content: str,
+    state: str,
+    citations: List[str],
+) -> List[Dict[str, Any]]:
+    """Parse compliance items with simple, clean prompts."""
+    from openai import AsyncOpenAI
+    import re
+    
+    openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+    
+    # Format citations
+    citations_text = ""
+    if citations:
+        citations_text = "\nSource URLs:\n" + "\n".join(citations[:8])
+    
+    prompt = f"""Extract compliance requirements from this research about {state}.
+
+Do NOT include WIDA ACCESS testing - we already know about that.
+
+For each requirement, return JSON with:
+- title: Requirement name
+- description: Brief description (1-2 sentences)
+- type: "consent_decree", "certification", "professional_development", "reporting", "csi_tsi", or "state_mandate"
+- deadline: When it applies
+- hours_required: PD hours if applicable
+- districts_affected: List of specific district names if mentioned
+- source_url: Direct URL to guidance
+- source_type: "web_research"
+
+{citations_text}
+
+Research content:
+{content[:5000]}
+
+Return a JSON array. If no compliance items found, return [].
+JSON:"""
+
+    try:
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "Extract compliance data. Return only valid JSON array."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0,
+            max_tokens=2000,
+        )
+        
+        text = response.choices[0].message.content.strip()
+        
+        # Clean markdown
+        if text.startswith("```"):
+            text = re.sub(r"```json?\n?", "", text)
+            text = text.replace("```", "").strip()
+        
+        items = json.loads(text)
+        
+        # Ensure source_type on all items
+        if isinstance(items, list):
+            for item in items:
+                item["source_type"] = "web_research"
+        
+        return items if isinstance(items, list) else []
+        
+    except Exception as e:
+        print(f"Error parsing compliance: {e}")
+        return []
