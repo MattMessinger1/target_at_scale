@@ -323,6 +323,9 @@ PRODUCT CONTEXT (from Knowledge Base):
             recipient_section += f"- Title: {recipient_title}\n"
     
     # Combine all sections
+    subject_hook_line = (
+        f'- The SUBJECT must include the exact phrase: "{subject_hook}"\n' if subject_hook else ""
+    )
     prompt = f"""Generate a personalized sales email for {product} targeting {audience} in {state}.
 
 {product_section}
@@ -336,7 +339,7 @@ STATE: {state}
 
 SUBJECT REQUIREMENTS (CRITICAL):
 - The SUBJECT must include the state name OR abbreviation (e.g., "{state}")
-- The SUBJECT must include the exact phrase: "{subject_hook}" (if provided)
+{subject_hook_line}- If funding/compliance items are provided, the SUBJECT must name at least one of them
 - Do NOT write a generic subject like "Unlock Opportunities" or "Quick Question"
 - Make it specific and compelling, under 70 characters
 
