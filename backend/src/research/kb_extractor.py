@@ -182,15 +182,18 @@ def _clean_json_response(content: str) -> str:
 async def get_product_context(
     db,
     product_name: str,
+    state_code: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Get product information from KB for context.
     
-    Simple SQL query to get product-related KB items.
+    Simple SQL query to get product-related KB items, plus state-relevant
+    case studies and state content when available (for stronger, more specific emails).
     
     Args:
         db: Database session
         product_name: Name of the product (e.g., "CARE Coaching")
+        state_code: Optional two-letter code to pull state-specific docs/case studies (e.g., "FL")
     
     Returns:
         Dict with product context including description, use cases, etc.
@@ -206,33 +209,75 @@ async def get_product_context(
         "description": "",
         "use_cases": [],
         "value_propositions": [],
+        "product_docs": [],
+        "state_specific": [],
+        "case_studies": [],
+        "testimonials": [],
     }
     
     if not product_key:
         return context
     
     try:
-        # Get product KB items
-        query = select(KnowledgeBaseItem).where(
-            KnowledgeBaseItem.category == "product",
-            KnowledgeBaseItem.product_name == product_key
-        )
+        # Get all KB items tagged to this product (across categories)
+        query = select(KnowledgeBaseItem).where(KnowledgeBaseItem.product_name == product_key)
         result = await db.execute(query)
         items = result.scalars().all()
-        
-        for item in items:
-            if item.subcategory == "description" and item.content:
-                context["description"] = item.content[:500]
-            elif item.subcategory == "use_case" and item.content:
-                context["use_cases"].append(item.content[:300])
-            elif item.subcategory == "value_proposition" and item.content:
-                context["value_propositions"].append(item.content[:300])
-        
-        # If no structured items, use any product content
-        if not context["description"] and items:
-            context["description"] = items[0].content[:500] if items[0].content else ""
-        
-        logger.info(f"Got product context for {product_name}: {len(items)} items")
+
+        def _snippet(it: KnowledgeBaseItem, *, max_len: int = 700) -> str:
+            body = (it.summary or it.content or "").strip()
+            body = body[:max_len]
+            return f"Title: {it.title}\nCategory: {it.category}\n{body}"
+
+        # Categorize for stronger prompt weaving
+        product_items = [it for it in items if it.category == "product"]
+        case_study_items = [it for it in items if it.category == "case_study"]
+        testimonial_items = [it for it in items if it.category == "testimonial"]
+        state_content_items = [
+            it
+            for it in items
+            if it.category == "state_content"
+            and state_code
+            and it.applicable_states
+            and state_code in it.applicable_states
+        ]
+
+        # Pull structured signals if present
+        for it in product_items:
+            if it.subcategory == "description" and it.content:
+                context["description"] = it.content[:500]
+            elif it.subcategory == "use_case" and it.content:
+                context["use_cases"].append(it.content[:300])
+            elif it.subcategory == "value_proposition" and it.content:
+                context["value_propositions"].append(it.content[:300])
+
+        # Fallback: use first product doc snippet as description if missing
+        if not context["description"] and product_items:
+            context["description"] = (product_items[0].summary or product_items[0].content or "")[:500]
+
+        # Add compact doc snippets for the generator prompt
+        context["product_docs"] = [_snippet(it) for it in product_items[:2]]
+        context["state_specific"] = [_snippet(it) for it in state_content_items[:2]]
+
+        # Prefer state-specific case studies if applicable_states tagged; else fall back to any
+        state_case_studies = [
+            it
+            for it in case_study_items
+            if state_code and it.applicable_states and state_code in it.applicable_states
+        ]
+        picked_case_studies = (state_case_studies or case_study_items)[:2]
+        context["case_studies"] = [_snippet(it) for it in picked_case_studies]
+
+        context["testimonials"] = [_snippet(it, max_len=400) for it in testimonial_items[:1]]
+
+        logger.info(
+            "Got product context for %s: %s items (product=%s, state_content=%s, case_study=%s)",
+            product_name,
+            len(items),
+            len(product_items),
+            len(state_content_items),
+            len(case_study_items),
+        )
         
     except Exception as e:
         logger.error(f"Error getting product context: {e}")

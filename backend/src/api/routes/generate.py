@@ -60,7 +60,7 @@ OPENING: Reference Title III compliance or reporting
 
 BASE_STYLE_GUIDE = """
 STRUCTURE:
-- Subject line under 50 characters
+- Subject line under 70 characters
 - 2-3 short paragraphs
 - 2-3 bullet points for key benefits
 - Clear call to action
@@ -70,8 +70,10 @@ CONTENT RULES:
 - Plain text only - NO markdown, NO asterisks, NO formatting
 - NO wisc.edu URLs - only wceps.org
 - Include scheduling link: calendly.com/wceps
+- CTA MUST ask for a 15-minute meeting and encourage scheduling today
 - Be specific about the product benefits
 - Reference the funding/compliance hook naturally (don't force it)
+- If funding/compliance items are provided, the SUBJECT must name at least one of them
 
 OPENING:
 - First sentence: ONE short question or statement (UNDER 12 WORDS)
@@ -152,7 +154,8 @@ async def generate_email(
 
     # Get product context from KB (direct DB query, no RAG/Chroma dependency)
     from ...research.kb_extractor import get_product_context
-    product_context = await get_product_context(db, primary_product)
+    primary_state_code = request.state.split(",")[0].strip()
+    product_context = await get_product_context(db, primary_product, state_code=primary_state_code or None)
     
     # Build the generation prompt
     prompt = build_email_prompt(
@@ -227,6 +230,15 @@ def build_email_prompt(
     # Get audience-specific style
     audience_style = STYLE_GUIDES.get(audience, STYLE_GUIDES["District Leadership"])
     
+    # Choose a primary hook for subject line (strong differentiation)
+    subject_hook = None
+    if compliance_funding_items:
+        subject_hook = compliance_funding_items[0].title
+    elif compliance_items:
+        subject_hook = compliance_items[0].title
+    elif funding_items:
+        subject_hook = funding_items[0].title
+
     # Build product context section
     product_section = f"""
 PRODUCT: {product}
@@ -243,10 +255,23 @@ PRODUCT CONTEXT (from Knowledge Base):
         for uc in product_context["use_cases"][:2]:
             product_section += f"- {uc[:300]}...\n"
     
-    if product_context.get("talking_points"):
-        product_section += "\nKey Talking Points:\n"
-        for tp in product_context["talking_points"][:2]:
-            product_section += f"- {tp[:200]}...\n"
+    if product_context.get("description"):
+        product_section += f"\nDescription:\n- {product_context['description'][:350]}...\n"
+
+    if product_context.get("state_specific"):
+        product_section += "\nState-Specific Notes (from KB):\n"
+        for snip in product_context["state_specific"][:2]:
+            product_section += f"- {snip[:600]}\n"
+
+    if product_context.get("case_studies"):
+        product_section += "\nRelevant Case Study Evidence (from KB):\n"
+        for cs in product_context["case_studies"][:2]:
+            product_section += f"- {cs[:600]}\n"
+
+    if product_context.get("testimonials"):
+        product_section += "\nTestimonial (from KB):\n"
+        for t in product_context["testimonials"][:1]:
+            product_section += f"- {t[:500]}\n"
     
     # Build funding section (hidden gems)
     funding_section = ""
@@ -308,6 +333,17 @@ PRODUCT CONTEXT (from Knowledge Base):
 
 TARGET AUDIENCE: {audience}
 STATE: {state}
+
+SUBJECT REQUIREMENTS (CRITICAL):
+- The SUBJECT must include the state name OR abbreviation (e.g., "{state}")
+- The SUBJECT must include the exact phrase: "{subject_hook}" (if provided)
+- Do NOT write a generic subject like "Unlock Opportunities" or "Quick Question"
+- Make it specific and compelling, under 70 characters
+
+CALL TO ACTION REQUIREMENTS (CRITICAL):
+- Ask for a 15-minute meeting
+- Tell them to book a time today
+- Include: calendly.com/wceps
 
 AUDIENCE-SPECIFIC STYLE:
 {audience_style}
