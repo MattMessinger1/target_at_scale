@@ -143,7 +143,7 @@ export interface FundingItem {
   score_reason: string
   email_hook: string
   sources?: SourceLink[]  // Verifiable source links
-  source_type?: 'knowledge_base' | 'perplexity'  // Where the item came from
+  source_type?: 'knowledge_base' | 'perplexity' | 'web_research'  // Where the item came from
   status?: string  // active, verified, unverified, upcoming, closed_until_next_cycle
   score_breakdown?: {
     product_fit: number
@@ -165,7 +165,7 @@ export interface ComplianceItem {
   score_reason: string
   email_hook: string
   sources?: SourceLink[]  // Verifiable source links
-  source_type?: 'knowledge_base' | 'perplexity'  // Where the item came from
+  source_type?: 'knowledge_base' | 'perplexity' | 'web_research'  // Where the item came from
   status?: string  // active, verified, unverified, upcoming
   score_breakdown?: {
     product_fit: number
