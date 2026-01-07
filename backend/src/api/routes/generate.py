@@ -76,8 +76,9 @@ CONTENT RULES:
 - If funding/compliance items are provided, the SUBJECT must name at least one of them
 
 OPENING:
-- First sentence: ONE short question or statement (UNDER 12 WORDS)
-- About recipient's pain point or opportunity
+- First sentence: ONE short empathetic statement (UNDER 16 WORDS)
+- No questions in the first sentence
+- Acknowledge educator constraints (time, compliance, budget) without judgement
 - Active voice only
 """
 
@@ -152,10 +153,10 @@ async def generate_email(
     primary_state_full = request.state_full.split(",")[0].strip()
     primary_audience = request.audience.split(",")[0].strip()
 
-    # Get product context from KB (direct DB query, no RAG/Chroma dependency)
-    from ...research.kb_extractor import get_product_context
     primary_state_code = request.state.split(",")[0].strip()
-    product_context = await get_product_context(db, primary_product, state_code=primary_state_code or None)
+    # Get merged ProductBrief (stored + overrides) for product-expert generation
+    from ...research.product_briefs import get_product_brief
+    product_context = await get_product_brief(db, primary_product, state_code=primary_state_code or None)
     
     # Build the generation prompt
     prompt = build_email_prompt(
@@ -179,7 +180,14 @@ async def generate_email(
         messages=[
             {
                 "role": "system",
-                "content": """You are an expert sales copywriter for WCEPS (Wisconsin Center for Education Products and Services).
+                "content": """You are a trusted, empathetic colleague to K-12 educators and district leaders.
+
+You write as WCEPS (Wisconsin Center for Education Products and Services).
+
+Voice:
+- Empathetic and supportive (being an educator is hard; avoid judgement)
+- Credible and technically accurate (compliance/funding details must be correct)
+- Helpful and action-oriented (make the next step easy)
 
 Your emails are:
 - Professional but warm
@@ -199,6 +207,19 @@ Generate plain text emails only. No markdown, no formatting characters."""
     
     # Parse response
     subject_line, email_body = parse_email_response(content)
+
+    # Tone & compliance safety pass (second pass, low temp) to remove accusatory framing and enforce CTA.
+    subject_line, email_body = await refine_email_tone(
+        subject_line=subject_line,
+        email_body=email_body,
+        state=primary_state_full,
+        audience=primary_audience,
+        product=primary_product,
+        product_context=product_context,
+        funding_items=request.selected_funding,
+        compliance_funding_items=request.selected_compliance_funding,
+        compliance_items=request.selected_compliance,
+    )
     
     # Count words
     word_count = len(email_body.split())
@@ -390,6 +411,56 @@ def parse_email_response(content: str) -> tuple:
         email_body = content
     
     return subject_line, email_body
+
+
+async def refine_email_tone(
+    *,
+    subject_line: str,
+    email_body: str,
+    state: str,
+    audience: str,
+    product: str,
+    product_context: dict,
+    funding_items: List[FundingItemInput],
+    compliance_funding_items: List[ComplianceFundingItemInput],
+    compliance_items: List[ComplianceItemInput],
+) -> tuple:
+    """Second-pass rewrite to enforce empathetic tone and hard requirements."""
+    from openai import AsyncOpenAI
+    import re
+
+    # Quick heuristic: if opener is a question like "Are you..." rewrite.
+    first_line = email_body.strip().split("\n", 1)[0].strip()
+    needs_rewrite = first_line.endswith("?") or re.match(r"^(are you|is your|did you)\b", first_line, re.I)
+
+    # Also ensure CTA includes required phrases.
+    needs_rewrite = needs_rewrite or ("calendly.com/wceps" not in email_body.lower())
+
+    if not needs_rewrite:
+        return subject_line, email_body
+
+    hook = None
+    if compliance_funding_items:
+        hook = compliance_funding_items[0].title
+    elif compliance_items:
+        hook = compliance_items[0].title
+    elif funding_items:
+        hook = funding_items[0].title
+
+    prompt = f"""Rewrite this email to be a trusted, empathetic colleague.\n\nHard rules:\n- Do NOT start with a question.\n- Avoid any accusatory language (\"Are you maximizing\", \"Did you know\", \"You should\").\n- Keep the email plain text.\n- Keep the subject specific; include state and the hook when provided.\n- CTA must: ask for a 15-minute meeting, say \"today\", include calendly.com/wceps.\n\nState: {state}\nAudience: {audience}\nProduct: {product}\nHook: {hook or ''}\n\nProduct brief (for accuracy):\n{str(product_context)[:2500]}\n\nOriginal:\nSUBJECT: {subject_line}\n\n{email_body}\n\nReturn EXACT format:\nSUBJECT: ...\n\n...body...\n"""
+
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    resp = await client.chat.completions.create(
+        model=settings.openai_model,
+        messages=[
+            {"role": "system", "content": "Return plain text only. Follow the format exactly."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.2,
+        max_tokens=900,
+    )
+    text = resp.choices[0].message.content.strip()
+    return parse_email_response(text)
 
 
 @router.post("/batch")

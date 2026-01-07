@@ -1,11 +1,14 @@
 """Knowledge Base API routes."""
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from pydantic import BaseModel
 
 from ...db import get_db, KnowledgeBaseItem
+from ...config import get_settings
+
+settings = get_settings()
 
 router = APIRouter()
 
@@ -157,6 +160,74 @@ async def index_knowledge_base(db: AsyncSession = Depends(get_db)):
     count = await load_and_index_kb(db)
     
     return {"message": f"Indexed {count} knowledge base items"}
+
+
+def _require_admin_token(x_admin_token: Optional[str]) -> None:
+    """Simple admin guard for brief rebuild endpoints."""
+    if not settings.admin_token:
+        raise HTTPException(status_code=500, detail="ADMIN_TOKEN not configured")
+    if not x_admin_token or x_admin_token != settings.admin_token:
+        raise HTTPException(status_code=401, detail="Invalid admin token")
+
+
+@router.get("/product-briefs")
+async def get_product_briefs(
+    product: str = Query(..., description="Product display name, e.g. 'CARE Coaching'"),
+    state: Optional[str] = Query(default=None, description="Optional state code, e.g. FL"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Preview the merged product brief used for generation (stored + overrides)."""
+    from ...research.product_briefs import get_product_brief
+
+    brief = await get_product_brief(db, product, state_code=state, allow_on_demand_build=True)
+    return {"product": product, "state": state, "brief": brief}
+
+
+@router.post("/product-briefs/rebuild")
+async def rebuild_product_briefs(
+    product: str = Query(..., description="Product display name, e.g. 'CARE Coaching'"),
+    state: Optional[str] = Query(default=None, description="Optional state code, e.g. FL"),
+    force: bool = Query(default=False, description="If true, rebuild and overwrite stored brief"),
+    x_admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rebuild (offline) a product brief from KB + overrides and store it.
+
+    Protected by X-Admin-Token header matching ADMIN_TOKEN env var.
+    """
+    _require_admin_token(x_admin_token)
+
+    from ...research.product_briefs import (
+        build_brief_from_kb,
+        normalize_product_key,
+        load_override_brief,
+        deep_merge,
+        upsert_product_brief,
+    )
+
+    product_key = normalize_product_key(product)
+
+    # If not forcing, return existing stored brief if present
+    if not force:
+        from sqlalchemy import select
+        from ...db.models import ProductBrief
+        result = await db.execute(
+            select(ProductBrief).where(
+                ProductBrief.product_key == product_key,
+                ProductBrief.state_code == state,
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            return {"message": "Brief already exists (use force=true to rebuild)", "product_key": product_key}
+
+    auto = await build_brief_from_kb(db, product, state_code=state)
+    override = load_override_brief(product_key, state_code=state)
+    merged = deep_merge(auto, override) if override else auto
+
+    await upsert_product_brief(db, product_key, merged, state_code=state, source="merged")
+
+    return {"message": "Rebuilt product brief", "product_key": product_key, "state": state}
 
 
 @router.post("/ingest-documents")

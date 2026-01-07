@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o"
     firecrawl_api_key: str = ""
     perplexity_api_key: str = ""
+    admin_token: str = ""
     
     # Database
     database_url: str = "sqlite+aiosqlite:///./wceps.db"

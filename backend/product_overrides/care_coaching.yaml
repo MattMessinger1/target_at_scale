@@ -1,0 +1,43 @@
+elevator_pitch: "CARE Coaching is job-embedded professional learning that helps districts build instructional capacity for multilingual learners through coaching cycles, practical tools, and sustained implementation support."
+
+offerings:
+  - "Job-embedded coaching cycles aligned to district priorities"
+  - "Facilitated PLC structures and coaching routines"
+  - "Implementation planning support for district/school improvement plans"
+  - "Artifacts and documentation support to evidence PD completion"
+
+who_its_for:
+  - "District leadership"
+  - "ELL/Multilingual directors"
+  - "Instructional coaches"
+  - "Principals and teacher leaders"
+
+problems_solved:
+  - "Meeting mandated ESOL/EL PD requirements with high-quality, relevant learning"
+  - "Turning school improvement plans into consistent classroom practice"
+  - "Building teacher capacity without adding unsustainable workload"
+  - "Creating a clear implementation routine districts can sustain"
+
+implementation:
+  what_wceps_does:
+    - "Co-designs coaching focus areas aligned to district priorities and compliance drivers"
+    - "Provides coaching structures, tools, and facilitation to support consistent implementation"
+  what_district_does:
+    - "Identifies priority campuses/teams and schedules coaching/PLC touchpoints"
+    - "Aligns coaching focus with existing improvement plans and reporting needs"
+  timeline: "Flexible; typically structured in cycles across a semester or school year."
+
+safe_claims:
+  - "CARE Coaching supports job-embedded professional learning and implementation routines."
+  - "CARE Coaching can be aligned to compliance-driven priorities (when districts choose the focus)."
+
+avoid_phrases:
+  - "Are you maximizing"
+  - "Did you know"
+  - "If you aren't"
+  - "You should have"
+
+states:
+  FL:
+    state_fit_notes:
+      - "Florida districts can align coaching cycles to ESOL endorsement/in-service requirements and school improvement planning processes."

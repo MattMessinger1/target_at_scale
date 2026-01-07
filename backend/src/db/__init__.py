@@ -8,6 +8,7 @@ from .models import (
     ContentScore,
     Email,
     KnowledgeBaseItem,
+    ProductBrief,
     ExtractedSnippet,
 )
 
@@ -22,5 +23,6 @@ __all__ = [
     "ContentScore",
     "Email",
     "KnowledgeBaseItem",
+    "ProductBrief",
     "ExtractedSnippet",
 ]

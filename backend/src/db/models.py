@@ -1,7 +1,7 @@
 """Database models for WCEPS Email Generator."""
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import String, Integer, Float, Text, DateTime, Boolean, ForeignKey, JSON
+from sqlalchemy import String, Integer, Float, Text, DateTime, Boolean, ForeignKey, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
@@ -235,3 +235,32 @@ class KnowledgeBaseItem(Base):
     # Timestamps
     original_created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     indexed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ProductBrief(Base):
+    """Stored, structured product brief used for email generation.
+
+    Briefs are built (offline) from KB materials + optional curated overrides, then
+    stored in the database for fast, reliable runtime generation.
+    """
+
+    __tablename__ = "product_briefs"
+    __table_args__ = (
+        UniqueConstraint("product_key", "state_code", name="uq_product_briefs_product_state"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # Canonical product key (e.g., care_coaching)
+    product_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Optional two-letter state code variant (e.g., FL). NULL means general brief.
+    state_code: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
+
+    # JSON blob holding the brief fields (see research/product_briefs.py)
+    brief_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    # How this brief was produced (auto, override, merged, on_demand)
+    source: Mapped[str] = mapped_column(String(50), nullable=False, default="auto")
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
