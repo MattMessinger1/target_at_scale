@@ -24,6 +24,21 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+def _dedupe_by_title(items: List[dict]) -> List[dict]:
+    """Basic dedupe for extracted items where titles repeat."""
+    seen = set()
+    deduped: List[dict] = []
+    for item in items or []:
+        title = (item or {}).get("title")
+        if not isinstance(title, str) or not title.strip():
+            continue
+        key = title.strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
 
 # State name mapping
 STATE_NAMES = {
@@ -80,7 +95,7 @@ class ResearchRequest(BaseModel):
     product: str
     state: str  # Two-letter code
     audience: str
-    top_n: int = 5  # Default to 5 items per category
+    top_n: int = 50  # Return up to 50 per category; UI lets user pick
 
 
 class ResearchResponse(BaseModel):
@@ -374,6 +389,13 @@ async def research(
     # =========================================================================
     # Step 4: Return all items - user picks what's relevant
     # =========================================================================
+    kb_funding = _dedupe_by_title(kb_funding)
+    kb_compliance_funding = _dedupe_by_title(kb_compliance_funding)
+    kb_compliance = _dedupe_by_title(kb_compliance)
+    web_funding = _dedupe_by_title(web_funding)
+    web_compliance_funding = _dedupe_by_title(web_compliance_funding)
+    web_compliance = _dedupe_by_title(web_compliance)
+
     return ResearchResponse(
         product=request.product,
         state=state_code,

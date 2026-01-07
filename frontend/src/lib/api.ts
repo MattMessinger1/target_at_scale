@@ -300,8 +300,38 @@ async function fetchApi<T>(
   })
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Unknown error' }))
-    throw new Error(error.detail || `HTTP ${response.status}`)
+    const errorData = await response
+      .json()
+      .catch(() => ({ detail: 'Unknown error' as const }))
+
+    const detail = (errorData as { detail?: unknown })?.detail
+
+    const formatValidationErrors = (errors: unknown[]): string => {
+      return errors
+        .map((e) => {
+          if (!e || typeof e !== 'object') return String(e)
+          const obj = e as { loc?: unknown; msg?: unknown }
+          const loc = Array.isArray(obj.loc) ? obj.loc.join('.') : obj.loc ? String(obj.loc) : ''
+          const msg = obj.msg ? String(obj.msg) : JSON.stringify(e)
+          return loc ? `${loc}: ${msg}` : msg
+        })
+        .join('; ')
+    }
+
+    let message: string
+    if (typeof detail === 'string') {
+      message = detail
+    } else if (Array.isArray(detail)) {
+      message = formatValidationErrors(detail)
+    } else if (detail != null) {
+      message = JSON.stringify(detail)
+    } else if (typeof (errorData as { message?: unknown })?.message === 'string') {
+      message = String((errorData as { message?: unknown }).message)
+    } else {
+      message = `HTTP ${response.status}`
+    }
+
+    throw new Error(message || `HTTP ${response.status}`)
   }
 
   return response.json()

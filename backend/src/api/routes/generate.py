@@ -1,8 +1,8 @@
-"""Email generation API route for V1 email tool.
+"""Email generation API route.
 
 This endpoint generates personalized sales emails using:
-1. Product context from RAG
-2. Selected funding and compliance items
+1. Product context from Knowledge Base (direct DB query)
+2. Selected funding, compliance-linked funding, and compliance items
 3. Target audience and state
 """
 from typing import List, Optional
@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from ...db import get_db
-from ...rag.query import query_product_context
 from ...config import get_settings
 
 settings = get_settings()
@@ -146,18 +145,20 @@ async def generate_email(
     """
     from openai import AsyncOpenAI
     
-    # Get product context from RAG
-    product_context = query_product_context(
-        product_name=request.product,
-        audience=request.audience,
-        state=request.state_full,
-    )
+    # Use primary selections if multiple values were joined with commas
+    primary_product = request.product.split(",")[0].strip()
+    primary_state_full = request.state_full.split(",")[0].strip()
+    primary_audience = request.audience.split(",")[0].strip()
+
+    # Get product context from KB (direct DB query, no RAG/Chroma dependency)
+    from ...research.kb_extractor import get_product_context
+    product_context = await get_product_context(db, primary_product)
     
     # Build the generation prompt
     prompt = build_email_prompt(
-        product=request.product,
-        audience=request.audience,
-        state=request.state_full,
+        product=primary_product,
+        audience=primary_audience,
+        state=primary_state_full,
         product_context=product_context,
         funding_items=request.selected_funding,
         compliance_funding_items=request.selected_compliance_funding,
@@ -171,7 +172,7 @@ async def generate_email(
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     
     response = await client.chat.completions.create(
-        model="gpt-5.2-thinking",
+        model=settings.openai_model,
         messages=[
             {
                 "role": "system",
