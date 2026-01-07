@@ -1282,6 +1282,13 @@ Find school district takeovers / state interventions / receivership actions in {
 
 We mean actions where the state education agency (or equivalent) replaces an elected board, appoints a conservator/receiver, creates a "board of managers", or otherwise takes governance control of a district or campuses.
 
+Search using terms like:
+- "{state} education agency taking over school district"
+- "{state} board of managers school district"
+- "{state} district conservator appointed"
+- "{state} school district receivership"
+- "{state} state intervention school district"
+
 Return 1-5 items. For each item, include:
 - District name(s)
 - Agency name (state education agency)

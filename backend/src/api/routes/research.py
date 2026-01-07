@@ -120,6 +120,7 @@ class ResearchResponse(BaseModel):
     raw_funding_content: Optional[str]
     raw_compliance_funding_content: Optional[str]
     raw_compliance_content: Optional[str]
+    raw_takeover_content: Optional[str] = None
 
 
 # ============================================================================
@@ -324,6 +325,7 @@ async def research(
     raw_funding_content = None
     raw_compliance_funding_content = None
     raw_compliance_content = None
+    raw_takeover_content = None
     
     try:
         from ...research.perplexity import (
@@ -389,6 +391,7 @@ async def research(
             logger.error(f"State takeover research failed: {takeover_result}")
         else:
             takeover_items = takeover_result.get("items", [])
+            raw_takeover_content = takeover_result.get("content")
             if takeover_items:
                 web_compliance = (web_compliance or []) + takeover_items
             logger.info(f"Web state takeovers: {len(takeover_items)} items")
@@ -439,6 +442,7 @@ async def research(
         raw_funding_content=raw_funding_content,
         raw_compliance_funding_content=raw_compliance_funding_content,
         raw_compliance_content=raw_compliance_content,
+        raw_takeover_content=raw_takeover_content,
     )
 
 
