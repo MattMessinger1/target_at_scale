@@ -215,7 +215,8 @@ Return STRICT JSON with these fields:
 
 Rules:
 - Keep claims grounded; if outcomes aren't explicit, set outcomes=null.
-- If there are no clear case studies, return an empty array.
+- If KB includes any Category: case_study items, you MUST return at least 1 case_studies entry.
+- If outcomes/district are unclear, set outcomes=null and district=null (do not guess).
 - Include 3-7 offerings if possible; otherwise fewer.
 - Include 5-10 problems_solved written in educator language.
 - Avoid accusatory language; recommend avoid_phrases like \"Are you maximizing\".
@@ -236,6 +237,30 @@ JSON:"""
     )
     text = response.choices[0].message.content.strip()
     brief = json.loads(text)
+
+    # Fallback: ensure at least one case study entry if we provided any case_study KB items.
+    try:
+        provided_case_studies = [it for it in kb_items if it.category == "case_study"]
+        if provided_case_studies and not brief.get("case_studies"):
+            it = provided_case_studies[0]
+            proof = (it.summary or it.content or "").strip().replace("\n", " ")
+            if len(proof) > 280:
+                proof = proof[:280] + "…"
+            brief["case_studies"] = [
+                {
+                    "state": state_code or None,
+                    "district": None,
+                    "context": f"Implementation example from KB document: {it.title}",
+                    "what_we_did": "See proof snippet from KB document.",
+                    "outcomes": None,
+                    "implementation_notes": None,
+                    "proof_snippet": proof,
+                    "source_kb_id": it.id,
+                }
+            ]
+    except Exception:
+        # Don't fail brief build due to fallback
+        pass
 
     # Inject metadata
     brief["_meta"] = {

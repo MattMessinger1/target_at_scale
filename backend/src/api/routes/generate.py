@@ -260,39 +260,64 @@ def build_email_prompt(
     elif funding_items:
         subject_hook = funding_items[0].title
 
-    # Build product context section
+    # Build product context section (ProductBrief)
     product_section = f"""
 PRODUCT: {product}
 
-PRODUCT CONTEXT (from Knowledge Base):
+PRODUCT BRIEF (WCEPS internal):
 """
-    if product_context.get("value_propositions"):
-        product_section += "\nValue Propositions:\n"
-        for vp in product_context["value_propositions"][:2]:
-            product_section += f"- {vp[:300]}...\n"
-    
-    if product_context.get("use_cases"):
-        product_section += "\nUse Cases:\n"
-        for uc in product_context["use_cases"][:2]:
-            product_section += f"- {uc[:300]}...\n"
-    
-    if product_context.get("description"):
-        product_section += f"\nDescription:\n- {product_context['description'][:350]}...\n"
 
-    if product_context.get("state_specific"):
-        product_section += "\nState-Specific Notes (from KB):\n"
-        for snip in product_context["state_specific"][:2]:
-            product_section += f"- {snip[:600]}\n"
+    if product_context.get("elevator_pitch"):
+        product_section += f"\nElevator pitch:\n- {str(product_context['elevator_pitch'])[:350]}\n"
+
+    if product_context.get("offerings"):
+        product_section += "\nSpecific offerings/modules to reference:\n"
+        for o in product_context["offerings"][:5]:
+            product_section += f"- {str(o)[:180]}\n"
+
+    if product_context.get("problems_solved"):
+        product_section += "\nEducator problems we help solve:\n"
+        for p in product_context["problems_solved"][:6]:
+            product_section += f"- {str(p)[:180]}\n"
+
+    impl = product_context.get("implementation") or {}
+    if isinstance(impl, dict) and impl:
+        product_section += "\nImplementation (keep realistic):\n"
+        if impl.get("timeline"):
+            product_section += f"- Timeline: {str(impl.get('timeline'))[:140]}\n"
+        if impl.get("what_wceps_does"):
+            product_section += "- What WCEPS does:\n"
+            for x in (impl.get("what_wceps_does") or [])[:3]:
+                product_section += f"  - {str(x)[:160]}\n"
+        if impl.get("what_district_does"):
+            product_section += "- What the district does:\n"
+            for x in (impl.get("what_district_does") or [])[:3]:
+                product_section += f"  - {str(x)[:160]}\n"
+
+    if product_context.get("state_fit_notes"):
+        product_section += "\nState-fit notes (use if relevant):\n"
+        for n in product_context["state_fit_notes"][:3]:
+            product_section += f"- {str(n)[:220]}\n"
 
     if product_context.get("case_studies"):
-        product_section += "\nRelevant Case Study Evidence (from KB):\n"
-        for cs in product_context["case_studies"][:2]:
-            product_section += f"- {cs[:600]}\n"
+        product_section += "\nCase study evidence (use 1 concrete detail if available):\n"
+        for cs in product_context["case_studies"][:1]:
+            if isinstance(cs, dict):
+                proof = cs.get("proof_snippet") or cs.get("context") or ""
+                product_section += f"- {str(proof)[:260]}\n"
+            else:
+                product_section += f"- {str(cs)[:260]}\n"
 
     if product_context.get("testimonials"):
-        product_section += "\nTestimonial (from KB):\n"
-        for t in product_context["testimonials"][:1]:
-            product_section += f"- {t[:500]}\n"
+        product_section += "\nTestimonial (optional):\n"
+        t0 = product_context["testimonials"][0]
+        if isinstance(t0, dict) and t0.get("quote"):
+            product_section += f"- \"{str(t0['quote'])[:220]}\"\n"
+
+    if product_context.get("avoid_phrases"):
+        product_section += "\nAvoid these phrases (tone):\n"
+        for a in product_context["avoid_phrases"][:6]:
+            product_section += f"- {str(a)[:80]}\n"
     
     # Build funding section (hidden gems)
     funding_section = ""
@@ -436,6 +461,15 @@ async def refine_email_tone(
     # Also ensure CTA includes required phrases.
     needs_rewrite = needs_rewrite or ("calendly.com/wceps" not in email_body.lower())
 
+    # Enforce avoid_phrases (from ProductBrief) anywhere in subject/body.
+    avoid = product_context.get("avoid_phrases") if isinstance(product_context, dict) else None
+    if isinstance(avoid, list) and avoid:
+        hay = f"{subject_line}\n{email_body}".lower()
+        for phrase in avoid:
+            if isinstance(phrase, str) and phrase.strip() and phrase.strip().lower() in hay:
+                needs_rewrite = True
+                break
+
     if not needs_rewrite:
         return subject_line, email_body
 
@@ -447,7 +481,11 @@ async def refine_email_tone(
     elif funding_items:
         hook = funding_items[0].title
 
-    prompt = f"""Rewrite this email to be a trusted, empathetic colleague.\n\nHard rules:\n- Do NOT start with a question.\n- Avoid any accusatory language (\"Are you maximizing\", \"Did you know\", \"You should\").\n- Keep the email plain text.\n- Keep the subject specific; include state and the hook when provided.\n- CTA must: ask for a 15-minute meeting, say \"today\", include calendly.com/wceps.\n\nState: {state}\nAudience: {audience}\nProduct: {product}\nHook: {hook or ''}\n\nProduct brief (for accuracy):\n{str(product_context)[:2500]}\n\nOriginal:\nSUBJECT: {subject_line}\n\n{email_body}\n\nReturn EXACT format:\nSUBJECT: ...\n\n...body...\n"""
+    avoid_text = ""
+    if isinstance(avoid, list) and avoid:
+        avoid_text = "\nAvoid phrases:\n" + "\n".join(f"- {p}" for p in avoid[:10] if isinstance(p, str))
+
+    prompt = f"""Rewrite this email to be a trusted, empathetic colleague.\n\nHard rules:\n- Do NOT start with a question.\n- Avoid any accusatory language.\n- Keep the email plain text.\n- Keep the subject specific; include state and the hook when provided.\n- CTA must: ask for a 15-minute meeting, say \"today\", include calendly.com/wceps.\n{avoid_text}\n\nState: {state}\nAudience: {audience}\nProduct: {product}\nHook: {hook or ''}\n\nProduct brief (for accuracy):\n{str(product_context)[:2500]}\n\nOriginal:\nSUBJECT: {subject_line}\n\n{email_body}\n\nReturn EXACT format:\nSUBJECT: ...\n\n...body...\n"""
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     resp = await client.chat.completions.create(
