@@ -1443,6 +1443,7 @@ For each funding source, return JSON with:
 - amount: Funding amount if mentioned
 - deadline: Application deadline if mentioned
 - funding_type: "federal", "state", or "district"
+- status: "active", "upcoming", or "unverified" (default to "unverified" if unclear)
 - source_url: Direct URL to program info
 - source_type: "web_research"
 
@@ -1474,10 +1475,14 @@ JSON:"""
         
         items = json.loads(text)
         
-        # Ensure source_type on all items
+        # Ensure required fields
         if isinstance(items, list):
             for item in items:
                 item["source_type"] = "web_research"
+                if "status" not in item:
+                    item["status"] = "unverified"
+                if not item.get("source_url") and citations:
+                    item["source_url"] = citations[0]
         
         return items if isinstance(items, list) else []
         
@@ -1513,6 +1518,7 @@ For each requirement, return JSON with:
 - deadline: When it applies
 - hours_required: PD hours if applicable
 - districts_affected: List of specific district names if mentioned
+- status: "active", "unverified", or "resolved" (exclude resolved)
 - source_url: Direct URL to guidance
 - source_type: "web_research"
 
@@ -1544,10 +1550,19 @@ JSON:"""
         
         items = json.loads(text)
         
-        # Ensure source_type on all items
+        # Ensure required fields
         if isinstance(items, list):
+            normalized: List[Dict[str, Any]] = []
             for item in items:
                 item["source_type"] = "web_research"
+                if "status" not in item:
+                    item["status"] = "unverified"
+                if item.get("status") == "resolved":
+                    continue
+                if not item.get("source_url") and citations:
+                    item["source_url"] = citations[0]
+                normalized.append(item)
+            items = normalized
         
         return items if isinstance(items, list) else []
         
@@ -1583,6 +1598,7 @@ For each item, return JSON with:
 - deadline (if mentioned)
 - action_required (if mentioned)
 - districts_affected (array of district names if mentioned, else [])
+- status: "active", "upcoming", or "unverified" (default to "unverified" if unclear)
 - source_url (best official URL you can)
 - source_type: "web_research"
 
@@ -1616,8 +1632,12 @@ JSON:"""
         if isinstance(items, list):
             for item in items:
                 item["source_type"] = "web_research"
+                if "status" not in item:
+                    item["status"] = "unverified"
                 if "districts_affected" not in item or item["districts_affected"] is None:
                     item["districts_affected"] = []
+                if not item.get("source_url") and citations:
+                    item["source_url"] = citations[0]
 
         return items if isinstance(items, list) else []
 

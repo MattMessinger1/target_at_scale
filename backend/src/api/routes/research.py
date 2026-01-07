@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+from ...research.quality_gate import filter_items
+
 def _dedupe_by_title(items: List[dict]) -> List[dict]:
     """Basic dedupe for extracted items where titles repeat."""
     seen = set()
@@ -395,6 +397,15 @@ async def research(
     web_funding = _dedupe_by_title(web_funding)
     web_compliance_funding = _dedupe_by_title(web_compliance_funding)
     web_compliance = _dedupe_by_title(web_compliance)
+
+    # Apply strict relevancy quality gate (3-of-4 signals)
+    kb_funding = filter_items(kb_funding, "funding", request.product, is_kb=True)
+    kb_compliance_funding = filter_items(kb_compliance_funding, "compliance_funding", request.product, is_kb=True)
+    kb_compliance = filter_items(kb_compliance, "compliance", request.product, is_kb=True)
+
+    web_funding = filter_items(web_funding, "funding", request.product, is_kb=False)
+    web_compliance_funding = filter_items(web_compliance_funding, "compliance_funding", request.product, is_kb=False)
+    web_compliance = filter_items(web_compliance, "compliance", request.product, is_kb=False)
 
     return ResearchResponse(
         product=request.product,

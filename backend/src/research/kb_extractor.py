@@ -55,6 +55,7 @@ Extract three types of items:
    - amount: Funding amount if mentioned (e.g., "$2.4M", "up to $50,000", or null)
    - deadline: Application deadline if mentioned (or null)
    - funding_type: Category - "federal", "state", "district", or "competitive"
+   - status: "active", "upcoming", or "unverified" (default to "unverified" if unclear)
    - relevance: How this relates to {product or 'EL programs'} (1 sentence)
 
 2. COMPLIANCE-LINKED FUNDING: Funding sources ONLY available due to a compliance trigger, such as:
@@ -70,13 +71,16 @@ Extract three types of items:
    - compliance_trigger (e.g., "CSI designation", "TSI EL subgroup", "Consent decree")
    - action_required (e.g., "Amend school improvement plan to include EL PD") (or null)
    - districts_affected (list of district names if mentioned, else empty list)
+   - status: "active", "upcoming", or "unverified" (default to "unverified" if unclear)
    - relevance (1 sentence)
 
 3. COMPLIANCE REQUIREMENTS: Mandates, certifications, PD hours, state requirements
    For each, extract:
    - title: Name of the requirement
    - description: What is required (1-2 sentences)
-   - deadline: Deadline if any (or null)
+   - deadline_or_frequency: Deadline or frequency if any (or null)
+   - hours_required: Number of hours if mentioned (or null)
+   - status: "active", "unverified", or "resolved" (exclude resolved)
    - affected_roles: Who this affects (e.g., "all teachers", "EL coordinators")
    - enforcement: How it's enforced if mentioned
 
@@ -114,6 +118,28 @@ JSON:"""
         content = _clean_json_response(content)
         
         result = json.loads(content)
+
+        # Normalize / default status fields
+        for item in result.get("funding", []):
+            if "status" not in item:
+                item["status"] = "unverified"
+        for item in result.get("compliance_funding", []):
+            if "status" not in item:
+                item["status"] = "unverified"
+            if "districts_affected" not in item or item["districts_affected"] is None:
+                item["districts_affected"] = []
+        # Drop resolved compliance items; normalize fields
+        normalized_compliance: List[Dict[str, Any]] = []
+        for item in result.get("compliance", []):
+            if item.get("status") == "resolved":
+                continue
+            if "status" not in item:
+                item["status"] = "unverified"
+            # Back-compat if prompt returns deadline instead of deadline_or_frequency
+            if "deadline_or_frequency" not in item and item.get("deadline"):
+                item["deadline_or_frequency"] = item.get("deadline")
+            normalized_compliance.append(item)
+        result["compliance"] = normalized_compliance
         
         # Add source_type to all items
         for item in result.get("funding", []):

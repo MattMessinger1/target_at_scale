@@ -587,10 +587,18 @@ export function CurationStep({
                   Our research found no special funding sources beyond "table stakes" 
                   (Title I, Title III, standard state funding) for this state and product.
                 </p>
+                {allComplianceFunding.length > 0 ? (
+                  <p className="text-sm text-slate-300">
+                    <strong className="text-amber-400">Check Compliance-Linked Funding below:</strong>{' '}
+                    Schools with CSI/TSI/ATSI designations or consent decree obligations often have
+                    dedicated improvement funds that can support this work.
+                  </p>
+                ) : (
                 <p className="text-sm text-slate-300">
                   <strong className="text-emerald-400">Good news:</strong> Districts can use existing 
                   funding to address compliance requirements. Focus on how your product helps meet mandates.
                 </p>
+                )}
               </div>
             </div>
           </div>
