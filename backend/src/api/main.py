@@ -5,8 +5,11 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from ..db import init_db
+from sqlalchemy import select, func
+
+from ..db import init_db, AsyncSessionLocal
 from ..config import get_settings
+from ..db.models import KnowledgeBaseItem
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -28,6 +31,21 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     await init_db()
+    # Auto-index KB if empty (safety net for fresh DBs / new Postgres instances)
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(func.count()).select_from(KnowledgeBaseItem))
+            kb_count = int(result.scalar() or 0)
+            if kb_count == 0:
+                logger.info("Knowledge base empty; auto-indexing on startup...")
+                from ..kb.loader import load_and_index_kb
+                indexed = await load_and_index_kb(db)
+                logger.info(f"Auto-indexed knowledge base: {indexed} items")
+            else:
+                logger.info(f"Knowledge base already populated: {kb_count} items")
+    except Exception as e:
+        # Never block startup if indexing fails; allow manual /api/kb/index as fallback
+        logger.error(f"KB auto-index failed (startup will continue): {e}", exc_info=True)
     yield
     # Shutdown (if needed)
 

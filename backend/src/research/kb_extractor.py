@@ -38,15 +38,15 @@ async def extract_from_kb(
         product: Product name for context
     
     Returns:
-        Dict with "funding" and "compliance" arrays
+        Dict with "funding", "compliance_funding", and "compliance" arrays
     """
     if not kb_content or not kb_content.strip():
         logger.info(f"No KB content for {state}, returning empty results")
-        return {"funding": [], "compliance": []}
+        return {"funding": [], "compliance_funding": [], "compliance": []}
     
     prompt = f"""Analyze this knowledge base content about {state} for {product or 'EL education'}.
 
-Extract two types of items:
+Extract three types of items:
 
 1. FUNDING OPPORTUNITIES: Government grants, appropriations, competitive funding
    For each, extract:
@@ -57,7 +57,22 @@ Extract two types of items:
    - funding_type: Category - "federal", "state", "district", or "competitive"
    - relevance: How this relates to {product or 'EL programs'} (1 sentence)
 
-2. COMPLIANCE REQUIREMENTS: Mandates, certifications, PD hours, state requirements
+2. COMPLIANCE-LINKED FUNDING: Funding sources ONLY available due to a compliance trigger, such as:
+   - CSI/TSI/ATSI designations
+   - School improvement grants/set-asides (e.g., CSG/CSG-like grants)
+   - Consent decrees / DOJ settlements that require spending
+   Put items here (not in general funding) when access depends on the compliance status/designation.
+   For each, extract:
+   - title
+   - description (1-2 sentences)
+   - amount (or null)
+   - deadline (or null)
+   - compliance_trigger (e.g., "CSI designation", "TSI EL subgroup", "Consent decree")
+   - action_required (e.g., "Amend school improvement plan to include EL PD") (or null)
+   - districts_affected (list of district names if mentioned, else empty list)
+   - relevance (1 sentence)
+
+3. COMPLIANCE REQUIREMENTS: Mandates, certifications, PD hours, state requirements
    For each, extract:
    - title: Name of the requirement
    - description: What is required (1-2 sentences)
@@ -68,6 +83,7 @@ Extract two types of items:
 Return valid JSON with exactly this structure:
 {{
   "funding": [{{...}}],
+  "compliance_funding": [{{...}}],
   "compliance": [{{...}}]
 }}
 
@@ -102,19 +118,26 @@ JSON:"""
         # Add source_type to all items
         for item in result.get("funding", []):
             item["source_type"] = "knowledge_base"
+        for item in result.get("compliance_funding", []):
+            item["source_type"] = "knowledge_base"
         for item in result.get("compliance", []):
             item["source_type"] = "knowledge_base"
         
-        logger.info(f"Extracted {len(result.get('funding', []))} funding, {len(result.get('compliance', []))} compliance from KB")
+        logger.info(
+            "Extracted %s funding, %s compliance_funding, %s compliance from KB",
+            len(result.get("funding", [])),
+            len(result.get("compliance_funding", [])),
+            len(result.get("compliance", [])),
+        )
         
         return result
         
     except json.JSONDecodeError as e:
         logger.error(f"JSON parse error in KB extraction: {e}")
-        return {"funding": [], "compliance": []}
+        return {"funding": [], "compliance_funding": [], "compliance": []}
     except Exception as e:
         logger.error(f"Error extracting from KB: {e}")
-        return {"funding": [], "compliance": []}
+        return {"funding": [], "compliance_funding": [], "compliance": []}
 
 
 def _clean_json_response(content: str) -> str:

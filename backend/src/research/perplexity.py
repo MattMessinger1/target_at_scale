@@ -1272,6 +1272,25 @@ For each requirement:
 Verify all requirements are currently in effect as of January 2026.
 """
 
+SIMPLE_COMPLIANCE_FUNDING_QUERY = """
+Find compliance-linked funding in {state} for English learner (EL) programs.
+
+These funds REQUIRE a compliance trigger to access, such as:
+- CSI/TSI/ATSI school improvement designations
+- State or federal school improvement grants (e.g., Comprehensive Support Grants / CSG/CSG-like)
+- Consent decrees / DOJ settlement agreements that require spending
+
+For each compliance-linked funding source:
+- Program name
+- Amount available (total and/or per-school if available)
+- What compliance trigger is required (CSI, TSI, ATSI, consent decree, corrective action, etc.)
+- Deadline or funding cycle timing
+- Direct URL to official program information
+
+If you cannot find any compliance-linked funding for {state}, say so clearly.
+Verify all sources are current as of January 2026.
+"""
+
 
 async def research_state_funding_simple(
     state: str,
@@ -1356,6 +1375,43 @@ async def research_state_compliance_simple(
         result.get("citations", [])
     )
     
+    return {
+        "items": items,
+        "content": raw_content,
+        "citations": result.get("citations", []),
+    }
+
+
+async def research_compliance_funding_simple(
+    state: str,
+    state_full: str,
+    product_context: str = "",
+) -> Dict[str, Any]:
+    """
+    Simplified compliance-linked funding research - no caching.
+
+    Returns:
+        Dict with items and raw content
+    """
+    import re
+
+    client = PerplexityClient()
+
+    query = SIMPLE_COMPLIANCE_FUNDING_QUERY.format(state=state_full)
+    if product_context:
+        query = f"Product context: {product_context}\n\n{query}"
+
+    result = await client.search(query)
+    raw_content = result["content"]
+
+    raw_content_clean = re.sub(r"<think>.*?</think>", "", raw_content, flags=re.DOTALL).strip()
+
+    items = await _parse_compliance_funding_items_simple(
+        raw_content_clean,
+        state_full,
+        result.get("citations", []),
+    )
+
     return {
         "items": items,
         "content": raw_content,
@@ -1497,4 +1553,74 @@ JSON:"""
         
     except Exception as e:
         print(f"Error parsing compliance: {e}")
+        return []
+
+
+async def _parse_compliance_funding_items_simple(
+    content: str,
+    state: str,
+    citations: List[str],
+) -> List[Dict[str, Any]]:
+    """Parse compliance-linked funding items with simple, clean prompts."""
+    from openai import AsyncOpenAI
+    import re
+
+    openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+    citations_text = ""
+    if citations:
+        citations_text = "\nSource URLs:\n" + "\n".join(citations[:8])
+
+    prompt = f"""Extract COMPLIANCE-LINKED funding from this research about {state}.
+
+Compliance-linked funding means access depends on a compliance trigger (CSI/TSI/ATSI designation, consent decree, corrective action, etc.).
+
+For each item, return JSON with:
+- title
+- description (1-2 sentences)
+- amount (if mentioned)
+- compliance_trigger (e.g., "CSI designation")
+- deadline (if mentioned)
+- action_required (if mentioned)
+- districts_affected (array of district names if mentioned, else [])
+- source_url (best official URL you can)
+- source_type: "web_research"
+
+{citations_text}
+
+Research content:
+{content[:5000]}
+
+Return a JSON array. If none found, return [].
+JSON:"""
+
+    try:
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "Extract compliance-linked funding. Return only valid JSON array."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0,
+            max_tokens=2000,
+        )
+
+        text = response.choices[0].message.content.strip()
+
+        if text.startswith("```"):
+            text = re.sub(r"```json?\n?", "", text)
+            text = text.replace("```", "").strip()
+
+        items = json.loads(text)
+
+        if isinstance(items, list):
+            for item in items:
+                item["source_type"] = "web_research"
+                if "districts_affected" not in item or item["districts_affected"] is None:
+                    item["districts_affected"] = []
+
+        return items if isinstance(items, list) else []
+
+    except Exception as e:
+        print(f"Error parsing compliance-linked funding: {e}")
         return []

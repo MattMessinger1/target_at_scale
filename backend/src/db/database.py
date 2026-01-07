@@ -6,10 +6,20 @@ from ..config import get_settings
 
 settings = get_settings()
 
-# Ensure we use async driver for SQLite
 database_url = settings.database_url
+
+# Ensure we use async drivers for supported DBs
+# - SQLite: sqlite+aiosqlite://
+# - Postgres: postgresql+asyncpg://
 if database_url.startswith("sqlite://") and "+aiosqlite" not in database_url:
-    database_url = database_url.replace("sqlite://", "sqlite+aiosqlite://")
+    database_url = database_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
+elif database_url.startswith("postgres://"):
+    # Heroku/Railway sometimes use postgres://; SQLAlchemy expects postgresql://
+    database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+elif database_url.startswith("postgresql://") and "+asyncpg" not in database_url:
+    database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+elif database_url.startswith("postgresql+psycopg2://"):
+    database_url = database_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
 
 # Create async engine
 engine = create_async_engine(

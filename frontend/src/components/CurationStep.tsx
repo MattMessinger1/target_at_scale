@@ -62,9 +62,11 @@ function SourceLinks({ sources, accentColor = 'slate' }: { sources?: SourceLink[
 interface CurationStepProps {
   // KB items (from our knowledge base)
   kbFunding: FundingItem[]
+  kbComplianceFunding?: ComplianceFundingItem[]
   kbCompliance: ComplianceItem[]
   // Web items (from Perplexity research)
   webFunding: FundingItem[]
+  webComplianceFunding?: ComplianceFundingItem[]
   webCompliance: ComplianceItem[]
   // Legacy: combined items (for backwards compatibility)
   fundingItems?: FundingItem[]
@@ -148,6 +150,8 @@ function FundingCard({
   isSelected: boolean
   onToggle: () => void
 }) {
+  const sources = item.sources ?? (item.source_url ? [{ url: item.source_url }] : undefined)
+
   return (
     <div
       onClick={onToggle}
@@ -188,15 +192,19 @@ function FundingCard({
           )}
           
           {/* Source Links */}
-          <SourceLinks sources={item.sources} accentColor="emerald" />
+          <SourceLinks sources={sources} accentColor="emerald" />
           
-          <div className="mt-3">
-            <ScoreBar score={item.score} />
-          </div>
+          {typeof item.score === 'number' && (
+            <div className="mt-3">
+              <ScoreBar score={item.score} />
+            </div>
+          )}
           
-          <div className="mt-2 text-xs text-slate-500">
-            {item.score_reason}
-          </div>
+          {item.score_reason && (
+            <div className="mt-2 text-xs text-slate-500">
+              {item.score_reason}
+            </div>
+          )}
         </div>
         
         <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
@@ -224,6 +232,9 @@ function ComplianceCard({
   isSelected: boolean
   onToggle: () => void
 }) {
+  const sources = item.sources ?? (item.source_url ? [{ url: item.source_url }] : undefined)
+  const deadline = item.deadline_or_frequency ?? item.deadline
+
   const typeColors: Record<string, string> = {
     consent_decree: 'bg-red-900/50 text-red-400',
     doj_inquiry: 'bg-red-900/50 text-red-400',
@@ -275,9 +286,9 @@ function ComplianceCard({
                 ⏱️ {item.hours_required}
               </span>
             )}
-            {item.deadline_or_frequency && (
+            {deadline && (
               <span className="text-orange-400">
-                📅 {item.deadline_or_frequency}
+                📅 {deadline}
               </span>
             )}
             {item.urgency && (
@@ -293,15 +304,19 @@ function ComplianceCard({
           </div>
           
           {/* Source Links */}
-          <SourceLinks sources={item.sources} accentColor="blue" />
+          <SourceLinks sources={sources} accentColor="blue" />
           
-          <div className="mt-3">
-            <ScoreBar score={item.score} />
-          </div>
+          {typeof item.score === 'number' && (
+            <div className="mt-3">
+              <ScoreBar score={item.score} />
+            </div>
+          )}
           
-          <div className="mt-2 text-xs text-slate-500">
-            {item.score_reason}
-          </div>
+          {item.score_reason && (
+            <div className="mt-2 text-xs text-slate-500">
+              {item.score_reason}
+            </div>
+          )}
         </div>
         
         <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
@@ -329,6 +344,8 @@ function ComplianceFundingCard({
   isSelected: boolean
   onToggle: () => void
 }) {
+  const sources = item.sources ?? (item.source_url ? [{ url: item.source_url }] : undefined)
+
   return (
     <div
       onClick={onToggle}
@@ -396,15 +413,19 @@ function ComplianceFundingCard({
           )}
           
           {/* Source Links */}
-          <SourceLinks sources={item.sources} accentColor="slate" />
+          <SourceLinks sources={sources} accentColor="slate" />
           
-          <div className="mt-3">
-            <ScoreBar score={item.score} />
-          </div>
+          {typeof item.score === 'number' && (
+            <div className="mt-3">
+              <ScoreBar score={item.score} />
+            </div>
+          )}
           
-          <div className="mt-2 text-xs text-slate-500">
-            {item.score_reason}
-          </div>
+          {item.score_reason && (
+            <div className="mt-2 text-xs text-slate-500">
+              {item.score_reason}
+            </div>
+          )}
         </div>
         
         <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
@@ -425,8 +446,10 @@ function ComplianceFundingCard({
 
 export function CurationStep({
   kbFunding = [],
+  kbComplianceFunding = [],
   kbCompliance = [],
   webFunding = [],
+  webComplianceFunding = [],
   webCompliance = [],
   fundingItems = [],
   complianceFundingItems = [],
@@ -441,6 +464,7 @@ export function CurationStep({
 }: CurationStepProps) {
   // Combine KB and Web items for display (with KB items first)
   const allFunding = [...kbFunding, ...webFunding, ...fundingItems]
+  const allComplianceFunding = [...kbComplianceFunding, ...webComplianceFunding, ...complianceFundingItems]
   const allCompliance = [...kbCompliance, ...webCompliance, ...complianceItems]
   
   const toggleFunding = (item: FundingItem) => {
@@ -573,8 +597,8 @@ export function CurationStep({
         )}
       </div>
 
-      {/* Compliance-Linked Funding Section (if available) */}
-      {complianceFundingItems.length > 0 && onSelectComplianceFunding && (
+      {/* Compliance-Linked Funding Section */}
+      {onSelectComplianceFunding && (
         <div>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
@@ -587,17 +611,71 @@ export function CurationStep({
               {selectedComplianceFunding.length}/3 selected
             </span>
           </div>
-          
-          <div className="space-y-3">
-            {complianceFundingItems.map((item, i) => (
-              <ComplianceFundingCard
-                key={`cf-${item.title}-${i}`}
-                item={item}
-                isSelected={selectedComplianceFunding.some(cf => cf.title === item.title)}
-                onToggle={() => toggleComplianceFunding(item)}
-              />
-            ))}
-          </div>
+
+          {/* KB Compliance-Linked Funding */}
+          {kbComplianceFunding.length > 0 && (
+            <div className="mb-4">
+              <h4 className="text-sm font-medium text-violet-400 mb-2 flex items-center gap-1.5">
+                <span>📚</span> From Knowledge Base
+              </h4>
+              <div className="space-y-3">
+                {kbComplianceFunding.map((item, i) => (
+                  <ComplianceFundingCard
+                    key={`kb-cf-${item.title}-${i}`}
+                    item={{ ...item, source_type: 'knowledge_base' }}
+                    isSelected={selectedComplianceFunding.some(cf => cf.title === item.title)}
+                    onToggle={() => toggleComplianceFunding(item)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Web Compliance-Linked Funding */}
+          {webComplianceFunding.length > 0 && (
+            <div className="mb-4">
+              <h4 className="text-sm font-medium text-slate-400 mb-2 flex items-center gap-1.5">
+                <span>🌐</span> From Web Research
+              </h4>
+              <div className="space-y-3">
+                {webComplianceFunding.map((item, i) => (
+                  <ComplianceFundingCard
+                    key={`web-cf-${item.title}-${i}`}
+                    item={{ ...item, source_type: 'web_research' as const }}
+                    isSelected={selectedComplianceFunding.some(cf => cf.title === item.title)}
+                    onToggle={() => toggleComplianceFunding(item)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Legacy compliance-linked funding */}
+          {complianceFundingItems.length > 0 && kbComplianceFunding.length === 0 && webComplianceFunding.length === 0 && (
+            <div className="space-y-3">
+              {complianceFundingItems.map((item, i) => (
+                <ComplianceFundingCard
+                  key={`legacy-cf-${item.title}-${i}`}
+                  item={item}
+                  isSelected={selectedComplianceFunding.some(cf => cf.title === item.title)}
+                  onToggle={() => toggleComplianceFunding(item)}
+                />
+              ))}
+            </div>
+          )}
+
+          {allComplianceFunding.length === 0 && (
+            <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700">
+              <div className="flex items-start gap-3">
+                <span className="text-xl">ℹ️</span>
+                <div>
+                  <p className="text-sm text-slate-400">
+                    No compliance-linked funding found (CSI/TSI improvement grants, consent decree funding, etc.) for this state.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

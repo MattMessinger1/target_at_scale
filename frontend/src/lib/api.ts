@@ -139,9 +139,10 @@ export interface FundingItem {
   deadline?: string
   funding_type?: string  // state, federal_supplemental, foundation, regional, university, private
   source?: string  // legacy field
-  score: number
-  score_reason: string
-  email_hook: string
+  source_url?: string  // simplified web research output
+  score?: number
+  score_reason?: string
+  email_hook?: string
   sources?: SourceLink[]  // Verifiable source links
   source_type?: 'knowledge_base' | 'perplexity' | 'web_research'  // Where the item came from
   status?: string  // active, verified, unverified, upcoming, closed_until_next_cycle
@@ -159,11 +160,13 @@ export interface ComplianceItem {
   description?: string
   type?: string  // consent_decree, doj_inquiry, certification, professional_development, reporting, assessment, csi_tsi, legal
   deadline_or_frequency?: string
+  deadline?: string  // simplified web research output
   hours_required?: string
   urgency?: 'high' | 'medium' | 'low'
-  score: number
-  score_reason: string
-  email_hook: string
+  source_url?: string  // simplified web research output
+  score?: number
+  score_reason?: string
+  email_hook?: string
   sources?: SourceLink[]  // Verifiable source links
   source_type?: 'knowledge_base' | 'perplexity' | 'web_research'  // Where the item came from
   status?: string  // active, verified, unverified, upcoming
@@ -191,9 +194,11 @@ export interface ComplianceFundingItem {
   deadline?: string
   action_required?: string    // e.g., "Amend CSG application to include EL PD"
   districts_affected?: string[]
-  score: number
-  score_reason: string
-  email_hook: string
+  source_url?: string
+  source_type?: 'knowledge_base' | 'perplexity' | 'web_research'
+  score?: number
+  score_reason?: string
+  email_hook?: string
   sources?: SourceLink[]
   score_breakdown?: {
     product_fit: number
@@ -229,13 +234,16 @@ export interface ResearchResponse {
   }
   // KB items (from our knowledge base - direct SQL lookup)
   kb_funding: FundingItem[]
+  kb_compliance_funding: ComplianceFundingItem[]
   kb_compliance: ComplianceItem[]
   // Web items (from Perplexity research)
   web_funding: FundingItem[]
+  web_compliance_funding: ComplianceFundingItem[]
   web_compliance: ComplianceItem[]
   // Raw content for debugging
   raw_kb_content?: string
   raw_funding_content?: string
+  raw_compliance_funding_content?: string
   raw_compliance_content?: string
 }
 

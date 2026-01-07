@@ -92,13 +92,16 @@ class ResearchResponse(BaseModel):
     product_context: dict
     # KB items (from our knowledge base)
     kb_funding: List[dict]
+    kb_compliance_funding: List[dict]
     kb_compliance: List[dict]
     # Web items (from Perplexity research)
     web_funding: List[dict]
+    web_compliance_funding: List[dict]
     web_compliance: List[dict]
     # Raw content for debugging
     raw_kb_content: Optional[str]
     raw_funding_content: Optional[str]
+    raw_compliance_funding_content: Optional[str]
     raw_compliance_content: Optional[str]
 
 
@@ -268,6 +271,7 @@ async def research(
     # Step 2: Extract from KB (GPT call if we have content)
     # =========================================================================
     kb_funding = []
+    kb_compliance_funding = []
     kb_compliance = []
     
     if kb_content:
@@ -281,9 +285,15 @@ async def research(
             )
             
             kb_funding = kb_results.get("funding", [])
+            kb_compliance_funding = kb_results.get("compliance_funding", [])
             kb_compliance = kb_results.get("compliance", [])
             
-            logger.info(f"KB extraction: {len(kb_funding)} funding, {len(kb_compliance)} compliance")
+            logger.info(
+                "KB extraction: %s funding, %s compliance_funding, %s compliance",
+                len(kb_funding),
+                len(kb_compliance_funding),
+                len(kb_compliance),
+            )
             
         except Exception as e:
             logger.error(f"KB extraction failed: {e}")
@@ -292,14 +302,17 @@ async def research(
     # Step 3: Perplexity research (parallel calls for speed)
     # =========================================================================
     web_funding = []
+    web_compliance_funding = []
     web_compliance = []
     raw_funding_content = None
+    raw_compliance_funding_content = None
     raw_compliance_content = None
     
     try:
         from ...research.perplexity import (
             research_state_funding_simple,
             research_state_compliance_simple,
+            research_compliance_funding_simple,
         )
         
         # Build context for Perplexity
@@ -318,10 +331,16 @@ async def research(
             state_full=state_full,
             product_context=context_for_perplexity,
         )
+        compliance_funding_task = research_compliance_funding_simple(
+            state=state_code,
+            state_full=state_full,
+            product_context=context_for_perplexity,
+        )
         
-        funding_result, compliance_result = await asyncio.gather(
+        funding_result, compliance_result, compliance_funding_result = await asyncio.gather(
             funding_task,
             compliance_task,
+            compliance_funding_task,
             return_exceptions=True,
         )
         
@@ -340,6 +359,14 @@ async def research(
             web_compliance = compliance_result.get("items", [])
             raw_compliance_content = compliance_result.get("content")
             logger.info(f"Web compliance: {len(web_compliance)} items")
+
+        # Process compliance-linked funding result
+        if isinstance(compliance_funding_result, Exception):
+            logger.error(f"Compliance-linked funding research failed: {compliance_funding_result}")
+        else:
+            web_compliance_funding = compliance_funding_result.get("items", [])
+            raw_compliance_funding_content = compliance_funding_result.get("content")
+            logger.info(f"Web compliance-linked funding: {len(web_compliance_funding)} items")
         
     except Exception as e:
         logger.error(f"Perplexity research failed: {e}")
@@ -354,11 +381,14 @@ async def research(
         audience=request.audience,
         product_context=product_info,
         kb_funding=kb_funding[:request.top_n],
+        kb_compliance_funding=kb_compliance_funding[:request.top_n],
         kb_compliance=kb_compliance[:request.top_n],
         web_funding=web_funding[:request.top_n],
+        web_compliance_funding=web_compliance_funding[:request.top_n],
         web_compliance=web_compliance[:request.top_n],
         raw_kb_content=kb_content[:2000] if kb_content else None,
         raw_funding_content=raw_funding_content,
+        raw_compliance_funding_content=raw_compliance_funding_content,
         raw_compliance_content=raw_compliance_content,
     )
 
