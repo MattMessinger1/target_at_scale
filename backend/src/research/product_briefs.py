@@ -347,5 +347,35 @@ async def get_product_brief(
     override = load_override_brief(product_key, state_code=state_code)
     merged = deep_merge(auto_brief, override) if override else auto_brief
 
+    # Ensure briefs consistently include at least one case-study style proof point when available,
+    # even for previously-stored briefs that were generated before we added the fallback behavior.
+    try:
+        if not merged.get("case_studies"):
+            result3 = await db.execute(
+                select(KnowledgeBaseItem)
+                .where(KnowledgeBaseItem.category == "case_study")
+                .where(KnowledgeBaseItem.product_name == product_key)
+                .limit(1)
+            )
+            it = result3.scalar_one_or_none()
+            if it:
+                proof = (it.summary or it.content or "").strip().replace("\n", " ")
+                if len(proof) > 280:
+                    proof = proof[:280] + "…"
+                merged["case_studies"] = [
+                    {
+                        "state": state_code or None,
+                        "district": None,
+                        "context": f"Implementation example from KB document: {it.title}",
+                        "what_we_did": "See proof snippet from KB document.",
+                        "outcomes": None,
+                        "implementation_notes": None,
+                        "proof_snippet": proof,
+                        "source_kb_id": it.id,
+                    }
+                ]
+    except Exception:
+        pass
+
     return merged
 

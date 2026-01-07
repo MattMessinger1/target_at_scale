@@ -383,6 +383,11 @@ PRODUCT BRIEF (WCEPS internal):
 TARGET AUDIENCE: {audience}
 STATE: {state}
 
+CONTENT REQUIREMENTS (CRITICAL):
+- Use at least ONE exact phrase copied verbatim from the "Specific offerings/modules to reference" list.
+- If "Case study evidence" is provided above, include ONE short proof sentence. Do not invent outcomes or district names.
+- Bullet points must be concrete (no vague bullets like "maximize opportunities").
+
 SUBJECT REQUIREMENTS (CRITICAL):
 - The SUBJECT must include the state name OR abbreviation (e.g., "{state}")
 {subject_hook_line}- If funding/compliance items are provided, the SUBJECT must name at least one of them
@@ -470,6 +475,14 @@ async def refine_email_tone(
                 needs_rewrite = True
                 break
 
+    # Ensure at least one offering phrase appears verbatim if offerings are provided.
+    offerings = product_context.get("offerings") if isinstance(product_context, dict) else None
+    if isinstance(offerings, list) and offerings:
+        body_l = email_body.lower()
+        has_offering = any(isinstance(o, str) and o.strip() and o.strip().lower() in body_l for o in offerings[:8])
+        if not has_offering:
+            needs_rewrite = True
+
     if not needs_rewrite:
         return subject_line, email_body
 
@@ -485,7 +498,13 @@ async def refine_email_tone(
     if isinstance(avoid, list) and avoid:
         avoid_text = "\nAvoid phrases:\n" + "\n".join(f"- {p}" for p in avoid[:10] if isinstance(p, str))
 
-    prompt = f"""Rewrite this email to be a trusted, empathetic colleague.\n\nHard rules:\n- Do NOT start with a question.\n- Avoid any accusatory language.\n- Keep the email plain text.\n- Keep the subject specific; include state and the hook when provided.\n- CTA must: ask for a 15-minute meeting, say \"today\", include calendly.com/wceps.\n{avoid_text}\n\nState: {state}\nAudience: {audience}\nProduct: {product}\nHook: {hook or ''}\n\nProduct brief (for accuracy):\n{str(product_context)[:2500]}\n\nOriginal:\nSUBJECT: {subject_line}\n\n{email_body}\n\nReturn EXACT format:\nSUBJECT: ...\n\n...body...\n"""
+    offering_text = ""
+    if isinstance(offerings, list) and offerings:
+        offering_text = "\nOfferings (copy at least ONE phrase verbatim):\n" + "\n".join(
+            f"- {o}" for o in offerings[:8] if isinstance(o, str)
+        )
+
+    prompt = f"""Rewrite this email to be a trusted, empathetic colleague.\n\nHard rules:\n- Do NOT start with a question.\n- Avoid any accusatory language.\n- Keep the email plain text.\n- Keep the subject specific; include state and the hook when provided.\n- CTA must: ask for a 15-minute meeting, say \"today\", include calendly.com/wceps.\n- Include at least ONE offering phrase verbatim.\n{avoid_text}\n{offering_text}\n\nState: {state}\nAudience: {audience}\nProduct: {product}\nHook: {hook or ''}\n\nProduct brief (for accuracy):\n{str(product_context)[:2500]}\n\nOriginal:\nSUBJECT: {subject_line}\n\n{email_body}\n\nReturn EXACT format:\nSUBJECT: ...\n\n...body...\n"""
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     resp = await client.chat.completions.create(
