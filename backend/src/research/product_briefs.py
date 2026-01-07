@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -89,6 +90,30 @@ def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]
         else:
             out[k] = v
     return out
+
+
+def _parse_json_response(text: str) -> Dict[str, Any]:
+    """Best-effort JSON parser for model output.
+
+    We prefer JSON mode, but still defensively handle code fences or stray text.
+    """
+    raw = (text or "").strip()
+    if not raw:
+        raise json.JSONDecodeError("Empty response", raw, 0)
+
+    # Strip markdown fences if present
+    if raw.startswith("```"):
+        raw = re.sub(r"^```[a-zA-Z0-9_-]*\s*", "", raw)
+        raw = re.sub(r"\s*```$", "", raw).strip()
+
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            return json.loads(raw[start : end + 1])
+        raise
 
 
 async def _select_kb_material(
@@ -228,6 +253,7 @@ JSON:"""
 
     response = await openai_client.chat.completions.create(
         model=settings.openai_model,
+        response_format={"type": "json_object"},
         messages=[
             {"role": "system", "content": "Return only valid JSON. No markdown."},
             {"role": "user", "content": prompt},
@@ -236,7 +262,7 @@ JSON:"""
         max_tokens=3500,
     )
     text = response.choices[0].message.content.strip()
-    brief = json.loads(text)
+    brief = _parse_json_response(text)
 
     # Fallback: ensure at least one case study entry if we provided any case_study KB items.
     try:
