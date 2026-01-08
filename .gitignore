@@ -72,3 +72,8 @@ data/processed/
 
 # Large files (keep the original KB)
 # knowledge-base-export-*.json  # Keep this tracked
+
+# Local-only artifacts (never commit)
+rag_chunk_samples/
+backend/chroma_db/
+*.docx
