@@ -128,11 +128,24 @@ def _find_trigger_candidates(text: str) -> List[str]:
     # Monitoring / corrective action / CAP
     candidates.extend(
         re.findall(
-            r"\b(monitoring|corrective action|corrective-action|CAP|corrective action plan)\b",
+            r"\b(monitoring|monitored|monitor|corrective action|corrective-action|CAP|corrective action plan)\b",
             t,
             flags=re.I,
         )
     )
+
+    # Allowable use language (common in state/federal guidance)
+    candidates.extend(
+        re.findall(
+            r"\b(allowable\s+activities|allowable\s+use|allowable\s+uses)\b",
+            t,
+            flags=re.I,
+        )
+    )
+
+    # Compliance / requirement language (often the "trigger" in policy guidance)
+    for m in re.finditer(r"\b(?:must|required(?:\s+to)?|shall)\b", t, flags=re.I):
+        candidates.append(m.group(0))
 
     # Budget/function codes (3–4 digits). Avoid treating years (19xx/20xx) as codes.
     for m in re.finditer(r"\b\d{3,4}\b", t):

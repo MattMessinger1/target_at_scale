@@ -53,15 +53,15 @@ def failures_to_instructions(failures: Sequence[ValidationFailure]) -> List[str]
     code_set = set(codes)
 
     if "word_count_out_of_range" in code_set:
-        instructions.append("Adjust length to 110–150 words.")
+        instructions.append("Adjust length to ~110–150 words (must be between 80–190).")
     if "bullet_count_invalid" in code_set or "bullet_too_long" in code_set:
         instructions.append("Include exactly 3 bullets; each bullet must be ≤ 10 words.")
     if "missing_micro_offer_cta" in code_set:
-        instructions.append("CTA must include a micro-offer phrase (e.g., 'I can send…', 'Would it help if I sent…', 'Want a 1-page…'). Calendly is optional.")
+        instructions.append("LAST paragraph must be the CTA and must include a micro-offer phrase (e.g., 'I can send…', 'Would it help if I sent…', 'Want a 1-page…'). Do not add a separate sign-off paragraph after the CTA. Calendly is optional.")
     if "opener_missing_hook_quote" in code_set or "opener_missing_hook_link" in code_set:
-        instructions.append("First paragraph must include the hook quote verbatim (whitespace-normalized) AND include the hook URL exactly.")
+        instructions.append("FIRST paragraph must include the hook quote verbatim (whitespace-normalized) AND include the hook URL exactly. Do not use a standalone greeting paragraph before the hook.")
     if "missing_or_unsourced_trigger" in code_set:
-        instructions.append("First paragraph must include a specific trigger (date/FY/monitoring/CAP/budget code/allocation) that matches the hook trigger excerpt from the same URL.")
+        instructions.append("FIRST paragraph must include a specific trigger token that appears in the hook trigger_excerpt from the same URL (date/FY/monitor/monitored/CAP/budget code/allocation/allowable activities). Use the exact phrase from the trigger_excerpt (do not paraphrase).")
     if "funding_missing_eligibility_excerpt" in code_set:
         instructions.append("If making any funding claim, cite eligibility language explicitly stating LEA/district eligibility from the same source URL.")
     if "claims_map_missing_hook" in code_set or "claims_map_hook_mismatch" in code_set:
