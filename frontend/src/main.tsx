@@ -5,6 +5,23 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import './index.css'
 
+const THEME_STORAGE_KEY = 'wceps_theme'
+type Theme = 'light' | 'dark'
+
+const initTheme = () => {
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY)
+    const theme: Theme = stored === 'light' || stored === 'dark' ? stored : 'dark'
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+  } catch {
+    // Default to dark for a modern look (and to match the main email tool UI).
+    document.documentElement.classList.add('dark')
+  }
+}
+
+// Apply theme before first render to avoid flashing
+initTheme()
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

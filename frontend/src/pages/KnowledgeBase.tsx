@@ -17,6 +17,9 @@ export default function KnowledgeBase() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
 
+  const fieldClass =
+    'w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+
   // Upload form state
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploadCategory, setUploadCategory] = useState('email_example')
@@ -223,7 +226,7 @@ export default function KnowledgeBase() {
               <select
                 value={uploadCategory}
                 onChange={(e) => setUploadCategory(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg"
+                className={fieldClass}
               >
                 <option value="email_example">email_example (good email)</option>
                 <option value="state_content">state_content</option>
@@ -246,7 +249,7 @@ export default function KnowledgeBase() {
                 placeholder={uploadCategory === 'email_example' ? 'Subject line' : 'Document title (optional)'}
                 value={uploadTitle}
                 onChange={(e) => setUploadTitle(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg"
+                className={fieldClass}
               />
             </div>
 
@@ -257,7 +260,7 @@ export default function KnowledgeBase() {
                 placeholder="e.g. care_coaching, florida, value_proposition"
                 value={uploadSubcategory}
                 onChange={(e) => setUploadSubcategory(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg"
+                className={fieldClass}
               />
             </div>
 
@@ -266,7 +269,7 @@ export default function KnowledgeBase() {
               <select
                 value={uploadProduct}
                 onChange={(e) => setUploadProduct(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg"
+                className={fieldClass}
               >
                 <option value="">(none)</option>
                 {(researchProducts?.products || []).map((p) => (
@@ -284,7 +287,7 @@ export default function KnowledgeBase() {
                 placeholder="Comma-separated codes, e.g. FL, CO"
                 value={uploadStatesInput}
                 onChange={(e) => setUploadStatesInput(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg"
+                className={fieldClass}
                 list="kb-upload-states"
               />
               <datalist id="kb-upload-states">
@@ -299,7 +302,7 @@ export default function KnowledgeBase() {
               <select
                 value={uploadAudience}
                 onChange={(e) => setUploadAudience(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg"
+                className={fieldClass}
               >
                 <option value="">(none)</option>
                 {(researchAudiences?.audiences || []).map((a) => (
@@ -317,7 +320,7 @@ export default function KnowledgeBase() {
                 placeholder="e.g. funding, compliance, product"
                 value={uploadMessage}
                 onChange={(e) => setUploadMessage(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg"
+                className={fieldClass}
               />
             </div>
 
@@ -328,7 +331,7 @@ export default function KnowledgeBase() {
                 placeholder="e.g. back_to_school, budget_planning"
                 value={uploadTiming}
                 onChange={(e) => setUploadTiming(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg"
+                className={fieldClass}
               />
             </div>
 
@@ -339,7 +342,7 @@ export default function KnowledgeBase() {
                 placeholder="Comma-separated tags"
                 value={uploadTagsInput}
                 onChange={(e) => setUploadTagsInput(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg"
+                className={fieldClass}
               />
             </div>
 
@@ -349,7 +352,7 @@ export default function KnowledgeBase() {
                 placeholder="Short internal note (kept out of prompt as much as possible)"
                 value={uploadNotes}
                 onChange={(e) => setUploadNotes(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg min-h-[88px]"
+                className={`${fieldClass} min-h-[88px]`}
               />
             </div>
           </div>
@@ -441,7 +444,7 @@ export default function KnowledgeBase() {
               placeholder="Search for products, case studies, funding info..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              className={fieldClass}
             />
           </div>
           {searchLoading && (
@@ -452,7 +455,7 @@ export default function KnowledgeBase() {
           {searchResults && searchResults.length > 0 && (
             <div className="mt-4 space-y-2">
               {searchResults.map((item) => (
-                <div key={item.id} className="p-3 rounded-lg border">
+                <div key={item.id} className="p-3 rounded-lg border bg-card/50 hover:bg-card/80 transition-colors">
                   <div className="flex items-center gap-2 mb-1">
                     <Badge variant="outline" className="text-xs">
                       {item.category}
@@ -528,7 +531,7 @@ export default function KnowledgeBase() {
             ) : (
               <div className="space-y-2 max-h-96 overflow-auto">
                 {items?.map((item) => (
-                  <div key={item.id} className="p-3 rounded-lg border">
+                  <div key={item.id} className="p-3 rounded-lg border bg-card/50 hover:bg-card/80 transition-colors">
                     <div className="flex items-center gap-2 mb-1">
                       {item.product_name && (
                         <Badge className="text-xs">{item.product_name}</Badge>

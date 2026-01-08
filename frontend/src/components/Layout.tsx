@@ -7,6 +7,7 @@ import {
   Mail
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ThemeToggle } from '@/components/ThemeToggle'
 
 const navigation = [
   { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
@@ -47,8 +48,13 @@ export default function Layout() {
         {/* Bottom info */}
         <div className="absolute bottom-0 left-0 right-0 p-4">
           <div className="rounded-lg bg-white/5 p-3">
-            <p className="text-xs text-white/60">Pilot Version</p>
-            <p className="text-sm text-white/80">5 Districts</p>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <p className="text-xs text-white/60">Pilot Version</p>
+                <p className="text-sm text-white/80">5 Districts</p>
+              </div>
+              <ThemeToggle className="border-white/20 bg-white/5 text-white hover:bg-white/10" />
+            </div>
           </div>
         </div>
       </div>

@@ -286,6 +286,155 @@ export interface GenerateEmailResponse {
   word_count: number
 }
 
+// ----------------------------------------------------------------------------
+// V2 Pipeline Types (POST /api/generate/pipeline) — keep V1 types intact
+// ----------------------------------------------------------------------------
+
+export type PipelineMode = 'state_only' | 'district'
+
+export type HookType =
+  | 'deadline'
+  | 'funding_guidance'
+  | 'budget_coding'
+  | 'monitoring'
+  | 'allowable_use'
+  | 'district_specific'
+
+export type HookConfidence = 'high' | 'medium' | 'low'
+
+export type ClaimKind =
+  | 'hook'
+  | 'deliverable_bullet'
+  | 'funding'
+  | 'compliance'
+  | 'outcome'
+  | 'other'
+
+export interface PipelineRequest {
+  product: string
+  state: string
+  state_full?: string | null
+  audiences?: string[] | null
+  district_name?: string | null
+  district_url?: string | null
+}
+
+export interface EvidenceChunkCitation {
+  chunk_id: string
+  source_kb_id?: string | null
+  title?: string | null
+  excerpt: string
+  category?: string | null
+  subcategory?: string | null
+  product_name?: string | null
+  applicable_states?: string[] | null
+  chunk_index?: number | null
+  total_chunks?: number | null
+}
+
+export interface MicroOfferCandidate {
+  offer: string
+  rationale?: string | null
+  citations: EvidenceChunkCitation[]
+}
+
+export interface EvidencePack {
+  product: string
+  product_key?: string | null
+  state: string
+  retrieved_chunks: EvidenceChunkCitation[]
+  micro_offer_candidates: MicroOfferCandidate[]
+  supplemental_brief?: Record<string, unknown> | null
+}
+
+export interface WebHook {
+  hook_type: HookType
+  quote: string
+  link: string
+  trigger_excerpt: string
+  eligibility_excerpt?: string | null
+  why_relevant: string
+  confidence: HookConfidence
+  source_quality_reason?: string | null
+}
+
+export interface SelectedHook {
+  hook: WebHook
+  rank: number
+  reasons: string[]
+}
+
+export interface EmailDraft {
+  subject_line: string
+  email_body: string
+  word_count: number
+  bullets: string[]
+  micro_offer?: string | null
+}
+
+export interface ClaimsMapEntry {
+  claim_kind: ClaimKind
+  claim_text: string
+  kb_chunk_ids: string[]
+  urls: string[]
+  notes?: string | null
+}
+
+export interface ValidationFailure {
+  code: string
+  message: string
+  details?: Record<string, unknown> | null
+}
+
+export interface ValidationResult {
+  passed: boolean
+  failures: ValidationFailure[]
+  word_count: number
+  bullet_count: number
+  bullet_word_counts: number[]
+}
+
+export interface IterationTrace {
+  iteration: number
+  validation: ValidationResult
+  stopped: boolean
+  stop_reason?: string | null
+}
+
+export interface AudienceVariantTrace {
+  audience: string
+  attempts: IterationTrace[]
+  stage_ms: Record<string, number>
+}
+
+export interface AudienceVariantResult {
+  audience: string
+  selected_hook: SelectedHook
+  email_draft: EmailDraft
+  claims_map: ClaimsMapEntry[]
+  validation: ValidationResult
+  trace: AudienceVariantTrace
+}
+
+export interface PipelineTrace {
+  run_id: string
+  started_at: string
+  finished_at?: string | null
+  stage_ms: Record<string, number>
+  variant_traces: AudienceVariantTrace[]
+}
+
+export interface PipelineRunResponse {
+  run_id: string
+  mode: PipelineMode
+  request: PipelineRequest
+  evidence_pack: EvidencePack
+  treasure_hooks: WebHook[]
+  variants: AudienceVariantResult[]
+  trace: PipelineTrace
+  warnings: string[]
+}
+
 export interface KbUploadResponse {
   message: string
   id: string
@@ -556,7 +705,9 @@ export const api = {
 
   generate: {
     email: (data: GenerateEmailRequest) =>
-      fetchApi<GenerateEmailResponse>('/generate/', { method: 'POST', body: JSON.stringify(data) }),
+      fetchApi<GenerateEmailResponse>('/generate/v1', { method: 'POST', body: JSON.stringify(data) }),
+    pipeline: (data: PipelineRequest) =>
+      fetchApi<PipelineRunResponse>('/generate/', { method: 'POST', body: JSON.stringify(data) }),
     batch: (requests: GenerateEmailRequest[]) =>
       fetchApi<{ emails: GenerateEmailResponse[]; count: number }>('/generate/batch', {
         method: 'POST',
