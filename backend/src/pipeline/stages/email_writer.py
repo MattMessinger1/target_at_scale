@@ -106,7 +106,10 @@ def _suggest_trigger_snippet(trigger_excerpt: str) -> str:
     m = re.search(r"\b\d{3,4}\b", t)
     if m:
         return m.group(0)
-    # Fallback
+    # Fallback: pick a distinctive long token from the excerpt (encourages including *some* sourced trigger).
+    for tok in re.findall(r"[A-Za-z0-9]+(?:[’'\\-][A-Za-z0-9]+)?", t):
+        if len(tok) >= 9:
+            return tok
     return ""
 
 

@@ -269,6 +269,16 @@ def _trigger_is_sourced_from_hook(
         seen.add(bg)
         if bg in para_l:
             return True
+
+    # Last fallback: accept a distinctive long token from the trigger excerpt (helps with cases like
+    # "supplemental services" where the opener uses only one of the two words).
+    for tok in tokens:
+        if tok in stop:
+            continue
+        if len(tok) < 9:
+            continue
+        if tok in para_l:
+            return True
     return False
 
 
