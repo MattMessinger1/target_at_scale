@@ -29,9 +29,9 @@ settings = get_settings()
 HOOK_EXTRACTION_PROMPT = """You are extracting precise, source-backed \"treasure\" hooks for K–12 district outreach.
 
 Return STRICT JSON of the form:
-{
+{{
   "hooks": [
-    {
+    {{
       "hook_type": "deadline" | "funding_guidance" | "budget_coding" | "monitoring" | "allowable_use" | "district_specific",
       "quote": string,
       "link": string,
@@ -40,9 +40,9 @@ Return STRICT JSON of the form:
       "why_relevant": string,
       "confidence": "high" | "medium" | "low",
       "source_quality_reason": string|null
-    }
+    }}
   ]
-}
+}}
 
 Hard requirements:
 - Each hook must have ONE link (URL) from the provided citations.
