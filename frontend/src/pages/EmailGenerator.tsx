@@ -18,6 +18,8 @@ import {
   ComplianceFundingItem,
   ResearchResponse,
   GenerateEmailResponse,
+  EvidenceChunkCitation,
+  WebHook,
   PipelineRequest,
   PipelineRunResponse
 } from '../lib/api'
@@ -1115,7 +1117,7 @@ function EmailGeneratorV1() {
 type PipelineStep = 'select' | 'generate' | 'done'
 
 function EmailGeneratorPipeline() {
-  const [step, setStep] = useState<PipelineStep>('select')
+  const [, setStep] = useState<PipelineStep>('select')
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   const [selectedStates, setSelectedStates] = useState<SelectedState[]>([])
   const [selectedAudiences, setSelectedAudiences] = useState<string[]>([])
