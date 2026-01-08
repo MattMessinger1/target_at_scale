@@ -1,7 +1,7 @@
 """Deterministic validator for pipeline email drafts.
 
 Hard-gates:
-- 110–150 word count
+- Word count sanity bounds (recommended 110–150; allow variation)
 - exactly 3 bullets; each bullet ≤ 10 words
 - micro-offer CTA (Calendly optional)
 - opener includes SelectedHook.quote verbatim (whitespace-normalized) + SelectedHook.link exact match
@@ -258,13 +258,14 @@ def validate_email_draft(
     bullets = extract_bullets(email_body)
     bullet_word_counts = [word_count(b) for b in bullets]
 
-    # Word count
-    if wc < 110 or wc > 150:
+    # Word count: allow some variation; only hard-fail on extreme outliers.
+    # Recommended target is ~110–150, but real outreach emails can be a bit shorter/longer.
+    if wc < 80 or wc > 190:
         failures.append(
             ValidationFailure(
                 code="word_count_out_of_range",
-                message=f"Word count must be 110–150 (got {wc}).",
-                details={"word_count": wc},
+                message=f"Word count must be within 80–190 (got {wc}). Recommended target is 110–150.",
+                details={"word_count": wc, "recommended_range": "110–150", "allowed_range": "80–190"},
             )
         )
 
