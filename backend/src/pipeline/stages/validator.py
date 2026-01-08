@@ -215,6 +215,60 @@ def _trigger_is_sourced_from_hook(
         for token in [c, c2]:
             if token and token in excerpt_l and token in para_l:
                 return True
+
+    # Fallback: accept if the opener contains any distinctive 2-word phrase from the hook trigger excerpt.
+    # This keeps the gate "source-backed" while reducing brittle, pattern-specific failures.
+    stop = {
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "for",
+        "to",
+        "of",
+        "in",
+        "on",
+        "with",
+        "by",
+        "from",
+        "at",
+        "as",
+        "is",
+        "are",
+        "be",
+        "been",
+        "being",
+        "that",
+        "this",
+        "these",
+        "those",
+        "it",
+        "its",
+        "their",
+        "your",
+        "our",
+        "you",
+        "we",
+        "they",
+        "will",
+        "can",
+        "may",
+        "must",
+    }
+    tokens = _word_tokens(excerpt_l)
+    seen = set()
+    for a, b in zip(tokens, tokens[1:]):
+        if a in stop or b in stop:
+            continue
+        if len(a) < 4 or len(b) < 4:
+            continue
+        bg = f"{a} {b}"
+        if bg in seen:
+            continue
+        seen.add(bg)
+        if bg in para_l:
+            return True
     return False
 
 

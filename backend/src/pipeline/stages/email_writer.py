@@ -168,17 +168,26 @@ def _normalize_email_body_for_validator(email_body: str, *, hook_quote: str, hoo
             paras[0] = paras[0].rstrip() + " " + nxt.lstrip()
             paras.pop(1)
 
-    # Ensure the opener contains the hook quote exactly (models sometimes change capitalization).
+    # Ensure the opener contains the hook quote exactly (models sometimes change capitalization/punctuation).
     if paras and hook_quote:
         opener = paras[0]
-        nq = _normalize_ws(hook_quote)
-        no = _normalize_ws(opener)
-        if nq and nq not in no:
-            # If it's present except for case, replace with exact quote deterministically.
-            idx = no.lower().find(nq.lower())
+        if hook_quote not in opener:
+            opener_l = opener.lower()
+            quote_l = hook_quote.lower()
+
+            # Case-only differences
+            idx = opener_l.find(quote_l)
             if idx != -1:
-                # Map back into the original opener using the same slice length.
                 paras[0] = opener[:idx] + hook_quote + opener[idx + len(hook_quote) :]
+            else:
+                # Missing trailing punctuation (e.g., quote appears without final period)
+                stripped = hook_quote.rstrip(" \t\r\n.?!;:”“\"'’")
+                if stripped and stripped.lower() in opener_l:
+                    idx2 = opener_l.find(stripped.lower())
+                    paras[0] = opener[:idx2] + hook_quote + opener[idx2 + len(stripped) :]
+                else:
+                    # Last resort: inject the quote immediately after the greeting/comma.
+                    paras[0] = (opener.rstrip() + " " + hook_quote).strip()
 
     # If the model put a sign-off after the micro-offer CTA, merge sign-off into the CTA paragraph
     # (same paragraph) so the last paragraph still contains the micro-offer phrase.
