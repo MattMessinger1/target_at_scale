@@ -17,9 +17,12 @@ import {
   ComplianceItem,
   ComplianceFundingItem,
   ResearchResponse,
-  GenerateEmailResponse 
+  GenerateEmailResponse,
+  PipelineRequest,
+  PipelineRunResponse
 } from '../lib/api'
 import { toast } from '@/components/ui/use-toast'
+import { ThemeToggle } from '@/components/ThemeToggle'
 import { ProductSelector } from '../components/ProductSelector'
 import { StateSelector, SelectedState } from '../components/StateSelector'
 import { AudienceSelector } from '../components/AudienceSelector'
@@ -148,7 +151,7 @@ const saveRuns = (runs: ResearchRunSnapshot[]) => {
   }
 }
 
-export default function EmailGenerator() {
+function EmailGeneratorV1() {
   // Step state
   const [currentStep, setCurrentStep] = useState<Step>('select')
   
@@ -644,6 +647,8 @@ export default function EmailGenerator() {
                 Upload model email
               </button>
 
+              <ThemeToggle />
+
               {/* Progress Steps - Clickable */}
               <div className="flex items-center gap-2">
                 {STEP_ORDER.map((step, i) => {
@@ -1105,4 +1110,403 @@ export default function EmailGenerator() {
       </div>
     </div>
   )
+}
+
+type PipelineStep = 'select' | 'generate' | 'done'
+
+function EmailGeneratorPipeline() {
+  const [step, setStep] = useState<PipelineStep>('select')
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([])
+  const [selectedStates, setSelectedStates] = useState<SelectedState[]>([])
+  const [selectedAudiences, setSelectedAudiences] = useState<string[]>([])
+
+  const [districtName, setDistrictName] = useState('')
+  const [districtUrl, setDistrictUrl] = useState('')
+
+  const [result, setResult] = useState<PipelineRunResponse | null>(null)
+  const [activeAudience, setActiveAudience] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  const pipelineMutation = useMutation({
+    mutationFn: () => {
+      const req: PipelineRequest = {
+        product: selectedProducts[0] || '',
+        state: selectedStates[0]?.code || '',
+        state_full: selectedStates[0]?.name || undefined,
+        audiences: selectedAudiences.length ? selectedAudiences : undefined,
+        district_name: districtName.trim() || undefined,
+        district_url: districtUrl.trim() || undefined,
+      }
+      return api.generate.pipeline(req)
+    },
+    onSuccess: (data) => {
+      setResult(data)
+      const first = data.variants?.[0]?.audience
+      setActiveAudience(first || null)
+      setStep('done')
+    },
+    onError: (error) => {
+      toast({
+        title: 'Pipeline failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      })
+      setStep('select')
+    },
+  })
+
+  const canGenerate = selectedProducts.length > 0 && selectedStates.length > 0
+  const variants = result?.variants || []
+  const activeVariant = variants.find((v) => v.audience === activeAudience) || variants[0]
+
+  const handleRun = () => {
+    if (!canGenerate) return
+    setStep('generate')
+    pipelineMutation.mutate()
+  }
+
+  const handleReset = () => {
+    setStep('select')
+    setResult(null)
+    setActiveAudience(null)
+    setCopied(false)
+  }
+
+  const handleCopy = () => {
+    if (!activeVariant) return
+    const full = `Subject: ${activeVariant.email_draft.subject_line}\n\n${activeVariant.email_draft.email_body}`
+    navigator.clipboard.writeText(full)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleExportCsv = () => {
+    if (!activeVariant) return
+    const headers = ['Audience', 'Subject Line', 'Email Body', 'Product', 'State', 'Word Count']
+    const row = [
+      `"${activeVariant.audience.replace(/"/g, '""')}"`,
+      `"${activeVariant.email_draft.subject_line.replace(/"/g, '""')}"`,
+      `"${activeVariant.email_draft.email_body.replace(/"/g, '""')}"`,
+      `"${selectedProducts[0] || ''}"`,
+      `"${selectedStates[0]?.name || ''}"`,
+      String(activeVariant.email_draft.word_count),
+    ]
+    const csv = [headers.join(','), row.join(',')].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `email-pipeline-${(activeVariant.audience || 'audience').toLowerCase().replace(/\s+/g, '-')}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const renderValidation = () => {
+    if (!activeVariant) return null
+    const v = activeVariant.validation
+    return (
+      <div className="mt-4 p-4 rounded-lg border border-slate-700 bg-slate-800/50">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-medium text-slate-200">Validation</div>
+          <div className={`text-xs px-2 py-1 rounded ${
+            v.passed ? 'bg-emerald-900/50 text-emerald-300 border border-emerald-700/50' : 'bg-amber-900/40 text-amber-300 border border-amber-700/50'
+          }`}>
+            {v.passed ? 'PASS' : 'FAIL'}
+          </div>
+        </div>
+        <div className="mt-2 text-xs text-slate-400">
+          Words: {v.word_count} · Bullets: {v.bullet_count} · Bullet words: {v.bullet_word_counts.join(', ') || 'n/a'}
+        </div>
+        {!v.passed && v.failures?.length > 0 && (
+          <ul className="mt-3 space-y-1 text-sm text-slate-300">
+            {v.failures.map((f, i) => (
+              <li key={`${f.code}-${i}`}>
+                <span className="text-amber-300 font-mono text-xs">{f.code}</span>
+                <span className="ml-2">{f.message}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {activeVariant.trace?.attempts?.length > 0 && (
+          <div className="mt-4">
+            <div className="text-xs text-slate-500 uppercase tracking-wide">Repair trace</div>
+            <div className="mt-2 space-y-2">
+              {activeVariant.trace.attempts.map((a) => (
+                <div key={a.iteration} className="p-3 rounded border border-slate-700 bg-slate-900/30">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-slate-200">Attempt {a.iteration}</div>
+                    <div className={`text-xs px-2 py-1 rounded ${
+                      a.validation.passed ? 'bg-emerald-900/50 text-emerald-300' : 'bg-slate-700/50 text-slate-300'
+                    }`}>
+                      {a.validation.passed ? 'PASS' : 'FAIL'}
+                    </div>
+                  </div>
+                  {a.stopped && (
+                    <div className="mt-1 text-xs text-slate-400">
+                      stopped: <span className="font-mono">{a.stop_reason || 'unknown'}</span>
+                    </div>
+                  )}
+                  {!a.validation.passed && a.validation.failures?.length > 0 && (
+                    <div className="mt-2 text-xs text-slate-400">
+                      failures: {a.validation.failures.map((f) => f.code).join(', ')}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const renderEvidence = () => {
+    if (!result) return null
+    return (
+      <div className="mt-4 p-4 rounded-lg border border-slate-700 bg-slate-800/50">
+        <div className="text-sm font-medium text-slate-200">Evidence</div>
+        <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div>
+            <div className="text-xs text-slate-500 uppercase tracking-wide">Product chunks (KB)</div>
+            <div className="mt-2 space-y-2 max-h-72 overflow-y-auto pr-1">
+              {(result.evidence_pack?.retrieved_chunks || []).slice(0, 20).map((c: EvidenceChunkCitation) => (
+                <div key={c.chunk_id} className="p-3 rounded border border-slate-700 bg-slate-900/30">
+                  <div className="text-xs text-slate-400 font-mono">{c.chunk_id}</div>
+                  {c.title && <div className="text-sm text-slate-200 mt-1">{c.title}</div>}
+                  <div className="text-sm text-slate-300 mt-1">{c.excerpt}</div>
+                </div>
+              ))}
+              {(result.evidence_pack?.retrieved_chunks || []).length === 0 && (
+                <div className="text-sm text-slate-400">No KB chunks returned.</div>
+              )}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-slate-500 uppercase tracking-wide">Web sources</div>
+            <div className="mt-2 space-y-2 max-h-72 overflow-y-auto pr-1">
+              {(result.treasure_hooks || []).slice(0, 20).map((h: WebHook, i: number) => (
+                <div key={`${h.link}-${i}`} className="p-3 rounded border border-slate-700 bg-slate-900/30">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs text-slate-400 font-mono">{h.hook_type}</div>
+                    <div className="text-xs text-slate-500">{h.confidence}</div>
+                  </div>
+                  <a className="mt-1 block text-sm text-emerald-300 hover:text-emerald-200 underline break-all" href={h.link} target="_blank" rel="noreferrer">
+                    {h.link}
+                  </a>
+                  <div className="mt-2 text-sm text-slate-300">“{h.quote}”</div>
+                </div>
+              ))}
+              {(result.treasure_hooks || []).length === 0 && (
+                <div className="text-sm text-slate-400">No web hooks returned.</div>
+              )}
+            </div>
+          </div>
+        </div>
+        {result.warnings?.length > 0 && (
+          <div className="mt-4 text-xs text-amber-300">
+            warnings: {result.warnings.join(' · ')}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const renderHook = () => {
+    if (!activeVariant) return null
+    const h = activeVariant.selected_hook?.hook
+    if (!h) return null
+    return (
+      <div className="mt-4 p-4 rounded-lg border border-slate-700 bg-slate-800/50">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-medium text-slate-200">Selected hook</div>
+          <div className="text-xs text-slate-500">{h.hook_type} · {h.confidence}</div>
+        </div>
+        <div className="mt-2 text-sm text-slate-300">“{h.quote}”</div>
+        <a className="mt-2 block text-sm text-emerald-300 hover:text-emerald-200 underline break-all" href={h.link} target="_blank" rel="noreferrer">
+          {h.link}
+        </a>
+        <div className="mt-3 text-xs text-slate-500 uppercase tracking-wide">Trigger excerpt</div>
+        <div className="mt-1 text-sm text-slate-300">{h.trigger_excerpt}</div>
+        {h.eligibility_excerpt && (
+          <>
+            <div className="mt-3 text-xs text-slate-500 uppercase tracking-wide">Eligibility excerpt</div>
+            <div className="mt-1 text-sm text-slate-300">{h.eligibility_excerpt}</div>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
+      <div className="max-w-6xl mx-auto px-4 py-10">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-semibold text-slate-100">
+              Email Generator (Pipeline)
+            </h1>
+            <div className="mt-1 text-sm text-slate-400">
+              Generate 3 audience variants with evidence + validation.
+            </div>
+          </div>
+          <ThemeToggle />
+        </div>
+
+        <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
+            <div className="text-sm font-medium text-slate-200">Inputs</div>
+            <div className="mt-4 space-y-6">
+              <ProductSelector selectedProducts={selectedProducts} onSelect={setSelectedProducts} />
+              <StateSelector selectedStates={selectedStates} onSelect={setSelectedStates} />
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-slate-300">District (optional)</label>
+                <input
+                  value={districtName}
+                  onChange={(e) => setDistrictName(e.target.value)}
+                  placeholder="District name (optional)"
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <input
+                  value={districtUrl}
+                  onChange={(e) => setDistrictUrl(e.target.value)}
+                  placeholder="District URL (optional)"
+                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div>
+                <AudienceSelector selectedAudiences={selectedAudiences} onSelect={setSelectedAudiences} />
+                <div className="mt-2 text-xs text-slate-500">
+                  Leave audiences empty to use the default 3 (Title III, ELL, Curriculum).
+                </div>
+              </div>
+
+              <button
+                onClick={handleRun}
+                disabled={!canGenerate || pipelineMutation.isPending}
+                className={`w-full px-6 py-3 rounded-lg font-medium transition-colors ${
+                  !canGenerate || pipelineMutation.isPending
+                    ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                }`}
+              >
+                {pipelineMutation.isPending ? 'Running pipeline…' : 'Generate'}
+              </button>
+
+              {pipelineMutation.isError && (
+                <div className="p-3 rounded border border-red-800 bg-red-900/30 text-red-300 text-sm">
+                  {pipelineMutation.error instanceof Error ? pipelineMutation.error.message : 'Pipeline error'}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
+            <div className="text-sm font-medium text-slate-200">Output</div>
+            {!result && (
+              <div className="mt-4 text-sm text-slate-400">
+                Run the pipeline to generate audience variants.
+              </div>
+            )}
+
+            {result && (
+              <div className="mt-4">
+                <div className="flex flex-wrap gap-2">
+                  {variants.map((v) => (
+                    <button
+                      key={v.audience}
+                      onClick={() => setActiveAudience(v.audience)}
+                      className={`px-3 py-2 rounded-md text-sm border transition-colors ${
+                        (activeVariant?.audience || variants[0]?.audience) === v.audience
+                          ? 'bg-emerald-600/20 border-emerald-500 text-emerald-200'
+                          : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700/50'
+                      }`}
+                    >
+                      {v.audience}
+                    </button>
+                  ))}
+                </div>
+
+                {activeVariant && (
+                  <>
+                    <div className="mt-4 rounded-lg border border-slate-700 bg-slate-900/30 overflow-hidden">
+                      <div className="px-4 py-3 border-b border-slate-700">
+                        <div className="text-xs text-slate-500 uppercase tracking-wide">Subject</div>
+                        <div className="mt-1 text-lg font-medium text-slate-200">
+                          {activeVariant.email_draft.subject_line}
+                        </div>
+                      </div>
+                      <div className="px-4 py-3">
+                        <div className="text-xs text-slate-500 uppercase tracking-wide">Email</div>
+                        <div className="mt-2 text-slate-300 whitespace-pre-wrap leading-relaxed">
+                          {activeVariant.email_draft.email_body}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-3">
+                      <button
+                        onClick={handleCopy}
+                        className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                          copied ? 'bg-emerald-600 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
+                        }`}
+                      >
+                        {copied ? 'Copied!' : 'Copy'}
+                      </button>
+                      <button
+                        onClick={handleExportCsv}
+                        className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors"
+                      >
+                        Export CSV
+                      </button>
+                      <button
+                        onClick={() => {
+                          setStep('generate')
+                          pipelineMutation.mutate()
+                        }}
+                        className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors"
+                      >
+                        Regenerate
+                      </button>
+                      <button
+                        onClick={handleReset}
+                        className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-colors"
+                      >
+                        New run
+                      </button>
+                    </div>
+
+                    {renderHook()}
+                    {renderValidation()}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {result && (
+          <>
+            {renderEvidence()}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default function EmailGenerator() {
+  const mode = (() => {
+    try {
+      return new URLSearchParams(window.location.search).get('mode')
+    } catch {
+      return null
+    }
+  })()
+
+  if (mode === 'v1') {
+    return <EmailGeneratorV1 />
+  }
+  return <EmailGeneratorPipeline />
 }

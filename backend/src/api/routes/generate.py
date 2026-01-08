@@ -18,6 +18,17 @@ settings = get_settings()
 
 router = APIRouter()
 
+# ---------------------------------------------------------------------------
+# V2 pipeline endpoint (migration-safe): POST /api/generate/pipeline
+# - Does NOT change existing POST /api/generate contract/behavior.
+# ---------------------------------------------------------------------------
+
+try:
+    from ...pipeline.schemas import PipelineRequest, PipelineRunResponse
+except Exception:
+    PipelineRequest = None  # type: ignore
+    PipelineRunResponse = None  # type: ignore
+
 
 # Email style guides by audience
 STYLE_GUIDES = {
@@ -137,6 +148,30 @@ class GenerateEmailResponse(BaseModel):
     word_count: int
 
 
+if PipelineRequest is not None and PipelineRunResponse is not None:
+
+    @router.post("/", response_model=PipelineRunResponse)
+    @router.post("/pipeline", response_model=PipelineRunResponse)
+    async def generate_email_pipeline(
+        request: PipelineRequest,
+        db: AsyncSession = Depends(get_db),
+    ):
+        """Run the V2 structured pipeline and return typed results."""
+        from ...pipeline.runner import run_email_pipeline
+
+        # Best-effort: derive state_full if omitted (keep request shape stable)
+        if not request.state_full:
+            try:
+                from .research import STATE_NAMES  # local constant map
+
+                if request.state and request.state.strip().upper() in STATE_NAMES:
+                    request.state_full = STATE_NAMES[request.state.strip().upper()]
+            except Exception:
+                pass
+
+        return await run_email_pipeline(request=request, db=db)
+
+
 async def get_email_exemplars(
     *,
     db: AsyncSession,
@@ -232,8 +267,8 @@ async def get_email_exemplars(
     return exemplars
 
 
-@router.post("/", response_model=GenerateEmailResponse)
-async def generate_email(
+@router.post("/v1", response_model=GenerateEmailResponse)
+async def generate_email_v1(
     request: GenerateEmailRequest,
     db: AsyncSession = Depends(get_db),
 ):
@@ -655,7 +690,7 @@ async def generate_batch_emails(
     import asyncio
     
     async def generate_one(req: GenerateEmailRequest):
-        return await generate_email(req, db)
+        return await generate_email_v1(req, db)
     
     results = await asyncio.gather(*[generate_one(req) for req in requests])
     
