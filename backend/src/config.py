@@ -19,7 +19,8 @@ class Settings(BaseSettings):
     
     # Environment
     environment: str = "development"
-    debug: bool = True
+    # Defaults to false; enable only by setting DEBUG=1/true in env.
+    debug: bool = False
     
     # Paths
     knowledge_base_path: str = "../data/knowledge-base-export-2026-01-05.json"

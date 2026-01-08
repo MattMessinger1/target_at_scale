@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 from typing import List, Optional
 
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..schemas import EvidenceChunkCitation, EvidencePack, MicroOfferCandidate
@@ -53,6 +54,31 @@ async def build_product_evidence_pack(
         f"implementation coaching cycles PD evidence budget narrative"
     )
     service = RAGService()
+
+    # Fail fast if embeddings are missing (common in production when Chroma isn't on a Volume).
+    try:
+        chroma_count = int(service.collection.count() or 0)
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Failed to access Chroma embeddings store ({e}). Ensure CHROMA_PERSIST_DIR is set and writable, then run POST /api/kb/embed.",
+        )
+
+    if chroma_count == 0:
+        from ...rag.embeddings import get_chroma_persist_dir
+
+        persist_dir = get_chroma_persist_dir()
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Embeddings not found (Chroma collection is empty). "
+                "Mount a persistent volume and set CHROMA_PERSIST_DIR (recommended: /data/chroma_db), "
+                "then run POST /api/kb/embed once. "
+                f"Current CHROMA_PERSIST_DIR resolves to: {persist_dir}. "
+                "You can verify readiness via GET /api/kb/embed/status."
+            ),
+        )
+
     rag_results = service.query(
         query_text=query_text,
         n_results=18,

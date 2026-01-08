@@ -182,7 +182,7 @@ class TestPipelineValidator(unittest.TestCase):
             [
                 f"{hook.quote} ({hook.link})",
                 self._long_context_paragraph(),
-                "- This bullet has definitely more than ten words total",
+                "- This bullet has definitely more than ten words total right now",
                 "- Evidence checklist for documentation",
                 "- 1-page budget narrative draft",
                 "Would it help if I sent a 1-page budget narrative draft?",
@@ -190,7 +190,7 @@ class TestPipelineValidator(unittest.TestCase):
         )
         claims = [
             ClaimsMapEntry(claim_kind="hook", claim_text=hook.quote, urls=[hook.link], kb_chunk_ids=[]),
-            ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="This bullet has definitely more than ten words total", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
+            ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="This bullet has definitely more than ten words total right now", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Evidence checklist for documentation", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="1-page budget narrative draft", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
         ]

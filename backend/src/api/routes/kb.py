@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Header, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
+from sqlalchemy import func
 from pydantic import BaseModel
 
 from ...db import get_db, KnowledgeBaseItem
@@ -706,6 +707,42 @@ async def embed_knowledge_base(db: AsyncSession = Depends(get_db)):
     return {
         "message": f"Embedded {result['embedded']} items",
         "details": result
+    }
+
+
+@router.get("/embed/status")
+async def embed_status(db: AsyncSession = Depends(get_db)):
+    """Embeddings readiness/status (KB rows in DB + Chroma embedding count)."""
+    # KB count (Postgres/SQLite)
+    result = await db.execute(select(func.count()).select_from(KnowledgeBaseItem))
+    kb_count = int(result.scalar() or 0)
+
+    # Chroma count (persistent vector store)
+    chroma_count = 0
+    chroma_persist_dir = None
+    try:
+        from ...rag.embeddings import get_chroma_client, get_or_create_collection, get_chroma_persist_dir
+
+        chroma_persist_dir = get_chroma_persist_dir()
+        client = get_chroma_client()
+        collection = get_or_create_collection(client)
+        chroma_count = int(collection.count() or 0)
+    except Exception as e:
+        # Don't explode the status endpoint; surface the failure clearly.
+        return {
+            "kb_count": kb_count,
+            "chroma_count": 0,
+            "embeddings_ready": False,
+            "chroma_persist_dir": chroma_persist_dir,
+            "error": str(e),
+        }
+
+    embeddings_ready = (kb_count > 0) and (chroma_count > 0)
+    return {
+        "kb_count": kb_count,
+        "chroma_count": chroma_count,
+        "embeddings_ready": embeddings_ready,
+        "chroma_persist_dir": chroma_persist_dir,
     }
 
 

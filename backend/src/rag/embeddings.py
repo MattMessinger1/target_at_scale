@@ -30,13 +30,36 @@ EMBEDDING_MODEL = "text-embedding-3-large"
 EMBEDDING_DIMENSION = 3072
 
 
+def get_chroma_persist_dir() -> str:
+    """Return the effective Chroma persistence directory.
+
+    In production (e.g., Railway), this should point to a mounted Volume path so
+    embeddings survive deploys (e.g., /data/chroma_db).
+    """
+    env_dir = os.getenv("CHROMA_PERSIST_DIR")
+    if env_dir and str(env_dir).strip():
+        # Expand "~" and normalize relative paths (relative to current working dir).
+        p = os.path.expanduser(str(env_dir).strip())
+        return os.path.abspath(p)
+
+    # Default: persist inside backend/chroma_db (works locally; ephemeral on Railway without a Volume).
+    return os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        "chroma_db",
+    )
+
+
 def get_chroma_client() -> chromadb.Client:
     """Get ChromaDB client with persistent storage."""
-    persist_dir = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-        "chroma_db"
-    )
-    
+    persist_dir = get_chroma_persist_dir()
+
+    # Ensure the directory exists (Chroma will create, but being explicit helps in containers).
+    try:
+        os.makedirs(persist_dir, exist_ok=True)
+    except Exception:
+        # If we can't create it, let Chroma raise a clearer error downstream.
+        pass
+
     return chromadb.PersistentClient(path=persist_dir)
 
 

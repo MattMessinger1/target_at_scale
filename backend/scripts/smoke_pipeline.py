@@ -1,0 +1,113 @@
+"""Minimal smoke-test harness for the V2 pipeline.
+
+Usage:
+  python backend/scripts/smoke_pipeline.py --base-url http://localhost:8000
+
+This script:
+1) GET /health
+2) GET /api/kb/embed/status (fails if embeddings not ready)
+3) POST /api/generate/pipeline (fails if any variant validation.passed != true)
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from typing import Any, Dict, List
+
+import httpx
+
+
+def _die(msg: str, *, code: int = 1) -> None:
+    print(msg, file=sys.stderr)
+    raise SystemExit(code)
+
+
+def _get_json(client: httpx.Client, path: str) -> Dict[str, Any]:
+    r = client.get(path)
+    if r.status_code >= 400:
+        _die(f"GET {path} failed: {r.status_code} {r.text[:400]}")
+    try:
+        return r.json()
+    except Exception:
+        _die(f"GET {path} returned non-JSON: {r.text[:400]}")
+    return {}
+
+
+def _post_json(client: httpx.Client, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    r = client.post(path, json=payload)
+    if r.status_code >= 400:
+        _die(f"POST {path} failed: {r.status_code} {r.text[:800]}")
+    try:
+        return r.json()
+    except Exception:
+        _die(f"POST {path} returned non-JSON: {r.text[:800]}")
+    return {}
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--base-url", default="http://localhost:8000", help="API base URL (default: http://localhost:8000)")
+    ap.add_argument("--product", default="CARE Coaching", help="Product display name (default: CARE Coaching)")
+    ap.add_argument("--state", default="FL", help="Two-letter state code (default: FL)")
+    args = ap.parse_args()
+
+    base_url = str(args.base_url).rstrip("/")
+    timeout = httpx.Timeout(180.0, connect=10.0)
+
+    with httpx.Client(base_url=base_url, timeout=timeout) as client:
+        # 1) Health
+        health = _get_json(client, "/health")
+        if health.get("status") != "healthy":
+            _die(f"/health returned unexpected payload: {json.dumps(health)[:400]}")
+        print("OK: /health")
+
+        # 2) Embeddings status
+        status = _get_json(client, "/api/kb/embed/status")
+        if not status.get("embeddings_ready"):
+            _die(
+                "Embeddings not ready. Fix this first:\n"
+                f"- status: {json.dumps(status, indent=2)[:2000]}\n"
+                "- Run POST /api/kb/embed (after setting CHROMA_PERSIST_DIR to a persistent volume in prod)."
+            )
+        print(f"OK: /api/kb/embed/status (kb_count={status.get('kb_count')}, chroma_count={status.get('chroma_count')})")
+
+        # 3) Pipeline run
+        payload = {
+            "product": args.product,
+            "state": args.state,
+            # Let backend derive state_full if possible.
+            "audiences": [
+                "Title III Coordinators",
+                "ELL/Multilingual Directors",
+                "Curriculum Directors",
+            ],
+        }
+        resp = _post_json(client, "/api/generate/pipeline", payload)
+
+        variants: List[Dict[str, Any]] = resp.get("variants") or []
+        if not variants:
+            _die(f"Pipeline returned no variants: {json.dumps(resp)[:800]}")
+
+        failed = []
+        for v in variants:
+            aud = v.get("audience")
+            validation = v.get("validation") or {}
+            if not validation.get("passed"):
+                failed.append(
+                    {
+                        "audience": aud,
+                        "failures": validation.get("failures") or [],
+                    }
+                )
+
+        if failed:
+            _die("Pipeline validation failed:\n" + json.dumps(failed, indent=2)[:4000])
+
+        print(f"OK: /api/generate/pipeline (variants={len(variants)})")
+
+
+if __name__ == "__main__":
+    main()
+
