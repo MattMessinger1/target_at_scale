@@ -143,6 +143,19 @@ def _find_trigger_candidates(text: str) -> List[str]:
         )
     )
 
+    # Eligibility/allowable-activity headers (common in grant RFAs)
+    candidates.extend(
+        re.findall(
+            r"\b(eligible\s+activities|eligible\s+activity|eligible\s+uses|eligible\s+costs)\b",
+            t,
+            flags=re.I,
+        )
+    )
+
+    # Common implementation trigger phrase in PD/coaching grant language
+    for m in re.finditer(r"\bjob[- ]embedded\s+coaching\b", t, flags=re.I):
+        candidates.append(m.group(0))
+
     # Compliance / requirement language (often the "trigger" in policy guidance)
     for m in re.finditer(r"\b(?:must|required(?:\s+to)?|shall)\b", t, flags=re.I):
         candidates.append(m.group(0))

@@ -61,7 +61,7 @@ def failures_to_instructions(failures: Sequence[ValidationFailure]) -> List[str]
     if "opener_missing_hook_quote" in code_set or "opener_missing_hook_link" in code_set:
         instructions.append("FIRST paragraph must include the hook quote verbatim (whitespace-normalized) AND include the hook URL exactly. Do not use a standalone greeting paragraph before the hook.")
     if "missing_or_unsourced_trigger" in code_set:
-        instructions.append("FIRST paragraph must include a specific trigger token that appears in the hook trigger_excerpt from the same URL (date/FY/monitor/monitored/CAP/budget code/allocation/allowable activities). Use the exact phrase from the trigger_excerpt (do not paraphrase).")
+        instructions.append("FIRST paragraph must include a specific trigger token that appears in the hook trigger_excerpt from the same URL (date/FY/monitor/monitored/CAP/budget code/allocation/allowable activities/eligible activities/job-embedded coaching). Use the exact phrase from the trigger_excerpt (do not paraphrase).")
     if "funding_missing_eligibility_excerpt" in code_set:
         instructions.append("If making any funding claim, cite eligibility language explicitly stating LEA/district eligibility from the same source URL.")
     if "claims_map_missing_hook" in code_set or "claims_map_hook_mismatch" in code_set:

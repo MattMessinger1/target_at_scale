@@ -70,6 +70,14 @@ def _parse_json_object(raw: str) -> dict:
 def _suggest_trigger_snippet(trigger_excerpt: str) -> str:
     """Pick a small trigger token to encourage validator success."""
     t = trigger_excerpt or ""
+    # Prefer eligible/allowable activity headers
+    m = re.search(r"\beligible\s+activities\b", t, flags=re.I)
+    if m:
+        return m.group(0)
+    # Prefer job-embedded coaching
+    m = re.search(r"\bjob[- ]embedded\s+coaching\b", t, flags=re.I)
+    if m:
+        return m.group(0)
     # Prefer allowable-use language
     m = re.search(r"\ballowable\s+(?:activities|use|uses)\b", t, flags=re.I)
     if m:
@@ -159,6 +167,18 @@ def _normalize_email_body_for_validator(email_body: str, *, hook_quote: str, hoo
         if (hook_link and hook_link in nxt) or (_normalize_ws(hook_quote) and _normalize_ws(hook_quote) in _normalize_ws(nxt)):
             paras[0] = paras[0].rstrip() + " " + nxt.lstrip()
             paras.pop(1)
+
+    # Ensure the opener contains the hook quote exactly (models sometimes change capitalization).
+    if paras and hook_quote:
+        opener = paras[0]
+        nq = _normalize_ws(hook_quote)
+        no = _normalize_ws(opener)
+        if nq and nq not in no:
+            # If it's present except for case, replace with exact quote deterministically.
+            idx = no.lower().find(nq.lower())
+            if idx != -1:
+                # Map back into the original opener using the same slice length.
+                paras[0] = opener[:idx] + hook_quote + opener[idx + len(hook_quote) :]
 
     # If the model put a sign-off after the micro-offer CTA, merge sign-off into the CTA paragraph
     # (same paragraph) so the last paragraph still contains the micro-offer phrase.
