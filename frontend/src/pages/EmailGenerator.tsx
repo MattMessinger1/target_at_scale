@@ -1824,47 +1824,58 @@ function EmailGeneratorPipeline() {
   const renderProgressBar = () => {
     const steps: WizardStep[] = [1, 2, 3, 4, 5]
     return (
-      <div className="flex items-center mb-8">
-        {steps.map((step, idx) => {
-          const isActive = step === wizardStep
-          const isCompleted = step < wizardStep
-          const isClickable = step < wizardStep
-          return (
-            <div key={step} className="contents">
-              {/* Step circle and label */}
-              <button
-                onClick={() => isClickable && handleBackToStep(step)}
-                disabled={!isClickable}
-                className={`flex flex-col items-center flex-shrink-0 ${isClickable ? 'cursor-pointer' : 'cursor-default'}`}
-              >
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium border-2 transition-all ${
-                  isCompleted
-                    ? 'bg-emerald-600 border-emerald-600 text-white'
-                    : isActive
-                    ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300'
-                    : 'bg-slate-800 border-slate-600 text-slate-500'
-                }`}>
+      <div className="mb-8">
+        {/* Top row: circles and lines */}
+        <div className="flex items-center">
+          {steps.map((step, idx) => {
+            const isActive = step === wizardStep
+            const isCompleted = step < wizardStep
+            const isClickable = step < wizardStep
+            return (
+              <div key={step} className="flex items-center flex-1 last:flex-none">
+                <button
+                  onClick={() => isClickable && handleBackToStep(step)}
+                  disabled={!isClickable}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium border-2 transition-all flex-shrink-0 ${
+                    isCompleted
+                      ? 'bg-emerald-600 border-emerald-600 text-white'
+                      : isActive
+                      ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300'
+                      : 'bg-slate-800 border-slate-600 text-slate-500'
+                  } ${isClickable ? 'cursor-pointer hover:scale-105' : 'cursor-default'}`}
+                >
                   {isCompleted ? (
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                     </svg>
                   ) : step}
-                </div>
-                <div className={`mt-2 text-xs text-center w-20 ${
+                </button>
+                {/* Connector line */}
+                {idx < steps.length - 1 && (
+                  <div className={`flex-1 h-0.5 mx-2 ${
+                    step < wizardStep ? 'bg-emerald-600' : 'bg-slate-700'
+                  }`} />
+                )}
+              </div>
+            )
+          })}
+        </div>
+        {/* Bottom row: labels */}
+        <div className="flex mt-2">
+          {steps.map((step) => {
+            const isActive = step === wizardStep
+            const isCompleted = step < wizardStep
+            return (
+              <div key={`label-${step}`} className="flex-1 last:flex-none">
+                <div className={`text-xs text-center ${
                   isActive ? 'text-emerald-300 font-medium' : isCompleted ? 'text-slate-300' : 'text-slate-500'
-                }`}>
+                }`} style={{ width: step === 5 ? '80px' : 'auto' }}>
                   {WIZARD_STEP_LABELS[step]}
                 </div>
-              </button>
-              {/* Connector line between steps */}
-              {idx < steps.length - 1 && (
-                <div className={`flex-1 h-0.5 mx-3 self-start mt-5 ${
-                  step < wizardStep ? 'bg-emerald-600' : 'bg-slate-700'
-                }`} />
-              )}
-            </div>
-          )
-        })}
+              </div>
+            )
+          })}
+        </div>
       </div>
     )
   }

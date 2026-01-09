@@ -272,18 +272,73 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             ms0 = int((time.perf_counter() - t0) * 1000)
             yield _ndjson({"type": "stage_end", "ts": _utcnow_iso(), "stage": "evidence_pack", "ms": ms0})
 
-            # Stage 2: TreasureHunter
+            # Stage 2: TreasureHunter with progress streaming
             yield _ndjson({"type": "stage_start", "ts": _utcnow_iso(), "stage": "treasure_hunter"})
             t1 = time.perf_counter()
-            treasure_hooks = await run_treasure_hunter(
-                db=db,
-                product=product,
-                state_code=state_code,
-                state_full=state_full,
-                district_name=request.district_name,
-                district_url=request.district_url,
-                product_context_text=None,  # runner builds a richer context; ok for prep UI
-            )
+            
+            # Use asyncio.Queue to stream progress from the callback
+            import asyncio
+            progress_queue: asyncio.Queue = asyncio.Queue()
+            treasure_hooks_result: List[Any] = []
+            treasure_error: Optional[Exception] = None
+            
+            def progress_callback(message: str, percent: float):
+                """Callback that puts progress events into the queue."""
+                try:
+                    progress_queue.put_nowait({
+                        "type": "progress",
+                        "ts": _utcnow_iso(),
+                        "stage": "treasure_hunter",
+                        "message": message,
+                        "percent": percent,
+                    })
+                except Exception:
+                    pass
+            
+            async def run_treasure_hunter_task():
+                """Run treasure hunter and store result."""
+                nonlocal treasure_hooks_result, treasure_error
+                try:
+                    treasure_hooks_result = await run_treasure_hunter(
+                        db=db,
+                        product=product,
+                        state_code=state_code,
+                        state_full=state_full,
+                        district_name=request.district_name,
+                        district_url=request.district_url,
+                        product_context_text=None,
+                        on_progress=progress_callback,
+                    )
+                except Exception as e:
+                    treasure_error = e
+                finally:
+                    # Signal completion
+                    await progress_queue.put(None)
+            
+            # Start the treasure hunter task
+            task = asyncio.create_task(run_treasure_hunter_task())
+            
+            # Yield progress events as they come in
+            while True:
+                try:
+                    event = await asyncio.wait_for(progress_queue.get(), timeout=1.0)
+                    if event is None:
+                        break  # Task completed
+                    yield _ndjson(event)
+                except asyncio.TimeoutError:
+                    # No event yet, check if task is still running
+                    if task.done():
+                        break
+                    # Yield a heartbeat to keep connection alive
+                    yield _ndjson({"type": "heartbeat", "ts": _utcnow_iso()})
+            
+            # Wait for task to complete (should already be done)
+            await task
+            
+            if treasure_error:
+                raise treasure_error
+            
+            treasure_hooks = treasure_hooks_result
             ms1 = int((time.perf_counter() - t1) * 1000)
             yield _ndjson(
                 {
