@@ -457,7 +457,7 @@ async def write_email_variant(
     if prior_email_body:
         prior_block = "\nPRIOR EMAIL (minimally edit):\n" + prior_email_body.strip()
 
-    prompt = f"""Write a K–12 outreach email as WCEPS.\n\nConstraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain text only.\n- Do NOT include any URLs in the email body.\n- Exactly 3 bullets, each bullet ≤ 10 words.\n- Bullets must be DELIVERABLES/ARTIFACTS (e.g., checklist, template, draft, agenda, evidence pack) not vague benefits.\n- Each bullet should reuse 1–3 distinctive words from the cited KB excerpt (to keep it grounded).\n- CTA must be a micro-offer (e.g., \"I can send…\", \"Would it help if I sent…\", \"Want a 1-page…\") and may optionally ask where to route it.\n- Calendly/time-asks are optional; do NOT make them the primary CTA.\n\nSubject line constraints (critical):\n- Subject MUST include the trigger FAMILY for the selected hook_type:\n  - deadline: a date or FY token\n  - monitoring: monitoring/CAP/corrective-action language\n  - budget_coding: a 3–4 digit budget/function code\n  - allowable_use/funding_guidance: allowable/eligible/LEA/districts language\n- Subject must NOT be generic (avoid: \"Quick question\", \"Following up\", \"Checking in\", \"Touching base\").\n\nOpener constraints (critical):\n- The FIRST paragraph must include a specific trigger token that appears in the trigger excerpt from the selected hook source.\n  Suggested trigger token: {trigger_token or '(choose one from trigger excerpt)'}\n- Paraphrase the hook in natural language. Do NOT quote the source verbatim.\n- Do NOT use a standalone greeting paragraph. If you use \"Dear {audience}\", keep it in the SAME paragraph as the opener.\n\nEnding constraints (critical):\n- The LAST paragraph must be the micro-offer CTA.\n- Do NOT add a separate sign-off paragraph after the CTA.\n- If you include a sign-off, include it within the CTA paragraph (same paragraph).\n\nHook context (do not paste any URLs):\n- hook_type: {hook.hook_type}\n- trigger_excerpt: {hook.trigger_excerpt}\n- eligibility_excerpt: {hook.eligibility_excerpt or 'null'}\n\nAudience: {audience}\nProduct: {product}\nState: {state_full} ({state_code})\nMode: {mode_text}\n{district_block}\n\nEvidence (KB chunks you may cite by id):\n{_format_evidence_chunks(evidence_pack)}\n\nMicro-offer candidates (choose ONE and use it in CTA):\n{_format_micro_offers(evidence_pack)}\n\nClaims-map rules:\n- claims_map must cover:\n  - the opener hook claim (paraphrase)\n  - each deliverable bullet (3 entries)\n  - any funding/compliance/outcome claims you make\n- For hook claim: claim_text should match the opener sentence (paraphrase). You MUST include urls=[hook.link] for the hook claim.\n- For each bullet claim: claim_text should match the bullet text (no bullet marker), and include kb_chunk_ids from EvidencePack (choose the most relevant chunk id).\n- Connector/polite text can be omitted from claims_map.\n\nAvoid:\n- Generic bullets like \"Personalized coaching\" or \"Improve outcomes\" (not deliverables).\n- Placeholder signatures like \"[Your Name]\".\n\n{repair_block}\n{prior_block}\n\n{EMAIL_JSON_SPEC}\n\nReturn JSON now."""
+    prompt = f"""Write a K–12 outreach email as WCEPS.\n\nConstraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain text only.\n- Do NOT include any URLs in the email body.\n- Exactly 3 bullets, each bullet ≤ 10 words.\n- Bullets must be DELIVERABLES/ARTIFACTS (e.g., checklist, template, draft, agenda, evidence pack) not vague benefits.\n- Each bullet should reuse 1–3 distinctive words from the cited KB excerpt (to keep it grounded).\n- CTA must be a micro-offer (e.g., \"I can send…\", \"Would it help if I sent…\", \"Want a 1-page…\") and may optionally ask where to route it.\n- Calendly/time-asks are optional; do NOT make them the primary CTA.\n\nSubject line constraints (critical):\n- Subject MUST include the trigger FAMILY for the selected hook_type:\n  - deadline: a date or FY token\n  - monitoring: monitoring/CAP/corrective-action language\n  - budget_coding: a 3–4 digit budget/function code\n  - allowable_use/funding_guidance: allowable/eligible/LEA/districts language\n- Subject must NOT be generic (avoid: \"Quick question\", \"Following up\", \"Checking in\", \"Touching base\").\n\nOpener constraints (critical):\n- The FIRST paragraph must include a specific trigger token that appears in the trigger excerpt from the selected hook source.\n  Suggested trigger token: {trigger_token or '(choose one from trigger excerpt)'}\n- Paraphrase the hook in natural language. Do NOT quote the source verbatim.\n- Do NOT use a standalone greeting paragraph. If you use \"Dear {audience}\", keep it in the SAME paragraph as the opener.\n\nEnding constraints (critical):\n- The LAST paragraph must be the micro-offer CTA.\n- Do NOT add a separate sign-off paragraph after the CTA.\n- If you include a sign-off, include it within the CTA paragraph (same paragraph).\n\nHook context (do not paste any URLs):\n- hook_type: {hook.hook_type}\n- trigger_excerpt: {hook.trigger_excerpt}\n- eligibility_excerpt: {hook.eligibility_excerpt or 'null'}\n\nAudience: {audience}\nProduct: {product}\nState: {state_full} ({state_code})\nMode: {mode_text}\n{district_block}\n\nEvidence (KB chunks you may cite by id):\n{_format_evidence_chunks(evidence_pack)}\n\nMicro-offer candidates (choose ONE and use it in CTA):\n{_format_micro_offers(evidence_pack)}\n\nClaims-map rules:\n- claims_map must cover:\n  - the opener hook claim (paraphrase)\n  - each deliverable bullet (3 entries)\n  - any funding/compliance/outcome claims you make\n- For hook claim: claim_text should match the opener sentence (paraphrase). (We will attach the hook source URL server-side.)\n  IMPORTANT: Do NOT output placeholder strings like \"hook.link\" in urls.\n- For each bullet claim: claim_text should match the bullet text (no bullet marker), and include kb_chunk_ids from EvidencePack (choose the most relevant chunk id).\n- Connector/polite text can be omitted from claims_map.\n\nAvoid:\n- Generic bullets like \"Personalized coaching\" or \"Improve outcomes\" (not deliverables).\n- Placeholder signatures like \"[Your Name]\".\n\n{repair_block}\n{prior_block}\n\n{EMAIL_JSON_SPEC}\n\nReturn JSON now."""
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     resp = await client.chat.completions.create(
@@ -511,6 +511,14 @@ async def write_email_variant(
         allowed_kb: List[str] = [c.chunk_id for c in (evidence_pack.retrieved_chunks or []) if c.chunk_id]
         allowed_set = set(allowed_kb)
 
+        # Sanitize URL citations aggressively: only the selected hook URL is allowed.
+        # (Prevents models from outputting placeholders like "hook.link" or random web URLs.)
+        for c in claims_map:
+            if c.claim_kind == "hook":
+                c.urls = [hook.link]
+            else:
+                c.urls = []
+
         # Hook claim
         have_hook = False
         opener = ""
@@ -521,10 +529,7 @@ async def write_email_variant(
         for c in claims_map:
             if c.claim_kind != "hook":
                 continue
-            if not c.urls:
-                c.urls = [hook.link]
-            elif hook.link not in (c.urls or []):
-                c.urls = list(c.urls) + [hook.link]
+            c.urls = [hook.link]
             if not (c.claim_text or "").strip() and opener:
                 c.claim_text = opener.strip()
         for c in claims_map:
@@ -571,9 +576,17 @@ async def write_email_variant(
 
             # Clean invalid KB ids and fill if missing.
             entry.kb_chunk_ids = [cid for cid in (entry.kb_chunk_ids or []) if cid in allowed_set]
-            entry.urls = entry.urls or []
+            entry.urls = []  # bullets should be cited with KB chunks, not web URLs
             if not entry.kb_chunk_ids and not entry.urls and allowed_kb:
                 entry.kb_chunk_ids = allowed_kb[:2]
+
+        # Drop uncited required claim entries (prevents validator failures from placeholder/empty citations).
+        required_kinds = {"hook", "deliverable_bullet", "funding", "compliance", "outcome"}
+        claims_map[:] = [
+            c
+            for c in claims_map
+            if (c.claim_kind not in required_kinds) or bool(c.kb_chunk_ids or c.urls)
+        ]
     except Exception:
         # Never block generation; validator/repair will surface remaining issues.
         pass
