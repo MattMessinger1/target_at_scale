@@ -264,3 +264,67 @@ class ProductBrief(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TreasureHookFeedback(Base):
+    """Human feedback on treasure hook selection (training signal)."""
+
+    __tablename__ = "treasure_hook_feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Context
+    run_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    product: Mapped[str] = mapped_column(String(200), nullable=False)
+    product_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    state_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    audiences: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    district_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    district_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # Decision + reasons
+    decision: Mapped[str] = mapped_column(String(12), nullable=False)  # selected|rejected
+    rank: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1=primary, 2=secondary
+    reason_tags: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # list[str]
+    reason_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Hook payload (denormalized for easy export)
+    hook_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    confidence: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    link: Mapped[str] = mapped_column(String(800), nullable=False)
+    quote: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    trigger_excerpt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    eligibility_excerpt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    why_relevant: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    source_quality_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class EmailImprovementReview(Base):
+    """Human review + edits for a generated email (training signal)."""
+
+    __tablename__ = "email_improvement_reviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Context
+    run_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    product: Mapped[str] = mapped_column(String(200), nullable=False)
+    product_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    state_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    audience: Mapped[str] = mapped_column(String(200), nullable=False)
+    district_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    district_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    primary_hook_link: Mapped[Optional[str]] = mapped_column(String(800), nullable=True)
+    secondary_hook_link: Mapped[Optional[str]] = mapped_column(String(800), nullable=True)
+
+    # Original vs edited text
+    original_subject_line: Mapped[str] = mapped_column(String(400), nullable=False)
+    original_email_body: Mapped[str] = mapped_column(Text, nullable=False)
+    edited_subject_line: Mapped[str] = mapped_column(String(400), nullable=False)
+    edited_email_body: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Rubric: store as JSON for flexibility
+    rubric: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
