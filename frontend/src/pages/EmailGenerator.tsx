@@ -1397,6 +1397,32 @@ function EmailGeneratorPipeline() {
     prepMutation.mutate()
   }
 
+  // Re-search clears the cache first to force fresh Deep Research
+  const handleReSearch = async () => {
+    if (!canPrep) return
+    setTraceEvents([])
+    setPrep(null)
+    setBlockedFilteredRequirements([])
+    setSelectedHookLinks([])
+    setPrimaryHookLink(null)
+    setHookReasonTags({})
+    setHookReasonNotes({})
+    setReviewDrafts({})
+    setResult(null)
+    setActiveAudience(null)
+    setWizardStep(2) // Go to Research step
+    
+    // Clear cache for this state/product before re-searching
+    try {
+      await api.generate.clearDeepResearchCache(selectedState, selectedProduct)
+    } catch (e) {
+      console.warn('Failed to clear cache:', e)
+      // Continue anyway - cache clear is best-effort
+    }
+    
+    prepMutation.mutate()
+  }
+
   const handleRun = () => {
     if (!canGenerate) return
     setTraceEvents([])
@@ -2149,11 +2175,12 @@ function EmailGeneratorPipeline() {
               </button>
               <div className="flex gap-3">
                 <button
-                  onClick={handlePrep}
+                  onClick={handleReSearch}
                   disabled={prepMutation.isPending}
                   className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors"
+                  title="Clear cache and run fresh Deep Research (5-30 minutes)"
                 >
-                  Re-search
+                  Re-search (Fresh)
                 </button>
                 <button
                   onClick={handleRun}

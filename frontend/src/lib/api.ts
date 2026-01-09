@@ -853,6 +853,16 @@ export const api = {
       fetchApi<GenerateEmailResponse>('/generate/v1', { method: 'POST', body: JSON.stringify(data) }),
     pipeline: (data: PipelineRequest) =>
       fetchApi<PipelineRunResponse>('/generate/', { method: 'POST', body: JSON.stringify(data) }),
+    clearDeepResearchCache: (state?: string, product?: string) => {
+      const params = new URLSearchParams()
+      if (state) params.set('state', state)
+      if (product) params.set('product', product)
+      const query = params.toString()
+      return fetchApi<{ message: string; state?: string; product?: string }>(
+        `/generate/pipeline/cache${query ? `?${query}` : ''}`,
+        { method: 'DELETE' }
+      )
+    },
     pipelinePrepStream: async (data: PipelineRequest, onEvent: (evt: PipelineStreamEvent) => void) => {
       let payload: { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; warnings: string[] } | null = null
       let blockedMsg: string | null = null
