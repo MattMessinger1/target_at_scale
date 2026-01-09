@@ -233,5 +233,15 @@ async def run_treasure_hunter(
         except Exception:
             continue
 
-    return hooks
+    # Enforce: hook links must be from the allowed citations set and must not be disallowed sources.
+    allowed = {u for u in citations if u and str(u).strip()}
+    filtered: List[WebHook] = []
+    for h in hooks:
+        if not h.link or h.link not in allowed:
+            continue
+        if _is_disallowed_hook_source(h.link):
+            continue
+        filtered.append(h)
+
+    return filtered
 
