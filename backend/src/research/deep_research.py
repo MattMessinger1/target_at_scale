@@ -67,6 +67,11 @@ Use it to find RELEVANT funding and compliance that matches our deliverables:
    - If compliance is about transportation and we don't address that → skip
    - Only include items where we can credibly help
 
+5. **PRIORITIZE teacher endorsement/certification requirements**:
+   - If state mandates new ESOL endorsement → CARE Coaching helps teachers earn required PD hours
+   - Our job-embedded coaching cycles count toward professional development requirements
+   - This is a statewide hook affecting ALL districts - very high value!
+
 ---
 
 ## IMPORTANT - EXCLUDE "TABLE STAKES" (what every district already knows)
@@ -164,14 +169,36 @@ For each:
 - How much funding is available?
 - Which districts currently qualify?
 
+### 6. Teacher Endorsement & Certification Requirements (HIGH PRIORITY!)
+
+Search specifically for:
+- **New ESOL/ESL endorsement requirements** - State mandates for teacher certification
+- **Professional development hour requirements** - How many hours do teachers need?
+- **Endorsement program deadlines** - When must teachers be certified?
+- **Alternative certification pathways** - Job-embedded PD options
+
+For each certification/endorsement item:
+- What is the specific requirement?
+- How many PD hours are needed?
+- What is the deadline for compliance?
+- Which districts are most affected?
+- **CARE Coaching connection**: Our coaching cycles provide job-embedded professional learning hours that count toward endorsement requirements
+
+Mark these as HIGH PRIORITY - they affect ALL districts statewide and create immediate demand for quality PD.
+
 ---
 
 ## Verification Requirements
 
-- ONLY include information current as of {current_date}
+- Today's date is {current_date}
+- **CRITICAL: EXCLUDE any funding with deadlines BEFORE {current_date}**
+- Only include funding that is:
+  - Currently active with future deadlines, OR
+  - Starting within the next 6 months
+- If a deadline has passed (even by one day), DO NOT include it
+- For recurring annual funding, only include if the CURRENT cycle is open or upcoming
 - Verify each source is authoritative (state DOE, federal agencies, official district documents)
 - If you cannot verify currency, note "unverified" status
-- Exclude any items with passed deadlines
 - For compliance items, only include verified active situations
 
 ---
