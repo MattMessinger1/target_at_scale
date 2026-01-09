@@ -453,6 +453,8 @@ Remember: Return ONLY a valid JSON object, no other text."""
         # Poll for completion (can take 5-30 minutes)
         poll_interval = 30  # seconds
         max_polls = 60  # 30 minutes max (60 * 30s = 30 min)
+        retry_count = 0  # Track rate limit retries
+        max_retries = 3  # Max retries for rate limit errors
         
         for poll_count in range(max_polls):
             # Check if completed
@@ -463,15 +465,36 @@ Remember: Return ONLY a valid JSON object, no other text."""
             # Check for failure
             if response.status in ("failed", "cancelled"):
                 # Capture detailed error info from response
+                error_obj = getattr(response, 'error', None)
                 error_details = {
                     "status": response.status,
-                    "error": getattr(response, 'error', None),
+                    "error": error_obj,
                     "last_error": getattr(response, 'last_error', None),
                     "incomplete_details": getattr(response, 'incomplete_details', None),
                 }
-                logger.error(f"Deep Research {response.status} for {state_code}/{product_key}: {error_details}")
                 
-                # Also log the full response object for debugging
+                # Check if it's a rate limit error - these are retryable
+                error_code = getattr(error_obj, 'code', None) if error_obj else None
+                if error_code == 'rate_limit_exceeded' and retry_count < max_retries:
+                    retry_count += 1
+                    logger.warning(f"Rate limit hit for {state_code}/{product_key} (attempt {retry_count}/{max_retries}), waiting 60s before retry...")
+                    if on_progress:
+                        on_progress(f"Rate limit hit, waiting 60 seconds before retry (attempt {retry_count}/{max_retries})...", 50.0)
+                    await asyncio.sleep(60)  # Wait 60 seconds for rate limit to reset
+                    
+                    # Re-create the research task
+                    response = await client.responses.create(
+                        model="o3-deep-research",
+                        input=full_prompt,
+                        tools=[{"type": "web_search_preview"}],
+                        background=True,
+                        reasoning={"effort": "medium"},
+                    )
+                    logger.info(f"Retried Deep Research task: id={response.id}, status={response.status}")
+                    continue  # Continue polling loop with new task
+                
+                # Non-retryable error or max retries exceeded - log details and raise
+                logger.error(f"Deep Research {response.status} for {state_code}/{product_key}: {error_details}")
                 logger.error(f"Full response: {response}")
                 
                 error_msg = f"Deep Research {response.status}: {error_details.get('error') or error_details.get('last_error') or 'unknown reason'}"
