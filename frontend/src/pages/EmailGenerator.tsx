@@ -19,9 +19,14 @@ import {
   ResearchResponse,
   GenerateEmailResponse,
   EvidenceChunkCitation,
+  EvidencePack,
   WebHook,
   PipelineRequest,
-  PipelineRunResponse
+  PipelineRunStreamRequest,
+  PipelineRunResponse,
+  PipelineStreamEvent,
+  HookDecision,
+  EmailReviewRequest
 } from '../lib/api'
 import { toast } from '@/components/ui/use-toast'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -1116,6 +1121,19 @@ function EmailGeneratorV1() {
 
 type PipelineStep = 'select' | 'generate' | 'done'
 
+type ReviewSectionKey = 'subject_line' | 'product_relevance' | 'tone' | 'flow' | 'cta'
+
+type ReviewRubricItemDraft = {
+  score: number | null
+  comment: string
+}
+
+type ReviewDraft = {
+  edited_subject_line: string
+  edited_email_body: string
+  rubric: Record<ReviewSectionKey, ReviewRubricItemDraft>
+}
+
 function EmailGeneratorPipeline() {
   const [, setStep] = useState<PipelineStep>('select')
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
@@ -1128,8 +1146,64 @@ function EmailGeneratorPipeline() {
   const [result, setResult] = useState<PipelineRunResponse | null>(null)
   const [activeAudience, setActiveAudience] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [traceEvents, setTraceEvents] = useState<PipelineStreamEvent[]>([])
+  const [prep, setPrep] = useState<{ evidence_pack: EvidencePack; treasure_hooks: WebHook[]; warnings: string[] } | null>(null)
+  const [selectedHookLinks, setSelectedHookLinks] = useState<string[]>([])
+  const [primaryHookLink, setPrimaryHookLink] = useState<string | null>(null)
+  const [hookReasonTags, setHookReasonTags] = useState<Record<string, string[]>>({})
+  const [hookReasonNotes, setHookReasonNotes] = useState<Record<string, string>>({})
+  const [reviewDrafts, setReviewDrafts] = useState<Record<string, ReviewDraft>>({})
 
-  const pipelineMutation = useMutation({
+  useEffect(() => {
+    if (selectedHookLinks.length === 1) {
+      setPrimaryHookLink(selectedHookLinks[0])
+      return
+    }
+    if (selectedHookLinks.length === 2) {
+      setPrimaryHookLink((prev) => (prev && selectedHookLinks.includes(prev) ? prev : selectedHookLinks[0]))
+      return
+    }
+    setPrimaryHookLink(null)
+  }, [selectedHookLinks])
+
+  useEffect(() => {
+    // Keep reason/tag state in sync with current selection
+    setHookReasonTags((prev) => {
+      const next: Record<string, string[]> = {}
+      for (const link of selectedHookLinks) next[link] = prev[link] || []
+      return next
+    })
+    setHookReasonNotes((prev) => {
+      const next: Record<string, string> = {}
+      for (const link of selectedHookLinks) next[link] = prev[link] || ''
+      return next
+    })
+  }, [selectedHookLinks])
+
+  const toggleReasonTag = (link: string, tag: string) => {
+    setHookReasonTags((prev) => {
+      const existing = prev[link] || []
+      const next = existing.includes(tag) ? existing.filter((t) => t !== tag) : [...existing, tag]
+      return { ...prev, [link]: next }
+    })
+  }
+
+  const toggleHook = (link: string) => {
+    setSelectedHookLinks((prev) => {
+      if (prev.includes(link)) return prev.filter((x) => x !== link)
+      if (prev.length >= 2) {
+        toast({
+          title: 'Max 2 hooks',
+          description: 'Select at most two treasure hooks.',
+          variant: 'destructive',
+        })
+        return prev
+      }
+      return [...prev, link]
+    })
+  }
+
+  const prepMutation = useMutation({
     mutationFn: () => {
       const req: PipelineRequest = {
         product: selectedProducts[0] || '',
@@ -1139,13 +1213,96 @@ function EmailGeneratorPipeline() {
         district_name: districtName.trim() || undefined,
         district_url: districtUrl.trim() || undefined,
       }
-      return api.generate.pipeline(req)
+      return api.generate.pipelinePrepStream(req, (evt) => {
+        setTraceEvents((prev) => [...prev, evt])
+      })
     },
     onSuccess: (data) => {
+      setPrep(data)
+      setSelectedHookLinks([])
+      setPrimaryHookLink(null)
+      setResult(null)
+      setReviewDrafts({})
+      setActiveAudience(null)
+      setStep('generate')
+    },
+    onError: (error) => {
+      toast({
+        title: 'Treasure hunt failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      })
+      setStep('select')
+    },
+  })
+
+  const pipelineMutation = useMutation({
+    mutationFn: () => {
+      const req: PipelineRunStreamRequest = {
+        product: selectedProducts[0] || '',
+        state: selectedStates[0]?.code || '',
+        state_full: selectedStates[0]?.name || undefined,
+        audiences: selectedAudiences.length ? selectedAudiences : undefined,
+        district_name: districtName.trim() || undefined,
+        district_url: districtUrl.trim() || undefined,
+      }
+      if (prep) {
+        req.evidence_pack = prep.evidence_pack
+        req.treasure_hooks = prep.treasure_hooks
+      }
+      if (selectedHookLinks.length > 0) {
+        req.selected_hook_links = selectedHookLinks
+        req.primary_hook_link = (primaryHookLink || selectedHookLinks[0] || '').trim() || undefined
+      }
+      return api.generate.pipelineRunStream(req, (evt) => {
+        setTraceEvents((prev) => [...prev, evt])
+      })
+    },
+    onSuccess: (data) => {
+      setReviewDrafts({})
       setResult(data)
       const first = data.variants?.[0]?.audience
       setActiveAudience(first || null)
       setStep('done')
+
+      // Training loop: log the explicit human-selected hooks (no implicit rejections).
+      try {
+        if (prep && selectedHookLinks.length > 0) {
+          const map = new Map((prep.treasure_hooks || []).map((h) => [h.link, h]))
+          const primary = (primaryHookLink || selectedHookLinks[0] || '').trim()
+          const decisions: HookDecision[] = []
+          for (const link of selectedHookLinks) {
+            const hook = map.get(link)
+            if (!hook) continue
+            const rank = selectedHookLinks.length === 1 ? 1 : link === primary ? 1 : 2
+            decisions.push({
+              decision: 'selected',
+              rank,
+              reason_tags: hookReasonTags[link] || [],
+              reason_note: (hookReasonNotes[link] || '').trim() || null,
+              hook,
+            })
+          }
+
+          if (decisions.length > 0) {
+            api.feedback
+              .submitHookFeedback({
+                run_id: data.run_id,
+                product: selectedProducts[0] || data.request.product,
+                state_code: selectedStates[0]?.code || data.request.state,
+                audiences: data.request.audiences || null,
+                district_name: data.request.district_name || null,
+                district_url: data.request.district_url || null,
+                decisions,
+              })
+              .catch(() => {
+                // non-blocking
+              })
+          }
+        }
+      } catch {
+        // non-blocking
+      }
     },
     onError: (error) => {
       toast({
@@ -1157,12 +1314,70 @@ function EmailGeneratorPipeline() {
     },
   })
 
-  const canGenerate = selectedProducts.length > 0 && selectedStates.length > 0
+  const canPrep = selectedProducts.length > 0 && selectedStates.length > 0
+  const tagsOk = selectedHookLinks.every((link) => (hookReasonTags[link]?.length || 0) > 0)
+  const canGenerate = canPrep && !!prep && selectedHookLinks.length > 0 && tagsOk
   const variants = result?.variants || []
   const activeVariant = variants.find((v) => v.audience === activeAudience) || variants[0]
 
+  useEffect(() => {
+    if (!activeVariant) return
+    const aud = activeVariant.audience
+    setReviewDrafts((prev) => {
+      if (prev[aud]) return prev
+      const blank = { score: null, comment: '' }
+      return {
+        ...prev,
+        [aud]: {
+          edited_subject_line: activeVariant.email_draft.subject_line,
+          edited_email_body: activeVariant.email_draft.email_body,
+          rubric: {
+            subject_line: { ...blank },
+            product_relevance: { ...blank },
+            tone: { ...blank },
+            flow: { ...blank },
+            cta: { ...blank },
+          },
+        },
+      }
+    })
+  }, [activeVariant?.audience, result?.run_id])
+
+  const reviewMutation = useMutation({
+    mutationFn: (payload: EmailReviewRequest) => api.feedback.submitEmailReview(payload),
+    onSuccess: () => {
+      toast({
+        title: 'Review saved',
+        description: 'Saved for training/export.',
+      })
+    },
+    onError: (error) => {
+      toast({
+        title: 'Review save failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const handlePrep = () => {
+    if (!canPrep) return
+    setTraceEvents([])
+    setPrep(null)
+    setSelectedHookLinks([])
+    setPrimaryHookLink(null)
+    setHookReasonTags({})
+    setHookReasonNotes({})
+    setReviewDrafts({})
+    setResult(null)
+    setActiveAudience(null)
+    setStep('generate')
+    prepMutation.mutate()
+  }
+
   const handleRun = () => {
     if (!canGenerate) return
+    setTraceEvents([])
     setStep('generate')
     pipelineMutation.mutate()
   }
@@ -1170,8 +1385,15 @@ function EmailGeneratorPipeline() {
   const handleReset = () => {
     setStep('select')
     setResult(null)
+    setPrep(null)
+    setSelectedHookLinks([])
+    setPrimaryHookLink(null)
+    setHookReasonTags({})
+    setHookReasonNotes({})
+    setReviewDrafts({})
     setActiveAudience(null)
     setCopied(false)
+    setTraceEvents([])
   }
 
   const handleCopy = () => {
@@ -1262,6 +1484,158 @@ function EmailGeneratorPipeline() {
     )
   }
 
+  const renderReview = () => {
+    if (!result || !activeVariant) return null
+    const aud = activeVariant.audience
+    const draft = reviewDrafts[aud]
+    if (!draft) return null
+
+    const sections: Array<{ key: ReviewSectionKey; label: string }> = [
+      { key: 'subject_line', label: 'Subject line' },
+      { key: 'product_relevance', label: 'Product relevance' },
+      { key: 'tone', label: 'Tone' },
+      { key: 'flow', label: 'Flow' },
+      { key: 'cta', label: 'CTA' },
+    ]
+
+    const allScores = sections.every(({ key }) => {
+      const s = draft.rubric[key]?.score
+      return typeof s === 'number' && s >= 1 && s <= 5
+    })
+    const textOk = draft.edited_subject_line.trim().length > 0 && draft.edited_email_body.trim().length > 0
+    const canSave = allScores && textOk && !reviewMutation.isPending
+
+    return (
+      <div className="mt-4 p-4 rounded-lg border border-slate-700 bg-slate-800/50">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-medium text-slate-200">Review (training loop)</div>
+          {reviewMutation.isPending && <div className="text-xs text-slate-400">Saving…</div>}
+        </div>
+
+        <div className="mt-3 space-y-3">
+          <div>
+            <label className="block text-xs text-slate-500 uppercase tracking-wide">Edited subject</label>
+            <input
+              value={draft.edited_subject_line}
+              onChange={(e) =>
+                setReviewDrafts((prev) => ({
+                  ...prev,
+                  [aud]: { ...draft, edited_subject_line: e.target.value },
+                }))
+              }
+              className="mt-2 w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs text-slate-500 uppercase tracking-wide">Edited email</label>
+            <textarea
+              value={draft.edited_email_body}
+              onChange={(e) =>
+                setReviewDrafts((prev) => ({
+                  ...prev,
+                  [aud]: { ...draft, edited_email_body: e.target.value },
+                }))
+              }
+              className="mt-2 w-full min-h-[160px] px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <div className="text-xs text-slate-500 uppercase tracking-wide">Rubric (1–5 + comments)</div>
+          <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {sections.map(({ key, label }) => (
+              <div key={key} className="p-3 rounded border border-slate-700 bg-slate-900/20">
+                <div className="text-sm text-slate-200">{label}</div>
+                <div className="mt-2 flex items-center gap-3">
+                  <label className="text-xs text-slate-500">Score</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={5}
+                    value={draft.rubric[key]?.score ?? ''}
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      const score = raw === '' ? null : Number(raw)
+                      setReviewDrafts((prev) => ({
+                        ...prev,
+                        [aud]: {
+                          ...draft,
+                          rubric: {
+                            ...draft.rubric,
+                            [key]: { ...draft.rubric[key], score: Number.isFinite(score) ? score : null },
+                          },
+                        },
+                      }))
+                    }}
+                    className="w-20 px-2 py-1 bg-slate-800 border border-slate-700 rounded text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <textarea
+                  value={draft.rubric[key]?.comment || ''}
+                  onChange={(e) =>
+                    setReviewDrafts((prev) => ({
+                      ...prev,
+                      [aud]: {
+                        ...draft,
+                        rubric: { ...draft.rubric, [key]: { ...draft.rubric[key], comment: e.target.value } },
+                      },
+                    }))
+                  }
+                  placeholder="Comments"
+                  className="mt-2 w-full min-h-[72px] px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <button
+          onClick={() => {
+            const rubric = draft.rubric
+            const required = (key: ReviewSectionKey) => {
+              const item = rubric[key]
+              const score = item?.score
+              if (typeof score !== 'number' || score < 1 || score > 5) return null
+              return { score, comment: (item.comment || '').trim() || null }
+            }
+
+            const payload: EmailReviewRequest = {
+              run_id: result.run_id,
+              product: result.request.product,
+              state_code: result.request.state,
+              audience: aud,
+              district_name: result.request.district_name || null,
+              district_url: result.request.district_url || null,
+              primary_hook_link: activeVariant.selected_hook?.hook?.link || null,
+              secondary_hook_link: activeVariant.secondary_hook?.hook?.link || null,
+              original_subject_line: activeVariant.email_draft.subject_line,
+              original_email_body: activeVariant.email_draft.email_body,
+              edited_subject_line: draft.edited_subject_line,
+              edited_email_body: draft.edited_email_body,
+              rubric: {
+                subject_line: required('subject_line')!,
+                product_relevance: required('product_relevance')!,
+                tone: required('tone')!,
+                flow: required('flow')!,
+                cta: required('cta')!,
+              },
+            }
+
+            reviewMutation.mutate(payload)
+          }}
+          disabled={!canSave}
+          className={`mt-4 w-full px-6 py-3 rounded-lg font-medium transition-colors ${
+            !canSave ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+          }`}
+        >
+          Save review
+        </button>
+      </div>
+    )
+  }
+
   const renderEvidence = () => {
     if (!result) return null
     return (
@@ -1316,13 +1690,15 @@ function EmailGeneratorPipeline() {
   const renderHook = () => {
     if (!activeVariant) return null
     const h = activeVariant.selected_hook?.hook
+    const sh = activeVariant.secondary_hook?.hook
     if (!h) return null
     return (
       <div className="mt-4 p-4 rounded-lg border border-slate-700 bg-slate-800/50">
         <div className="flex items-center justify-between">
-          <div className="text-sm font-medium text-slate-200">Selected hook</div>
+          <div className="text-sm font-medium text-slate-200">Selected hooks</div>
           <div className="text-xs text-slate-500">{h.hook_type} · {h.confidence}</div>
         </div>
+        <div className="mt-2 text-xs text-slate-500 uppercase tracking-wide">Primary (opener)</div>
         <div className="mt-2 text-sm text-slate-300">“{h.quote}”</div>
         <a className="mt-2 block text-sm text-emerald-300 hover:text-emerald-200 underline break-all" href={h.link} target="_blank" rel="noreferrer">
           {h.link}
@@ -1333,6 +1709,29 @@ function EmailGeneratorPipeline() {
           <>
             <div className="mt-3 text-xs text-slate-500 uppercase tracking-wide">Eligibility excerpt</div>
             <div className="mt-1 text-sm text-slate-300">{h.eligibility_excerpt}</div>
+          </>
+        )}
+
+        {sh && (
+          <>
+            <div className="mt-4 pt-4 border-t border-slate-700">
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-slate-500 uppercase tracking-wide">Secondary (later impetus)</div>
+                <div className="text-xs text-slate-500">{sh.hook_type} · {sh.confidence}</div>
+              </div>
+              <div className="mt-2 text-sm text-slate-300">“{sh.quote}”</div>
+              <a className="mt-2 block text-sm text-emerald-300 hover:text-emerald-200 underline break-all" href={sh.link} target="_blank" rel="noreferrer">
+                {sh.link}
+              </a>
+              <div className="mt-3 text-xs text-slate-500 uppercase tracking-wide">Trigger excerpt</div>
+              <div className="mt-1 text-sm text-slate-300">{sh.trigger_excerpt}</div>
+              {sh.eligibility_excerpt && (
+                <>
+                  <div className="mt-3 text-xs text-slate-500 uppercase tracking-wide">Eligibility excerpt</div>
+                  <div className="mt-1 text-sm text-slate-300">{sh.eligibility_excerpt}</div>
+                </>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -1385,20 +1784,191 @@ function EmailGeneratorPipeline() {
               </div>
 
               <button
-                onClick={handleRun}
-                disabled={!canGenerate || pipelineMutation.isPending}
+                onClick={handlePrep}
+                disabled={!canPrep || prepMutation.isPending || pipelineMutation.isPending}
                 className={`w-full px-6 py-3 rounded-lg font-medium transition-colors ${
-                  !canGenerate || pipelineMutation.isPending
+                  !canPrep || prepMutation.isPending || pipelineMutation.isPending
                     ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                    : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                    : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
                 }`}
               >
-                {pipelineMutation.isPending ? 'Running pipeline…' : 'Generate'}
+                {prepMutation.isPending ? 'Searching for treasure…' : prep ? 'Re-run treasure hunt' : 'Find treasure hooks'}
               </button>
 
-              {pipelineMutation.isError && (
+              {prepMutation.isError && (
                 <div className="p-3 rounded border border-red-800 bg-red-900/30 text-red-300 text-sm">
-                  {pipelineMutation.error instanceof Error ? pipelineMutation.error.message : 'Pipeline error'}
+                  {prepMutation.error instanceof Error ? prepMutation.error.message : 'Treasure hunt error'}
+                </div>
+              )}
+
+              {prep && (
+                <div className="p-4 rounded-lg border border-slate-700 bg-slate-900/30 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-medium text-slate-200">Pick treasure hooks</div>
+                    <div className="text-xs text-slate-500">
+                      selected: {selectedHookLinks.length}/2
+                    </div>
+                  </div>
+
+                  {(prep.treasure_hooks || []).length === 0 && (
+                    <div className="text-sm text-slate-400">No hooks returned.</div>
+                  )}
+
+                  {(prep.treasure_hooks || []).slice(0, 20).map((h, i) => {
+                    const checked = selectedHookLinks.includes(h.link)
+                    return (
+                      <label
+                        key={`${h.link}-${i}`}
+                        className={`block p-3 rounded border cursor-pointer transition-colors ${
+                          checked ? 'border-emerald-600 bg-emerald-900/10' : 'border-slate-700 bg-slate-900/20 hover:bg-slate-900/30'
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleHook(h.link)}
+                            className="mt-1"
+                          />
+                          <div className="min-w-0">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-xs text-slate-400 font-mono">
+                                {h.hook_type} · {h.confidence}
+                              </div>
+                            </div>
+                            <div className="mt-1 text-sm text-slate-200">“{h.quote}”</div>
+                            <div className="mt-1 text-xs text-slate-400">{h.why_relevant}</div>
+                            <a
+                              className="mt-2 block text-xs text-emerald-300 hover:text-emerald-200 underline break-all"
+                              href={h.link}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {h.link}
+                            </a>
+                          </div>
+                        </div>
+                      </label>
+                    )
+                  })}
+
+                  {selectedHookLinks.length === 2 && (
+                    <div className="pt-2 border-t border-slate-700">
+                      <div className="text-xs text-slate-500 uppercase tracking-wide">Primary opener hook</div>
+                      <div className="mt-2 space-y-2">
+                        {selectedHookLinks.map((link) => (
+                          <label key={link} className="flex items-center gap-2 text-sm text-slate-200">
+                            <input
+                              type="radio"
+                              name="primaryHook"
+                              checked={primaryHookLink === link}
+                              onChange={() => setPrimaryHookLink(link)}
+                            />
+                            <span className="truncate">{link}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedHookLinks.length > 0 && (
+                    <div className="pt-2 border-t border-slate-700 space-y-3">
+                      <div className="text-xs text-slate-500 uppercase tracking-wide">
+                        Selection reasons (required)
+                      </div>
+                      {selectedHookLinks.map((link) => {
+                        const hook = (prep.treasure_hooks || []).find((x) => x.link === link)
+                        const tags = hookReasonTags[link] || []
+                        const options = [
+                          { tag: 'time_bound', label: 'Time-bound' },
+                          { tag: 'actionable', label: 'Actionable' },
+                          { tag: 'strong_source', label: 'Strong source' },
+                          { tag: 'matches_offering', label: 'Matches offering' },
+                          { tag: 'district_specific', label: 'District-specific' },
+                        ]
+                        return (
+                          <div key={link} className="p-3 rounded border border-slate-700 bg-slate-900/20">
+                            <div className="text-xs text-slate-400 break-all">
+                              {link}
+                            </div>
+                            {hook?.quote && (
+                              <div className="mt-1 text-sm text-slate-200">“{hook.quote}”</div>
+                            )}
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {options.map((opt) => (
+                                <label
+                                  key={`${link}-${opt.tag}`}
+                                  className={`flex items-center gap-2 px-2 py-1 rounded border text-xs cursor-pointer ${
+                                    tags.includes(opt.tag)
+                                      ? 'border-emerald-600 bg-emerald-900/10 text-emerald-200'
+                                      : 'border-slate-700 bg-slate-900/10 text-slate-300 hover:bg-slate-900/20'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={tags.includes(opt.tag)}
+                                    onChange={() => toggleReasonTag(link, opt.tag)}
+                                  />
+                                  <span>{opt.label}</span>
+                                </label>
+                              ))}
+                            </div>
+                            <textarea
+                              value={hookReasonNotes[link] || ''}
+                              onChange={(e) => setHookReasonNotes((prev) => ({ ...prev, [link]: e.target.value }))}
+                              placeholder="Optional notes"
+                              className="mt-3 w-full min-h-[72px] px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            />
+                          </div>
+                        )
+                      })}
+                      {!tagsOk && (
+                        <div className="text-xs text-amber-300">
+                          Add at least one reason tag for each selected hook to continue.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleRun}
+                    disabled={!canGenerate || pipelineMutation.isPending}
+                    className={`w-full px-6 py-3 rounded-lg font-medium transition-colors ${
+                      !canGenerate || pipelineMutation.isPending
+                        ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                    }`}
+                  >
+                    {pipelineMutation.isPending ? 'Generating…' : 'Generate email variants'}
+                  </button>
+
+                  {pipelineMutation.isError && (
+                    <div className="p-3 rounded border border-red-800 bg-red-900/30 text-red-300 text-sm">
+                      {pipelineMutation.error instanceof Error ? pipelineMutation.error.message : 'Pipeline error'}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {traceEvents.length > 0 && (
+                <div className="p-3 rounded border border-slate-700 bg-slate-900/30">
+                  <div className="text-xs text-slate-500 uppercase tracking-wide">Trace</div>
+                  <div className="mt-2 space-y-1 max-h-48 overflow-y-auto pr-1">
+                    {traceEvents.map((e, i) => (
+                      <div key={`${e.type}-${i}`} className="text-xs text-slate-300">
+                        <span className="font-mono text-slate-400">{String(e.type)}</span>
+                        {e.stage && (
+                          <span className="ml-2 text-slate-300">
+                            <span className="text-slate-500">stage:</span> {String(e.stage)}
+                          </span>
+                        )}
+                        {typeof e.message === 'string' && (
+                          <div className="mt-1 text-slate-400">{e.message}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -1408,7 +1978,7 @@ function EmailGeneratorPipeline() {
             <div className="text-sm font-medium text-slate-200">Output</div>
             {!result && (
               <div className="mt-4 text-sm text-slate-400">
-                Run the pipeline to generate audience variants.
+                Run the treasure hunt, pick 1–2 hooks, then generate audience variants.
               </div>
             )}
 
@@ -1465,6 +2035,7 @@ function EmailGeneratorPipeline() {
                       <button
                         onClick={() => {
                           setStep('generate')
+                          setTraceEvents([])
                           pipelineMutation.mutate()
                         }}
                         className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors"
@@ -1481,6 +2052,7 @@ function EmailGeneratorPipeline() {
 
                     {renderHook()}
                     {renderValidation()}
+                    {renderReview()}
                   </>
                 )}
               </div>

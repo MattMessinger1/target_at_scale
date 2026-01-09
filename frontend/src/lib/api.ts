@@ -319,6 +319,13 @@ export interface PipelineRequest {
   district_url?: string | null
 }
 
+export interface PipelineRunStreamRequest extends PipelineRequest {
+  evidence_pack?: EvidencePack | null
+  treasure_hooks?: WebHook[] | null
+  selected_hook_links?: string[] | null
+  primary_hook_link?: string | null
+}
+
 export interface EvidenceChunkCitation {
   chunk_id: string
   source_kb_id?: string | null
@@ -410,6 +417,7 @@ export interface AudienceVariantTrace {
 export interface AudienceVariantResult {
   audience: string
   selected_hook: SelectedHook
+  secondary_hook?: SelectedHook | null
   email_draft: EmailDraft
   claims_map: ClaimsMapEntry[]
   validation: ValidationResult
@@ -433,6 +441,137 @@ export interface PipelineRunResponse {
   variants: AudienceVariantResult[]
   trace: PipelineTrace
   warnings: string[]
+}
+
+// ----------------------------------------------------------------------------
+// Feedback (training loop)
+// ----------------------------------------------------------------------------
+
+export type HookDecisionKind = 'selected' | 'rejected'
+
+export interface HookDecision {
+  decision: HookDecisionKind
+  rank?: number | null
+  reason_tags: string[]
+  reason_note?: string | null
+  hook: WebHook
+}
+
+export interface HookFeedbackRequest {
+  run_id?: string | null
+  product: string
+  state_code: string
+  audiences?: string[] | null
+  district_name?: string | null
+  district_url?: string | null
+  decisions: HookDecision[]
+}
+
+export interface HookFeedbackResponse {
+  inserted: number
+}
+
+export interface RubricItem {
+  score: number
+  comment?: string | null
+}
+
+export interface EmailRubric {
+  subject_line: RubricItem
+  product_relevance: RubricItem
+  tone: RubricItem
+  flow: RubricItem
+  cta: RubricItem
+}
+
+export interface EmailReviewRequest {
+  run_id?: string | null
+  product: string
+  state_code: string
+  audience: string
+  district_name?: string | null
+  district_url?: string | null
+  primary_hook_link?: string | null
+  secondary_hook_link?: string | null
+  original_subject_line: string
+  original_email_body: string
+  edited_subject_line: string
+  edited_email_body: string
+  rubric: EmailRubric
+}
+
+export interface EmailReviewResponse {
+  id: number
+}
+
+// ----------------------------------------------------------------------------
+// NDJSON streaming helpers (V3 trace UI groundwork)
+// ----------------------------------------------------------------------------
+
+export type PipelineStreamEvent = Record<string, unknown> & {
+  type: string
+  ts?: string
+  stage?: string
+  ms?: number
+  message?: string
+  reason?: string
+  payload?: unknown
+}
+
+async function fetchNdjson(
+  endpoint: string,
+  body: unknown,
+  onEvent: (evt: PipelineStreamEvent) => void
+): Promise<void> {
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    const errorData = await response
+      .json()
+      .catch(() => ({ detail: 'Unknown error' as const }))
+
+    const detail = (errorData as { detail?: unknown })?.detail
+    const message = typeof detail === 'string' ? detail : JSON.stringify(detail ?? errorData)
+    throw new Error(message || `HTTP ${response.status}`)
+  }
+
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('Streaming response not supported')
+
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+
+    for (const line of lines) {
+      const s = line.trim()
+      if (!s) continue
+      try {
+        onEvent(JSON.parse(s) as PipelineStreamEvent)
+      } catch {
+        // ignore malformed lines
+      }
+    }
+  }
+
+  const tail = buffer.trim()
+  if (tail) {
+    try {
+      onEvent(JSON.parse(tail) as PipelineStreamEvent)
+    } catch {
+      // ignore
+    }
+  }
 }
 
 export interface KbUploadResponse {
@@ -708,11 +847,48 @@ export const api = {
       fetchApi<GenerateEmailResponse>('/generate/v1', { method: 'POST', body: JSON.stringify(data) }),
     pipeline: (data: PipelineRequest) =>
       fetchApi<PipelineRunResponse>('/generate/', { method: 'POST', body: JSON.stringify(data) }),
+    pipelinePrepStream: async (data: PipelineRequest, onEvent: (evt: PipelineStreamEvent) => void) => {
+      let payload: { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; warnings: string[] } | null = null
+      let blockedMsg: string | null = null
+      await fetchNdjson('/generate/pipeline/prep/stream', data, (evt) => {
+        onEvent(evt)
+        if (evt.type === 'blocked') {
+          blockedMsg = typeof evt.message === 'string' ? evt.message : 'Blocked'
+        }
+        if (evt.type === 'prep_ready') payload = evt.payload as typeof payload
+      })
+      if (blockedMsg) throw new Error(blockedMsg)
+      if (!payload) throw new Error('No prep payload returned')
+      return payload
+    },
+    pipelineRunStream: async (data: PipelineRunStreamRequest, onEvent: (evt: PipelineStreamEvent) => void) => {
+      let payload: PipelineRunResponse | null = null
+      let blockedMsg: string | null = null
+      await fetchNdjson('/generate/pipeline/run/stream', data, (evt) => {
+        onEvent(evt)
+        if (evt.type === 'blocked') {
+          blockedMsg = typeof evt.message === 'string' ? evt.message : 'Blocked'
+        }
+        if (evt.type === 'run_ready') payload = evt.payload as PipelineRunResponse
+      })
+      if (blockedMsg) throw new Error(blockedMsg)
+      if (!payload) throw new Error('No run payload returned')
+      return payload
+    },
     batch: (requests: GenerateEmailRequest[]) =>
       fetchApi<{ emails: GenerateEmailResponse[]; count: number }>('/generate/batch', {
         method: 'POST',
         body: JSON.stringify(requests),
       }),
     exportTemplate: () => fetchApi<{ headers: string[]; format: string; notes: string }>('/generate/export-csv'),
+  },
+
+  feedback: {
+    submitHookFeedback: (data: HookFeedbackRequest) =>
+      fetchApi<HookFeedbackResponse>('/feedback/hooks', { method: 'POST', body: JSON.stringify(data) }),
+    exportHookFeedback: () => fetch(`${API_BASE}/feedback/hooks/export`),
+    submitEmailReview: (data: EmailReviewRequest) =>
+      fetchApi<EmailReviewResponse>('/feedback/email-reviews', { method: 'POST', body: JSON.stringify(data) }),
+    exportEmailReviews: () => fetch(`${API_BASE}/feedback/email-reviews/export`),
   },
 }
