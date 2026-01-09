@@ -99,6 +99,9 @@ def _is_disallowed_hook_source(url: str) -> bool:
     # Never use our own sites as “external” compliance/funding hooks.
     if "wceps" in host:
         return True
+    # Exclude internal/dev environments that occasionally appear in KB content.
+    if "tenforward" in host or "pathways.dev" in host:
+        return True
     return False
 
 
