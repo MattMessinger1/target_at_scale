@@ -390,16 +390,15 @@ async def run_deep_research(
         )
         
         if on_progress:
-            on_progress("Starting web research (this may take several minutes)...", 10.0)
+            on_progress("Starting Deep Research (this may take 5-30 minutes)...", 5.0)
         
-        # Use the Responses API with web_search tool for real web browsing
-        # This performs actual internet searches and can take 1-10+ minutes
-        logger.info(f"Starting Deep Research with web_search for {state_code}/{product_key}")
+        # Use OpenAI's actual Deep Research model with background mode
+        # This performs thorough, multi-step web research
+        logger.info(f"Starting o3-deep-research for {state_code}/{product_key}")
         
-        # Wrap prompt with JSON output instruction since Responses API 
-        # doesn't have response_format parameter
-        full_prompt = f"""You are an expert K-12 education policy researcher with web search capabilities.
-Search the web thoroughly to find current, verified information.
+        # Wrap prompt with JSON output instruction
+        full_prompt = f"""You are an expert K-12 education policy researcher.
+Conduct thorough, multi-step research using web search to find current, verified information.
 
 IMPORTANT: Return your findings as a valid JSON object matching the schema in the instructions below.
 
@@ -407,33 +406,64 @@ IMPORTANT: Return your findings as a valid JSON object matching the schema in th
 
 Remember: Return ONLY a valid JSON object, no other text."""
         
+        # Start background Deep Research task
+        # This uses OpenAI's o3-deep-research model which can take 5-30 minutes
         response = await client.responses.create(
-            model="gpt-4o",  # Use latest model for best research
+            model="o3-deep-research",  # OpenAI's actual Deep Research model
             input=full_prompt,
-            tools=[
-                {
-                    "type": "web_search",
-                    # Optionally filter to authoritative education domains
-                    # "filters": {
-                    #     "allowed_domains": ["ed.gov", "*.gov"]
-                    # }
-                }
-            ],
-            # No limits on output - let Deep Research be thorough
-            max_output_tokens=16384,  # Maximum allowed for GPT-4o
+            background=True,  # Run async for long-running research
+            reasoning={"effort": "high"},  # Thorough analysis
         )
         
-        if on_progress:
-            on_progress("Processing research results...", 80.0)
+        logger.info(f"Deep Research task started: id={response.id}, status={response.status}")
         
-        # Responses API returns output_text instead of choices[0].message.content
+        # Poll for completion (can take 5-30 minutes)
+        poll_interval = 30  # seconds
+        max_polls = 60  # 30 minutes max (60 * 30s = 30 min)
+        
+        for poll_count in range(max_polls):
+            # Check if completed
+            if response.status == "completed":
+                logger.info(f"Deep Research completed after {poll_count * poll_interval}s")
+                break
+            
+            # Check for failure
+            if response.status in ("failed", "cancelled"):
+                error_msg = f"Deep Research {response.status}"
+                logger.error(f"{error_msg} for {state_code}/{product_key}")
+                raise RuntimeError(error_msg)
+            
+            # Update progress
+            if on_progress:
+                elapsed_min = (poll_count * poll_interval) // 60
+                elapsed_sec = (poll_count * poll_interval) % 60
+                progress_pct = min(10 + poll_count, 90)  # 10% to 90%
+                on_progress(
+                    f"Deep Research in progress ({elapsed_min}m {elapsed_sec}s)... Status: {response.status}",
+                    progress_pct
+                )
+            
+            # Wait before polling again
+            await asyncio.sleep(poll_interval)
+            
+            # Poll for updated status
+            response = await client.responses.retrieve(response.id)
+            logger.debug(f"Poll {poll_count + 1}: status={response.status}")
+        
+        else:
+            # Loop exhausted without completion
+            raise RuntimeError(f"Deep Research timed out after {max_polls * poll_interval}s")
+        
+        if on_progress:
+            on_progress("Processing research results...", 95.0)
+        
+        # Get the final output
         raw_content = response.output_text or "{}"
         results = _parse_research_response(raw_content)
         
         # Add metadata
-        # Responses API may have different attribute names
         response_id = getattr(response, "id", None) or "unknown"
-        model_used = getattr(response, "model", None) or "gpt-4o"
+        model_used = getattr(response, "model", None) or "o3-deep-research"
         
         results["_meta"] = {
             "state_code": state_code,
@@ -442,7 +472,8 @@ Remember: Return ONLY a valid JSON object, no other text."""
             "researched_at": datetime.utcnow().isoformat(),
             "model": model_used,
             "response_id": response_id,
-            "used_web_search": True,
+            "deep_research": True,
+            "background_mode": True,
         }
         
         # Update cache entry
