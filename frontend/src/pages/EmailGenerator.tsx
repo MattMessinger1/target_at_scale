@@ -1864,19 +1864,41 @@ function EmailGeneratorPipeline() {
       allowable_use: 'Allowable Use',
       district_specific: 'District Specific',
     }
+    
+    // Truncate long quotes
+    const MAX_QUOTE_LENGTH = 250
+    const quote = h.quote || ''
+    const truncatedQuote = quote.length > MAX_QUOTE_LENGTH 
+      ? quote.slice(0, MAX_QUOTE_LENGTH) + '...' 
+      : quote
+    
+    // Extract domain from URL for cleaner display
+    let displayDomain = h.link
+    try {
+      displayDomain = new URL(h.link).hostname.replace('www.', '')
+    } catch {
+      // Keep original if URL parsing fails
+    }
+    
+    // Check if this is an elevated (filtered but selected) item
+    const isElevated = opts.isFiltered && opts.isSelected
+    
     return (
       <div className={`p-4 rounded-lg border ${
-        opts.isFiltered 
+        isElevated
+          ? 'border-amber-600 bg-amber-900/20 opacity-100'
+          : opts.isFiltered 
           ? 'border-slate-700 bg-slate-900/30 opacity-75' 
           : opts.isSelected 
           ? 'border-emerald-600 bg-emerald-900/20' 
           : 'border-slate-700 bg-slate-800/50'
       }`}>
         <div className="flex items-start justify-between gap-3">
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
+            {/* Header badges */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                opts.isFiltered ? 'bg-slate-700 text-slate-400' : 'bg-emerald-900/50 text-emerald-300'
+                opts.isFiltered && !isElevated ? 'bg-slate-700 text-slate-400' : 'bg-emerald-900/50 text-emerald-300'
               }`}>
                 {hookTypeLabels[h.hook_type] || h.hook_type}
               </span>
@@ -1890,29 +1912,54 @@ function EmailGeneratorPipeline() {
                   {opts.filterReasonLabel}
                 </span>
               )}
+              {isElevated && (
+                <span className="px-2 py-0.5 rounded bg-amber-900/50 text-amber-300 text-xs font-medium">
+                  Elevated
+                </span>
+              )}
             </div>
-            <div className="mt-2 text-sm text-slate-200">"{h.quote}"</div>
-            <div className="mt-2 text-xs text-slate-500 uppercase tracking-wide">Trigger</div>
-            <div className="text-sm text-slate-300">{h.trigger_excerpt}</div>
-            {h.eligibility_excerpt && (
-              <>
-                <div className="mt-2 text-xs text-slate-500 uppercase tracking-wide">Eligibility</div>
-                <div className="text-sm text-slate-300">{h.eligibility_excerpt}</div>
-              </>
-            )}
-            <div className="mt-2 text-xs text-slate-500 uppercase tracking-wide">Why Relevant</div>
-            <div className="text-sm text-slate-400">{h.why_relevant}</div>
+            
+            {/* Quote - truncated */}
+            <div className="mt-3 text-sm text-slate-200 italic">"{truncatedQuote}"</div>
+            
+            {/* Divider */}
+            <div className="my-3 border-t border-slate-700/50" />
+            
+            {/* Details grid */}
+            <div className="space-y-2">
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-wide font-medium">Trigger</div>
+                <div className="mt-0.5 text-sm text-slate-300">{h.trigger_excerpt}</div>
+              </div>
+              {h.eligibility_excerpt && (
+                <div>
+                  <div className="text-xs text-slate-500 uppercase tracking-wide font-medium">Eligibility</div>
+                  <div className="mt-0.5 text-sm text-slate-300">{h.eligibility_excerpt}</div>
+                </div>
+              )}
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-wide font-medium">Why Relevant</div>
+                <div className="mt-0.5 text-sm text-slate-400">{h.why_relevant}</div>
+              </div>
+            </div>
+            
+            {/* Source link - clean domain display */}
             <a 
               href={h.link} 
               target="_blank" 
               rel="noreferrer"
-              className="mt-2 block text-sm text-emerald-400 hover:text-emerald-300 underline break-all"
+              className="mt-3 inline-flex items-center gap-1.5 text-sm text-emerald-400 hover:text-emerald-300"
             >
-              {h.link}
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              {displayDomain}
             </a>
           </div>
-          {!opts.isFiltered && opts.onToggle && (
-            <div className="flex flex-col items-end gap-2">
+          
+          {/* Selection controls - now available for filtered items too */}
+          {opts.onToggle && (
+            <div className="flex flex-col items-end gap-2 flex-shrink-0">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -1920,7 +1967,7 @@ function EmailGeneratorPipeline() {
                   onChange={opts.onToggle}
                   className="w-5 h-5 rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500"
                 />
-                <span className="text-sm text-slate-300">Select</span>
+                <span className="text-sm text-slate-300">{opts.isFiltered ? 'Elevate' : 'Select'}</span>
               </label>
               {opts.isSelected && selectedHookLinks.length === 2 && opts.onSetPrimary && (
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -2151,6 +2198,10 @@ function EmailGeneratorPipeline() {
                           isFiltered: true,
                           filterReason: fr.reason,
                           filterReasonLabel: fr.reason_label,
+                          isSelected: selectedHookLinks.includes(fr.hook.link),
+                          isPrimary: primaryHookLink === fr.hook.link,
+                          onToggle: () => toggleHookSelection(fr.hook.link),
+                          onSetPrimary: () => setPrimaryHookLink(fr.hook.link),
                         })}
                       </div>
                     ))}

@@ -141,20 +141,27 @@ For each intervention found:
 
 ### 4. Compliance Requirements (NAME SPECIFIC DISTRICTS!)
 
+**IMPORTANT TIME FILTER**: Only include compliance items that are:
+- Currently being enforced (active monitoring, active consent decree, etc.)
+- Scheduled to begin within the next 6 months
+- **DO NOT include historical compliance events that have concluded**
+- If a compliance window has closed (e.g., "3-year window concluded by 2023"), DO NOT include it
+
 Search specifically for:
-- **DOJ investigations or consent decrees** - WHICH {state_code} DISTRICTS?
-- **OCR complaints or resolutions** - WHICH {state_code} DISTRICTS?
-- **CSI schools with EL subgroup** - WHICH DISTRICTS have the most? How many schools?
-- **TSI/ATSI schools for EL subgroup** - WHICH DISTRICTS? How many schools?
-- **State monitoring reviews** with findings - WHICH DISTRICTS are on corrective action?
-- **EL program audits** with citations - WHICH DISTRICTS failed?
-- **Certification/endorsement requirements** - Any new state mandates for ESL teachers?
+- **DOJ investigations or consent decrees** - WHICH {state_code} DISTRICTS? (ACTIVE only)
+- **OCR complaints or resolutions** - WHICH {state_code} DISTRICTS? (ACTIVE only)
+- **CSI schools with EL subgroup** - WHICH DISTRICTS have the most? How many schools? (Current year designation)
+- **TSI/ATSI schools for EL subgroup** - WHICH DISTRICTS? How many schools? (Current year designation)
+- **State monitoring reviews** with findings - WHICH DISTRICTS are on corrective action? (ACTIVE only)
+- **EL program audits** with citations - WHICH DISTRICTS failed? (Recent, within 12 months)
+- **Certification/endorsement requirements** - Any new state mandates for ESL teachers? (CURRENT requirements)
 
 For each compliance item:
 - **NAME THE SPECIFIC DISTRICT(S)**
 - What is the specific requirement or violation?
-- What is the deadline or timeline?
+- What is the deadline or timeline? (Must be current or future)
 - What are the consequences of non-compliance?
+- Is this currently active or upcoming? (REQUIRED - skip if historical)
 - Direct URL to official source
 
 ### 5. Compliance-Linked Funding (requires compliance trigger)
@@ -192,14 +199,19 @@ Mark these as HIGH PRIORITY - they affect ALL districts statewide and create imm
 
 - Today's date is {current_date}
 - **CRITICAL: EXCLUDE any funding with deadlines BEFORE {current_date}**
+- **CRITICAL: EXCLUDE any compliance requirements that are no longer in effect**
 - Only include funding that is:
   - Currently active with future deadlines, OR
   - Starting within the next 6 months
+- Only include compliance requirements that are:
+  - Currently in effect and being actively enforced, OR
+  - About to go into effect within the next 6 months
 - If a deadline has passed (even by one day), DO NOT include it
+- If a compliance window has closed (e.g., "3-year window concluded by 2023" when we're in {current_date}), DO NOT include it
+- For ongoing mandates, verify they are still actively enforced - not just historical
 - For recurring annual funding, only include if the CURRENT cycle is open or upcoming
 - Verify each source is authoritative (state DOE, federal agencies, official district documents)
 - If you cannot verify currency, note "unverified" status
-- For compliance items, only include verified active situations
 
 ---
 
