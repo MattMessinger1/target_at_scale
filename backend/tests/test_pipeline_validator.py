@@ -72,9 +72,12 @@ class TestPipelineValidator(unittest.TestCase):
     def test_valid_email_passes(self):
         evidence, hook, selected = self._base_objects()
 
+        subject_line = "FY26 EL plan updates: due by March 31"
+        opener = "FY26 EL plan updates are due by March 31."
         email_body = "\n\n".join(
             [
-                f"{hook.quote} ({hook.link})",
+                # No URLs printed; paraphrase is OK as long as opener contains a sourced trigger token.
+                opener,
                 self._long_context_paragraph(),
                 "- Coaching cycles aligned to priorities",
                 "- Evidence checklist for documentation",
@@ -86,7 +89,7 @@ class TestPipelineValidator(unittest.TestCase):
         claims = [
             ClaimsMapEntry(
                 claim_kind="hook",
-                claim_text=hook.quote,
+                claim_text=opener,
                 kb_chunk_ids=[],
                 urls=[hook.link],
             ),
@@ -111,6 +114,7 @@ class TestPipelineValidator(unittest.TestCase):
         ]
 
         result = validate_email_draft(
+            subject_line=subject_line,
             email_body=email_body,
             selected_hook=selected,
             claims_map=claims,
@@ -122,9 +126,11 @@ class TestPipelineValidator(unittest.TestCase):
 
     def test_missing_micro_offer_fails(self):
         evidence, hook, selected = self._base_objects()
+        subject_line = "FY26 update: March 31 deadline"
+        opener = "FY26 updates must be submitted by March 31."
         email_body = "\n\n".join(
             [
-                f"{hook.quote} ({hook.link})",
+                opener,
                 self._long_context_paragraph(),
                 "- Coaching cycles aligned to priorities",
                 "- Evidence checklist for documentation",
@@ -133,12 +139,13 @@ class TestPipelineValidator(unittest.TestCase):
             ]
         )
         claims = [
-            ClaimsMapEntry(claim_kind="hook", claim_text=hook.quote, urls=[hook.link], kb_chunk_ids=[]),
+            ClaimsMapEntry(claim_kind="hook", claim_text=opener, urls=[hook.link], kb_chunk_ids=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Coaching cycles aligned to priorities", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Evidence checklist for documentation", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Budget narrative draft", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
         ]
         result = validate_email_draft(
+            subject_line=subject_line,
             email_body=email_body,
             selected_hook=selected,
             claims_map=claims,
@@ -148,11 +155,13 @@ class TestPipelineValidator(unittest.TestCase):
         self.assertFalse(result.passed)
         self.assertIn("missing_micro_offer_cta", [f.code for f in result.failures])
 
-    def test_opener_quote_must_be_verbatim(self):
+    def test_email_must_not_print_urls(self):
         evidence, hook, selected = self._base_objects()
+        subject_line = "FY26 EL plan updates: March 31"
+        opener = f"FY26 EL plan updates are due soon. ({hook.link})"
         email_body = "\n\n".join(
             [
-                f"FY26 EL plan updates are due soon. ({hook.link})",  # paraphrase, not verbatim
+                opener,  # URL printed -> fail
                 self._long_context_paragraph(),
                 "- Coaching cycles aligned to priorities",
                 "- Evidence checklist for documentation",
@@ -161,12 +170,13 @@ class TestPipelineValidator(unittest.TestCase):
             ]
         )
         claims = [
-            ClaimsMapEntry(claim_kind="hook", claim_text=hook.quote, urls=[hook.link], kb_chunk_ids=[]),
+            ClaimsMapEntry(claim_kind="hook", claim_text=opener, urls=[hook.link], kb_chunk_ids=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Coaching cycles aligned to priorities", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Evidence checklist for documentation", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="1-page budget narrative draft", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
         ]
         result = validate_email_draft(
+            subject_line=subject_line,
             email_body=email_body,
             selected_hook=selected,
             claims_map=claims,
@@ -174,13 +184,15 @@ class TestPipelineValidator(unittest.TestCase):
             treasure_hooks=[hook],
         )
         self.assertFalse(result.passed)
-        self.assertIn("opener_missing_hook_quote", [f.code for f in result.failures])
+        self.assertIn("email_contains_url", [f.code for f in result.failures])
 
     def test_bullet_word_limit_enforced(self):
         evidence, hook, selected = self._base_objects()
+        subject_line = "FY26 EL updates due March 31"
+        opener = "FY26 updates must be submitted by March 31."
         email_body = "\n\n".join(
             [
-                f"{hook.quote} ({hook.link})",
+                opener,
                 self._long_context_paragraph(),
                 "- This bullet has definitely more than ten words total right now",
                 "- Evidence checklist for documentation",
@@ -189,12 +201,13 @@ class TestPipelineValidator(unittest.TestCase):
             ]
         )
         claims = [
-            ClaimsMapEntry(claim_kind="hook", claim_text=hook.quote, urls=[hook.link], kb_chunk_ids=[]),
+            ClaimsMapEntry(claim_kind="hook", claim_text=opener, urls=[hook.link], kb_chunk_ids=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="This bullet has definitely more than ten words total right now", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Evidence checklist for documentation", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="1-page budget narrative draft", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
         ]
         result = validate_email_draft(
+            subject_line=subject_line,
             email_body=email_body,
             selected_hook=selected,
             claims_map=claims,
@@ -207,9 +220,11 @@ class TestPipelineValidator(unittest.TestCase):
     def test_funding_requires_eligibility_excerpt(self):
         evidence, hook, selected = self._base_objects()
         # funding claim cites the hook URL, but hook eligibility_excerpt is None -> fail
+        subject_line = "FY26 updates due March 31"
+        opener = "FY26 updates must be submitted by March 31."
         email_body = "\n\n".join(
             [
-                f"{hook.quote} ({hook.link})",
+                opener,
                 self._long_context_paragraph(),
                 "- Coaching cycles aligned to priorities",
                 "- Evidence checklist for documentation",
@@ -218,13 +233,14 @@ class TestPipelineValidator(unittest.TestCase):
             ]
         )
         claims = [
-            ClaimsMapEntry(claim_kind="hook", claim_text=hook.quote, urls=[hook.link], kb_chunk_ids=[]),
+            ClaimsMapEntry(claim_kind="hook", claim_text=opener, urls=[hook.link], kb_chunk_ids=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Coaching cycles aligned to priorities", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Evidence checklist for documentation", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="1-page budget narrative draft", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="funding", claim_text="This grant can fund PD support.", urls=[hook.link], kb_chunk_ids=[]),
         ]
         result = validate_email_draft(
+            subject_line=subject_line,
             email_body=email_body,
             selected_hook=selected,
             claims_map=claims,

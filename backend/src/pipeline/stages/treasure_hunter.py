@@ -53,11 +53,13 @@ Hard requirements:
   If you cannot find this, set confidence=\"low\" and still include the best available excerpt.
 - For hook_type=deadline: trigger_excerpt must include a date or FY language (e.g., \"by March 31\", \"FY26\").
 - For hook_type=budget_coding: trigger_excerpt must include a budget/function code (e.g., \"2210\" or similar 3–4 digit code) AND some nearby context (e.g., \"function code\").
-- For hook_type=monitoring: trigger_excerpt must include monitoring/corrective-action/CAP language.
+- For hook_type=monitoring: trigger_excerpt must include monitoring/corrective-action/CAP language AND a concrete time/risk trigger.
+  Examples: a response window (\"within 30 days\"), a monitoring cycle/frequency, CAP requirement, or an explicit consequence.
+  Avoid generic statements like \"X monitors compliance\" with no timeline/consequence.
 - For hook_type=district_specific (only if district info is provided): prefer sources on the district domain or clearly district-authored PDFs/board packets. Otherwise set confidence=\"low\" and explain why.
 
 Relevance requirements (critical):
-- Use the provided \"Product evidence context\" to judge whether a hook is relevant to the product.\n  Hooks should connect to the artifacts/deliverables we can provide (e.g., evidence checklist, budget narrative draft, allowable-use checklist).\n  In `why_relevant`, explicitly mention the artifact/deliverable tie-in.\n+- Avoid irrelevant programs (teacher stipends/scholarships/university programs) unless the source explicitly states districts/LEAs can use/apply.\n+- Prefer official/authoritative sources (state DOE/SEA pages, admin code, USDOE, audits) when available.\n  If a source is not official, keep confidence=\"medium\" or \"low\" and explain.\n+
+- Use the provided \"Product evidence context\" to judge whether a hook is relevant to the product.\n  Hooks should connect to the artifacts/deliverables we can provide (e.g., evidence checklist, budget narrative draft, allowable-use checklist).\n  In `why_relevant`, explicitly mention the artifact/deliverable tie-in.\n- Avoid irrelevant programs (teacher stipends/scholarships/university programs) unless the source explicitly states districts/LEAs can use/apply.\n- Prefer official/authoritative sources (state DOE/SEA pages, admin code, USDOE, audits) when available.\n  If a source is not official, keep confidence=\"medium\" or \"low\" and explain.\n
 Keep quotes SHORT (1–2 sentences). Keep trigger_excerpt SHORT (1–2 sentences).
 Return 4–10 hooks when possible; return fewer if not enough evidence.
 

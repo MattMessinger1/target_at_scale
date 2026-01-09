@@ -4,8 +4,8 @@ Hard-gates:
 - Word count sanity bounds (recommended 110–150; allow variation)
 - exactly 3 bullets; each bullet ≤ 10 words
 - micro-offer CTA (Calendly optional)
-- opener includes SelectedHook.quote verbatim (whitespace-normalized) + SelectedHook.link exact match
-- trigger appears in first paragraph AND is sourced from same URL as hook (via trigger_excerpt overlap)
+- email body must not contain URLs (sources live in claims_map/UI)
+- opener includes a trigger token AND is sourced from the selected hook (via trigger_excerpt overlap)
 - if any claim_kind=funding: eligibility excerpt required (LEA/district eligibility), source-backed
 - claims_map coverage: hook + each bullet + any funding/compliance/outcome claims (connector text may be uncited)
 """
@@ -50,6 +50,19 @@ MICRO_OFFER_PATTERNS: Tuple[re.Pattern[str], ...] = (
     re.compile(r"\bI can share\b", re.I),
     re.compile(r"\bHappy to send\b", re.I),
     re.compile(r"\bI can draft\b", re.I),
+)
+
+SUBJECT_DATE_OR_FY_RE = re.compile(
+    r"(\bFY\s?\d{2}\b|\b\d{1,2}/\d{1,2}/\d{2,4}\b|\b(?:by\s+)?(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}\b)",
+    re.I,
+)
+SUBJECT_MONITORING_RE = re.compile(
+    r"\b(monitoring|monitored|corrective action|corrective-action|CAP|corrective action plan)\b",
+    re.I,
+)
+SUBJECT_ALLOWABLE_RE = re.compile(
+    r"\b(allowable|eligible|eligibility|LEA|local educational agency|school district|districts)\b",
+    re.I,
 )
 
 
@@ -291,6 +304,37 @@ def _has_micro_offer(cta_paragraph: str) -> bool:
     return False
 
 
+def _subject_has_trigger_family(subject_line: str, *, hook: WebHook) -> bool:
+    """Hard-gate subject lines to prevent generic output.
+
+    Rule: subject must include a trigger FAMILY based on SelectedHook.hook_type.
+    """
+    s = normalize_ws(subject_line)
+    if not s:
+        return False
+
+    ht = hook.hook_type
+    if ht == "deadline":
+        return bool(SUBJECT_DATE_OR_FY_RE.search(s))
+    if ht == "monitoring":
+        return bool(SUBJECT_MONITORING_RE.search(s))
+    if ht == "budget_coding":
+        for m in re.finditer(r"\b\d{3,4}\b", s):
+            try:
+                n = int(m.group(0))
+            except Exception:
+                continue
+            if 1900 <= n <= 2099:
+                continue
+            return True
+        return False
+    if ht in ("funding_guidance", "allowable_use"):
+        return bool(SUBJECT_ALLOWABLE_RE.search(s))
+
+    # district_specific (and any future hook types): do not hard-fail by default
+    return True
+
+
 def _eligibility_excerpt_ok(excerpt: Optional[str]) -> bool:
     if not excerpt or not excerpt.strip():
         return False
@@ -335,6 +379,7 @@ def _claims_map_find(
 
 def validate_email_draft(
     *,
+    subject_line: str,
     email_body: str,
     selected_hook: SelectedHook,
     claims_map: Sequence[ClaimsMapEntry],
@@ -342,6 +387,25 @@ def validate_email_draft(
     treasure_hooks: Sequence[WebHook],
 ) -> ValidationResult:
     failures: List[ValidationFailure] = []
+
+    # Subject line hard gate (prevents generic subjects)
+    subj = (subject_line or "").strip()
+    if not subj:
+        failures.append(
+            ValidationFailure(
+                code="missing_subject_line",
+                message="Subject line is required.",
+            )
+        )
+    else:
+        if not _subject_has_trigger_family(subj, hook=selected_hook.hook):
+            failures.append(
+                ValidationFailure(
+                    code="subject_missing_trigger_family",
+                    message="Subject line must include the trigger family for the selected hook type (deadline date/FY, monitoring/CAP, budget code, allowable/eligible/LEA).",
+                    details={"hook_type": selected_hook.hook.hook_type, "subject_line": subj},
+                )
+            )
 
     # Metrics
     wc = word_count(email_body)
@@ -388,26 +452,16 @@ def validate_email_draft(
             )
         )
 
-    # Opener quote + link (verbatim / exact)
+    # Opener (no URLs printed): must include a sourced trigger token (see trigger gate below).
     opener = first_paragraph(email_body)
-    hook_quote = selected_hook.hook.quote
     hook_link = selected_hook.hook.link
 
-    if normalize_ws(hook_quote) not in normalize_ws(opener):
+    # Email body must not print URLs; sources are shown in the UI/claims_map instead.
+    if re.search(r"https?://|www\.", email_body or "", flags=re.I):
         failures.append(
             ValidationFailure(
-                code="opener_missing_hook_quote",
-                message="First paragraph must include SelectedHook.quote verbatim (whitespace-normalized).",
-                details={"expected_quote": hook_quote},
-            )
-        )
-
-    if hook_link not in opener:
-        failures.append(
-            ValidationFailure(
-                code="opener_missing_hook_link",
-                message="First paragraph must include SelectedHook.link exactly.",
-                details={"expected_link": hook_link},
+                code="email_contains_url",
+                message="Email body must not contain URLs. Keep sources in claims_map/UI only.",
             )
         )
 
@@ -421,18 +475,19 @@ def validate_email_draft(
             )
         )
     else:
-        # Require at least one hook claim matches quote + url
+        # Require at least one hook claim cites the hook URL and corresponds to the opener (paraphrase allowed).
         ok = False
-        nq = normalize_ws(hook_quote)
+        opener_norm = normalize_ws(opener)
         for c in hook_claims:
-            if normalize_ws(c.claim_text) == nq and hook_link in (c.urls or []):
+            ct = normalize_ws(c.claim_text)
+            if ct and ct in opener_norm and hook_link in (c.urls or []):
                 ok = True
                 break
         if not ok:
             failures.append(
                 ValidationFailure(
                     code="claims_map_hook_mismatch",
-                    message="Hook claim must match SelectedHook.quote (whitespace-normalized) and cite SelectedHook.link.",
+                    message="Hook claim must cite SelectedHook.link and match the opener (paraphrase is OK).",
                 )
             )
 

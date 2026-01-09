@@ -92,6 +92,7 @@ async def _run_variant(
     variant_trace.stage_ms["email_writer_0"] = int((time.perf_counter() - t0) * 1000)
 
     v0 = validate_email_draft(
+        subject_line=draft.subject_line,
         email_body=draft.email_body,
         selected_hook=selected_hook,
         claims_map=claims,
@@ -127,6 +128,7 @@ async def _run_variant(
         variant_trace.stage_ms[f"email_writer_{it}"] = int((time.perf_counter() - t1) * 1000)
 
         v_i = validate_email_draft(
+            subject_line=draft_i.subject_line,
             email_body=draft_i.email_body,
             selected_hook=selected_hook,
             claims_map=claims_i,

@@ -219,40 +219,35 @@ def _ensure_micro_offer_cta(email_body: str, *, evidence_pack: EvidencePack) -> 
     return "\n\n".join(paras).strip()
 
 
-def _normalize_email_body_for_validator(email_body: str, *, hook_quote: str, hook_link: str) -> str:
+def _strip_urls_from_email_body(email_body: str) -> str:
+    """Remove any URLs from the email body (sources live in claims_map/UI, not the email text)."""
+    text = (email_body or "").strip()
+    if not text:
+        return ""
+    # Remove URLs and clean up spacing/empty parentheses.
+    text = re.sub(r"https?://\S+", "", text)
+    text = re.sub(r"\bwww\.\S+", "", text)
+    text = re.sub(r"\(\s*\)", "", text)
+    text = re.sub(r"\s+\)", ")", text)
+    text = re.sub(r"\(\s+", "(", text)
+    text = re.sub(r"\s+", " ", text) if "\n\n" not in text else text
+    # Preserve paragraph breaks; normalize within paragraphs.
+    paras = _split_paragraphs(text)
+    paras = [re.sub(r"\s+", " ", p).strip() for p in paras if p and p.strip()]
+    return "\n\n".join(paras).strip()
+
+
+def _normalize_email_body_for_validator(email_body: str) -> str:
     """Post-process model output to satisfy strict opener/CTA paragraph placement rules."""
     paras = _split_paragraphs(email_body)
     if not paras:
         return (email_body or "").strip()
 
     # If the model used a standalone greeting paragraph, merge it into the next paragraph
-    # so the opener paragraph can contain the required hook quote/link/trigger.
+    # so the opener paragraph stays coherent (avoid wasting the opener on a greeting-only line).
     if len(paras) >= 2 and _is_greeting_paragraph(paras[0]):
-        nxt = paras[1]
-        if (hook_link and hook_link in nxt) or (_normalize_ws(hook_quote) and _normalize_ws(hook_quote) in _normalize_ws(nxt)):
-            paras[0] = paras[0].rstrip() + " " + nxt.lstrip()
-            paras.pop(1)
-
-    # Ensure the opener contains the hook quote exactly (models sometimes change capitalization/punctuation).
-    if paras and hook_quote:
-        opener = paras[0]
-        if hook_quote not in opener:
-            opener_l = opener.lower()
-            quote_l = hook_quote.lower()
-
-            # Case-only differences
-            idx = opener_l.find(quote_l)
-            if idx != -1:
-                paras[0] = opener[:idx] + hook_quote + opener[idx + len(hook_quote) :]
-            else:
-                # Missing trailing punctuation (e.g., quote appears without final period)
-                stripped = hook_quote.rstrip(" \t\r\n.?!;:”“\"'’")
-                if stripped and stripped.lower() in opener_l:
-                    idx2 = opener_l.find(stripped.lower())
-                    paras[0] = opener[:idx2] + hook_quote + opener[idx2 + len(stripped) :]
-                else:
-                    # Last resort: inject the quote immediately after the greeting/comma.
-                    paras[0] = (opener.rstrip() + " " + hook_quote).strip()
+        paras[0] = paras[0].rstrip() + " " + paras[1].lstrip()
+        paras.pop(1)
 
     # If the model put a sign-off after the micro-offer CTA, merge sign-off into the CTA paragraph
     # (same paragraph) so the last paragraph still contains the micro-offer phrase.
@@ -358,7 +353,7 @@ async def write_email_variant(
     if prior_email_body:
         prior_block = "\nPRIOR EMAIL (minimally edit):\n" + prior_email_body.strip()
 
-    prompt = f"""Write a K–12 outreach email as WCEPS.\n\nConstraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain text only.\n- Exactly 3 bullets, each bullet ≤ 10 words.\n- Bullets must be DELIVERABLES/ARTIFACTS (e.g., checklist, template, draft, agenda, evidence pack) not vague benefits.\n- Each bullet should reuse 1–3 distinctive words from the cited KB excerpt (to keep it grounded).\n- CTA must be a micro-offer (e.g., \"I can send…\", \"Would it help if I sent…\", \"Want a 1-page…\") and may optionally ask where to route it.\n- Calendly/time-asks are optional; do NOT make them the primary CTA.\n\nOpener constraints (critical):\n- The FIRST paragraph must include the hook quote and URL.\n- Do NOT use a standalone greeting paragraph. If you use \"Dear {audience}\", keep it in the SAME paragraph as the hook.\n- First paragraph must include this hook quote verbatim (do not paraphrase):\n  {hook.quote}\n- First paragraph must include this URL exactly:\n  {hook.link}\n- First paragraph must include a specific trigger token that appears in the trigger excerpt from the same URL.\n  Suggested trigger token: {trigger_token or '(choose one from trigger excerpt)'}\n\nEnding constraints (critical):\n- The LAST paragraph must be the micro-offer CTA.\n- Do NOT add a separate sign-off paragraph after the CTA.\n- If you include a sign-off, include it within the CTA paragraph (same paragraph).\n\nHook context (same URL):\n- trigger_excerpt: {hook.trigger_excerpt}\n- eligibility_excerpt: {hook.eligibility_excerpt or 'null'}\n\nAudience: {audience}\nProduct: {product}\nState: {state_full} ({state_code})\nMode: {mode_text}\n{district_block}\n\nEvidence (KB chunks you may cite by id):\n{_format_evidence_chunks(evidence_pack)}\n\nMicro-offer candidates (choose ONE and use it in CTA):\n{_format_micro_offers(evidence_pack)}\n\nClaims-map rules:\n- claims_map must cover:\n  - the hook claim (quote+url)\n  - each deliverable bullet (3 entries)\n  - any funding/compliance/outcome claims you make\n- For hook claim: set claim_text EXACTLY to the hook quote and include urls=[hook.link].\n- For each bullet claim: claim_text should match the bullet text (no bullet marker), and include kb_chunk_ids from EvidencePack (choose the most relevant chunk id).\n- Connector/polite text can be omitted from claims_map.\n\nAvoid:\n- Generic bullets like \"Personalized coaching\" or \"Improve outcomes\" (not deliverables).\n- Placeholder signatures like \"[Your Name]\".\n\n{repair_block}\n{prior_block}\n\n{EMAIL_JSON_SPEC}\n\nReturn JSON now."""
+    prompt = f"""Write a K–12 outreach email as WCEPS.\n\nConstraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain text only.\n- Do NOT include any URLs in the email body.\n- Exactly 3 bullets, each bullet ≤ 10 words.\n- Bullets must be DELIVERABLES/ARTIFACTS (e.g., checklist, template, draft, agenda, evidence pack) not vague benefits.\n- Each bullet should reuse 1–3 distinctive words from the cited KB excerpt (to keep it grounded).\n- CTA must be a micro-offer (e.g., \"I can send…\", \"Would it help if I sent…\", \"Want a 1-page…\") and may optionally ask where to route it.\n- Calendly/time-asks are optional; do NOT make them the primary CTA.\n\nSubject line constraints (critical):\n- Subject must include a concrete time/risk trigger (deadline date/FY, monitoring/CAP, budget code, or allowable/eligible language).\n- Subject must NOT be generic (avoid: \"Quick question\", \"Following up\", \"Checking in\", \"Touching base\").\n\nOpener constraints (critical):\n- The FIRST paragraph must include a specific trigger token that appears in the trigger excerpt from the selected hook source.\n  Suggested trigger token: {trigger_token or '(choose one from trigger excerpt)'}\n- Paraphrase the hook in natural language. Do NOT quote the source verbatim.\n- Do NOT use a standalone greeting paragraph. If you use \"Dear {audience}\", keep it in the SAME paragraph as the opener.\n\nEnding constraints (critical):\n- The LAST paragraph must be the micro-offer CTA.\n- Do NOT add a separate sign-off paragraph after the CTA.\n- If you include a sign-off, include it within the CTA paragraph (same paragraph).\n\nHook context (do not paste any URLs):\n- hook_type: {hook.hook_type}\n- trigger_excerpt: {hook.trigger_excerpt}\n- eligibility_excerpt: {hook.eligibility_excerpt or 'null'}\n\nAudience: {audience}\nProduct: {product}\nState: {state_full} ({state_code})\nMode: {mode_text}\n{district_block}\n\nEvidence (KB chunks you may cite by id):\n{_format_evidence_chunks(evidence_pack)}\n\nMicro-offer candidates (choose ONE and use it in CTA):\n{_format_micro_offers(evidence_pack)}\n\nClaims-map rules:\n- claims_map must cover:\n  - the opener hook claim (paraphrase)\n  - each deliverable bullet (3 entries)\n  - any funding/compliance/outcome claims you make\n- For hook claim: claim_text should match the opener sentence (paraphrase). (We will attach the source URL in citations server-side.)\n- For each bullet claim: claim_text should match the bullet text (no bullet marker), and include kb_chunk_ids from EvidencePack (choose the most relevant chunk id).\n- Connector/polite text can be omitted from claims_map.\n\nAvoid:\n- Generic bullets like \"Personalized coaching\" or \"Improve outcomes\" (not deliverables).\n- Placeholder signatures like \"[Your Name]\".\n\n{repair_block}\n{prior_block}\n\n{EMAIL_JSON_SPEC}\n\nReturn JSON now."""
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     resp = await client.chat.completions.create(
@@ -379,8 +374,9 @@ async def write_email_variant(
     micro_offer = str(data.get("micro_offer") or "").strip() or None
 
     # Best-effort: enforce strict paragraph placement rules deterministically.
-    email_body = _normalize_email_body_for_validator(email_body, hook_quote=hook.quote, hook_link=hook.link)
+    email_body = _normalize_email_body_for_validator(email_body)
     email_body = _pad_short_email(email_body, min_words=80)
+    email_body = _strip_urls_from_email_body(email_body)
     email_body = _ensure_micro_offer_cta(email_body, evidence_pack=evidence_pack)
 
     # Parse claims
@@ -411,19 +407,24 @@ async def write_email_variant(
         allowed_set = set(allowed_kb)
 
         # Hook claim
-        want_hook_quote = _normalize_ws(hook.quote)
         have_hook = False
+        opener = ""
+        paras = _split_paragraphs(draft.email_body)
+        if paras:
+            opener = paras[0]
         for c in claims_map:
             if c.claim_kind != "hook":
                 continue
-            if _normalize_ws(c.claim_text) == want_hook_quote and hook.link in (c.urls or []):
+            if hook.link in (c.urls or []) and (_normalize_ws(c.claim_text) in _normalize_ws(opener)):
                 have_hook = True
                 break
         if not have_hook:
+            # Use the opener paragraph (without the URL) as the hook claim text.
+            claim_text = opener.strip() if opener else f"{product} hook"
             claims_map.append(
                 ClaimsMapEntry(
                     claim_kind="hook",
-                    claim_text=hook.quote,
+                    claim_text=claim_text,
                     kb_chunk_ids=[],
                     urls=[hook.link],
                 )

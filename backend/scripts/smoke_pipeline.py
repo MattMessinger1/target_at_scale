@@ -104,6 +104,7 @@ def main() -> None:
             hook_link = hook.get("link")
             draft = v.get("email_draft") or {}
             subject = (draft.get("subject_line") or "").strip() if isinstance(draft, dict) else ""
+            body = (draft.get("email_body") or "") if isinstance(draft, dict) else ""
 
             validation = v.get("validation") or {}
             if not validation.get("passed"):
@@ -111,6 +112,14 @@ def main() -> None:
                     {
                         "audience": aud,
                         "failures": validation.get("failures") or [],
+                    }
+                )
+            # Enforce: no URLs printed in email body.
+            if "http://" in body or "https://" in body or "www." in body:
+                failed.append(
+                    {
+                        "audience": aud,
+                        "failures": [{"code": "email_contains_url", "message": "Email body contains a URL"}],
                     }
                 )
             print(f"- {aud}: passed={bool(validation.get('passed'))} hook_type={hook_type} link={hook_link} subject={subject[:90]}")
