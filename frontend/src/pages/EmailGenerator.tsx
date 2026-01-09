@@ -1203,7 +1203,11 @@ function EmailGeneratorPipeline() {
     })
   }
 
-  const prepMutation = useMutation({
+  const prepMutation = useMutation<
+    { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; warnings: string[] },
+    Error,
+    void
+  >({
     mutationFn: () => {
       const req: PipelineRequest = {
         product: selectedProducts[0] || '',
@@ -1236,7 +1240,7 @@ function EmailGeneratorPipeline() {
     },
   })
 
-  const pipelineMutation = useMutation({
+  const pipelineMutation = useMutation<PipelineRunResponse, Error, void>({
     mutationFn: () => {
       const req: PipelineRunStreamRequest = {
         product: selectedProducts[0] || '',
