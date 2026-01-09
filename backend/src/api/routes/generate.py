@@ -175,8 +175,14 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         return obj
 
 
+    def _json_serializer(obj):
+        """Custom JSON serializer for objects not serializable by default."""
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
     def _ndjson(obj: Dict[str, Any]) -> bytes:
-        return (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
+        return (json.dumps(obj, ensure_ascii=False, default=_json_serializer) + "\n").encode("utf-8")
 
 
     class PipelinePrepResponse(BaseModel):
