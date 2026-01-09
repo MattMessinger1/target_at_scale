@@ -6,7 +6,8 @@ Usage:
 This script:
 1) GET /health
 2) GET /api/kb/embed/status (fails if embeddings not ready)
-3) POST /api/generate/pipeline (fails if any variant validation.passed != true)
+3) POST /api/generate/pipeline/prep/stream (parse NDJSON; fails if blocked)
+4) POST /api/generate/pipeline/run/stream (parse NDJSON; fails if any variant validation.passed != true)
 """
 
 from __future__ import annotations
@@ -44,6 +45,20 @@ def _post_json(client: httpx.Client, path: str, payload: Dict[str, Any]) -> Dict
     except Exception:
         _die(f"POST {path} returned non-JSON: {r.text[:800]}")
     return {}
+
+
+def _post_ndjson(client: httpx.Client, path: str, payload: Dict[str, Any]):
+    with client.stream("POST", path, json=payload) as r:
+        if r.status_code >= 400:
+            _die(f"POST {path} failed: {r.status_code} {r.text[:800]}")
+        for line in r.iter_lines():
+            s = (line or "").strip()
+            if not s:
+                continue
+            try:
+                yield json.loads(s)
+            except Exception:
+                continue
 
 
 def main() -> None:
@@ -84,7 +99,41 @@ def main() -> None:
                 "Curriculum Directors",
             ],
         }
-        resp = _post_json(client, "/api/generate/pipeline", payload)
+
+        # 3) Prep stream (NDJSON)
+        prep = None
+        for evt in _post_ndjson(client, "/api/generate/pipeline/prep/stream", payload):
+            et = evt.get("type")
+            if et == "blocked":
+                _die(f"Prep blocked: {json.dumps(evt)[:1200]}")
+            if et == "prep_ready":
+                prep = evt.get("payload")
+        if not prep or not isinstance(prep, dict):
+            _die("Prep did not return payload (prep_ready missing).")
+
+        hooks = prep.get("treasure_hooks") or []
+        if not hooks:
+            _die(f"Prep returned no treasure_hooks: {json.dumps(prep)[:1200]}")
+        first_link = (hooks[0] or {}).get("link")
+        if not first_link:
+            _die(f"First hook missing link: {json.dumps(hooks[0])[:800]}")
+
+        # 4) Run stream (NDJSON) using the first hook as human selection
+        run_req = dict(payload)
+        run_req["evidence_pack"] = prep.get("evidence_pack")
+        run_req["treasure_hooks"] = hooks
+        run_req["selected_hook_links"] = [first_link]
+        run_req["primary_hook_link"] = first_link
+
+        resp = None
+        for evt in _post_ndjson(client, "/api/generate/pipeline/run/stream", run_req):
+            et = evt.get("type")
+            if et == "blocked":
+                _die(f"Run blocked: {json.dumps(evt)[:2000]}")
+            if et == "run_ready":
+                resp = evt.get("payload")
+        if not resp or not isinstance(resp, dict):
+            _die("Run did not return payload (run_ready missing).")
 
         # Quick visibility into evidence + hooks (helps diagnose “generic AI” outputs)
         evidence = resp.get("evidence_pack") or {}

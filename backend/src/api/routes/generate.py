@@ -5,11 +5,17 @@ This endpoint generates personalized sales emails using:
 2. Selected funding, compliance-linked funding, and compliance items
 3. Target audience and state
 """
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
+import json
+import time
+from datetime import datetime, timezone
+import dataclasses
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from ...db import get_db
 from ...config import get_settings
@@ -24,10 +30,12 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 try:
-    from ...pipeline.schemas import PipelineRequest, PipelineRunResponse
+    from ...pipeline.schemas import EvidencePack, PipelineRequest, PipelineRunResponse, WebHook
 except Exception:
     PipelineRequest = None  # type: ignore
     PipelineRunResponse = None  # type: ignore
+    EvidencePack = None  # type: ignore
+    WebHook = None  # type: ignore
 
 
 # Email style guides by audience
@@ -150,6 +158,44 @@ class GenerateEmailResponse(BaseModel):
 
 if PipelineRequest is not None and PipelineRunResponse is not None:
 
+    def _utcnow_iso() -> str:
+        return datetime.now(timezone.utc).isoformat()
+
+
+    def _dump_model(obj: Any) -> Any:
+        if obj is None:
+            return None
+        if dataclasses.is_dataclass(obj):
+            return dataclasses.asdict(obj)
+        if hasattr(obj, "model_dump"):
+            return obj.model_dump()
+        if hasattr(obj, "dict"):
+            return obj.dict()  # type: ignore[no-any-return]
+        return obj
+
+
+    def _ndjson(obj: Dict[str, Any]) -> bytes:
+        return (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+    class PipelinePrepResponse(BaseModel):
+        evidence_pack: EvidencePack
+        treasure_hooks: List[WebHook]
+        warnings: List[str] = []
+
+    class PipelineRunStreamRequest(PipelineRequest):
+        """V3-compatible run request (allows optional human-selected hooks)."""
+
+        model_config = ConfigDict(extra="forbid")
+
+        # Optional: reuse prep outputs to avoid re-running RAG/Perplexity.
+        evidence_pack: Optional[EvidencePack] = None
+        treasure_hooks: Optional[List[WebHook]] = None
+
+        # Optional: human-selected hook URLs (1–2) + which is primary (opener).
+        selected_hook_links: Optional[List[str]] = Field(default=None, min_length=1, max_length=2)
+        primary_hook_link: Optional[str] = None
+
     @router.post("/", response_model=PipelineRunResponse)
     @router.post("/pipeline", response_model=PipelineRunResponse)
     async def generate_email_pipeline(
@@ -169,7 +215,458 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             except Exception:
                 pass
 
-        return await run_email_pipeline(request=request, db=db)
+        try:
+            return await run_email_pipeline(request=request, db=db)
+        except RuntimeError as e:
+            # Use a 422 so the UI can present a clear, user-actionable message.
+            raise HTTPException(status_code=422, detail=str(e))
+
+    @router.post("/pipeline/prep/stream")
+    async def generate_email_pipeline_prep_stream(
+        request: PipelineRequest,
+        db: AsyncSession = Depends(get_db),
+    ):
+        """Stream the shared pipeline prep: EvidencePack + TreasureHunter + HookGate."""
+
+        from ...pipeline.hook_gate import gate_treasure_hooks
+        from ...pipeline.stages.evidence_pack import build_product_evidence_pack
+        from ...pipeline.stages.treasure_hunter import run_treasure_hunter
+
+        # Best-effort: derive state_full if omitted (keep request shape stable)
+        if not request.state_full:
+            try:
+                from .research import STATE_NAMES  # local constant map
+
+                if request.state and request.state.strip().upper() in STATE_NAMES:
+                    request.state_full = STATE_NAMES[request.state.strip().upper()]
+            except Exception:
+                pass
+
+        async def event_stream():
+            product = (request.product or "").strip()
+            state_code = (request.state or "").strip().upper()
+            state_full = (request.state_full or "").strip() or state_code
+            audiences = request.audiences or []
+
+            warnings: List[str] = []
+
+            yield _ndjson({"type": "start", "ts": _utcnow_iso(), "mode": "prep"})
+
+            # Stage 1: EvidencePack
+            yield _ndjson({"type": "stage_start", "ts": _utcnow_iso(), "stage": "evidence_pack"})
+            t0 = time.perf_counter()
+            evidence_pack = await build_product_evidence_pack(
+                db=db,
+                product_display_name=product,
+                state_code=state_code,
+                audiences=audiences,
+            )
+            ms0 = int((time.perf_counter() - t0) * 1000)
+            yield _ndjson({"type": "stage_end", "ts": _utcnow_iso(), "stage": "evidence_pack", "ms": ms0})
+
+            # Stage 2: TreasureHunter
+            yield _ndjson({"type": "stage_start", "ts": _utcnow_iso(), "stage": "treasure_hunter"})
+            t1 = time.perf_counter()
+            treasure_hooks = await run_treasure_hunter(
+                db=db,
+                product=product,
+                state_code=state_code,
+                state_full=state_full,
+                district_name=request.district_name,
+                district_url=request.district_url,
+                product_context_text=None,  # runner builds a richer context; ok for prep UI
+            )
+            ms1 = int((time.perf_counter() - t1) * 1000)
+            yield _ndjson(
+                {
+                    "type": "stage_end",
+                    "ts": _utcnow_iso(),
+                    "stage": "treasure_hunter",
+                    "ms": ms1,
+                    "count": len(treasure_hooks or []),
+                }
+            )
+
+            # Immediate improvement loop: filter hooks explicitly rejected by humans (same product/state).
+            try:
+                from ...db.models import TreasureHookFeedback
+                from ...research.product_briefs import normalize_product_key
+
+                pk = normalize_product_key(product)
+                res = await db.execute(
+                    select(TreasureHookFeedback.link).where(
+                        TreasureHookFeedback.decision == "rejected",
+                        TreasureHookFeedback.product_key == pk,
+                        TreasureHookFeedback.state_code == state_code,
+                    )
+                )
+                rejected_links = {str(r[0]).strip() for r in (res.all() or []) if r and r[0]}
+                if rejected_links:
+                    before = len(treasure_hooks or [])
+                    treasure_hooks = [h for h in (treasure_hooks or []) if h and h.link not in rejected_links]
+                    after = len(treasure_hooks or [])
+                    if after < before:
+                        warnings.append(f"Filtered {before - after} hooks previously rejected by humans.")
+            except Exception:
+                pass
+
+            if not treasure_hooks:
+                warnings.append("No treasure hooks returned (check PERPLEXITY_API_KEY and prompt coverage).")
+                yield _ndjson(
+                    {
+                        "type": "blocked",
+                        "ts": _utcnow_iso(),
+                        "reason": "no_treasure_hooks",
+                        "message": warnings[-1],
+                    }
+                )
+                yield _ndjson({"type": "done", "ts": _utcnow_iso(), "ok": False, "warnings": warnings})
+                return
+
+            # Stage 2.5: HookGate
+            yield _ndjson({"type": "stage_start", "ts": _utcnow_iso(), "stage": "hook_gate"})
+            t2 = time.perf_counter()
+            gated, report = gate_treasure_hooks(treasure_hooks, evidence_pack=evidence_pack)
+            ms2 = int((time.perf_counter() - t2) * 1000)
+            yield _ndjson(
+                {
+                    "type": "stage_end",
+                    "ts": _utcnow_iso(),
+                    "stage": "hook_gate",
+                    "ms": ms2,
+                    "report": _dump_model(report),
+                }
+            )
+
+            if report.kept == 0:
+                yield _ndjson(
+                    {
+                        "type": "blocked",
+                        "ts": _utcnow_iso(),
+                        "reason": "no_hooks_passed_gate",
+                        "message": "No treasure hooks passed the relevance gate; generation blocked to prevent brochure emails.",
+                        "report": _dump_model(report),
+                    }
+                )
+                yield _ndjson({"type": "done", "ts": _utcnow_iso(), "ok": False, "warnings": warnings})
+                return
+
+            if report.kept < report.total:
+                warnings.append(
+                    f"Hook gate filtered hooks: kept={report.kept}/{report.total} dropped={report.dropped_by_reason}"
+                )
+
+            payload = PipelinePrepResponse(
+                evidence_pack=evidence_pack,
+                treasure_hooks=gated,
+                warnings=warnings,
+            )
+            yield _ndjson({"type": "prep_ready", "ts": _utcnow_iso(), "payload": _dump_model(payload)})
+            yield _ndjson({"type": "done", "ts": _utcnow_iso(), "ok": True, "warnings": warnings})
+
+        return StreamingResponse(event_stream(), media_type="application/x-ndjson")
+
+    @router.post("/pipeline/run/stream")
+    async def generate_email_pipeline_run_stream(
+        request: PipelineRunStreamRequest,
+        db: AsyncSession = Depends(get_db),
+    ):
+        """Stream a pipeline run with safe progress events.
+
+        V3-compatible:
+        - if `selected_hook_links` is provided (1–2), we force those hooks across ALL audiences.
+        - if `evidence_pack` + `treasure_hooks` are provided, we reuse them to avoid re-running prep.
+        """
+        from uuid import uuid4
+
+        from ...pipeline.hook_gate import gate_treasure_hooks
+        from ...pipeline.runner import DEFAULT_AUDIENCES, _mode, _utcnow, _run_variant
+        from ...pipeline.schemas import PipelineRequest as PipelineRequestModel, PipelineTrace, SelectedHook
+        from ...pipeline.stages.evidence_pack import build_product_evidence_pack
+        from ...pipeline.stages.hook_selector import select_primary_hooks
+        from ...pipeline.stages.treasure_hunter import run_treasure_hunter
+
+        # Best-effort: derive state_full if omitted (keep request shape stable)
+        if not request.state_full:
+            try:
+                from .research import STATE_NAMES  # local constant map
+
+                if request.state and request.state.strip().upper() in STATE_NAMES:
+                    request.state_full = STATE_NAMES[request.state.strip().upper()]
+            except Exception:
+                pass
+
+        async def event_stream():
+            run_id = uuid4().hex
+            started_at = _utcnow()
+            warnings: List[str] = []
+            stage_ms: Dict[str, int] = {}
+
+            yield _ndjson({"type": "start", "ts": _utcnow_iso(), "mode": "run", "run_id": run_id})
+
+            product = (request.product or "").strip()
+            state_code = (request.state or "").strip().upper()
+            state_full = (request.state_full or "").strip() or state_code
+            audiences = request.audiences or list(DEFAULT_AUDIENCES)
+
+            # Decide whether this is a forced-hook (human selection) run
+            forced_links = [str(x).strip() for x in (request.selected_hook_links or []) if str(x).strip()]
+            forced_links = list(dict.fromkeys(forced_links))  # stable dedupe
+            use_forced = len(forced_links) > 0
+
+            # Evidence pack / hooks: reuse if provided, else compute.
+            evidence_pack = request.evidence_pack
+            treasure_hooks = request.treasure_hooks
+
+            if evidence_pack is None or treasure_hooks is None:
+                yield _ndjson({"type": "stage_start", "ts": _utcnow_iso(), "stage": "evidence_pack"})
+                t0 = time.perf_counter()
+                evidence_pack = await build_product_evidence_pack(
+                    db=db,
+                    product_display_name=product,
+                    state_code=state_code,
+                    audiences=audiences,
+                )
+                stage_ms["evidence_pack"] = int((time.perf_counter() - t0) * 1000)
+                yield _ndjson(
+                    {
+                        "type": "stage_end",
+                        "ts": _utcnow_iso(),
+                        "stage": "evidence_pack",
+                        "ms": stage_ms["evidence_pack"],
+                    }
+                )
+
+                yield _ndjson({"type": "stage_start", "ts": _utcnow_iso(), "stage": "treasure_hunter"})
+                t1 = time.perf_counter()
+                treasure_hooks = await run_treasure_hunter(
+                    db=db,
+                    product=product,
+                    state_code=state_code,
+                    state_full=state_full,
+                    district_name=request.district_name,
+                    district_url=request.district_url,
+                    product_context_text=None,
+                )
+                stage_ms["treasure_hunter"] = int((time.perf_counter() - t1) * 1000)
+                yield _ndjson(
+                    {
+                        "type": "stage_end",
+                        "ts": _utcnow_iso(),
+                        "stage": "treasure_hunter",
+                        "ms": stage_ms["treasure_hunter"],
+                        "count": len(treasure_hooks or []),
+                    }
+                )
+
+                # Immediate improvement loop: filter hooks explicitly rejected by humans (same product/state).
+                try:
+                    from ...db.models import TreasureHookFeedback
+                    from ...research.product_briefs import normalize_product_key
+
+                    pk = normalize_product_key(product)
+                    res = await db.execute(
+                        select(TreasureHookFeedback.link).where(
+                            TreasureHookFeedback.decision == "rejected",
+                            TreasureHookFeedback.product_key == pk,
+                            TreasureHookFeedback.state_code == state_code,
+                        )
+                    )
+                    rejected_links = {str(r[0]).strip() for r in (res.all() or []) if r and r[0]}
+                    if rejected_links:
+                        before = len(treasure_hooks or [])
+                        treasure_hooks = [h for h in (treasure_hooks or []) if h and h.link not in rejected_links]
+                        after = len(treasure_hooks or [])
+                        if after < before:
+                            warnings.append(f"Filtered {before - after} hooks previously rejected by humans.")
+                except Exception:
+                    pass
+
+            if not treasure_hooks:
+                yield _ndjson(
+                    {
+                        "type": "blocked",
+                        "ts": _utcnow_iso(),
+                        "reason": "no_treasure_hooks",
+                        "message": "No treasure hooks returned (check PERPLEXITY_API_KEY and prompt coverage).",
+                    }
+                )
+                yield _ndjson({"type": "done", "ts": _utcnow_iso(), "ok": False})
+                return
+
+            # HookGate (always re-run deterministically; cheap + safety)
+            yield _ndjson({"type": "stage_start", "ts": _utcnow_iso(), "stage": "hook_gate"})
+            t2 = time.perf_counter()
+            gated, report = gate_treasure_hooks(treasure_hooks, evidence_pack=evidence_pack)
+            stage_ms["hook_gate"] = int((time.perf_counter() - t2) * 1000)
+            yield _ndjson(
+                {
+                    "type": "stage_end",
+                    "ts": _utcnow_iso(),
+                    "stage": "hook_gate",
+                    "ms": stage_ms["hook_gate"],
+                    "report": _dump_model(report),
+                }
+            )
+            if report.kept == 0:
+                yield _ndjson(
+                    {
+                        "type": "blocked",
+                        "ts": _utcnow_iso(),
+                        "reason": "no_hooks_passed_gate",
+                        "message": "No treasure hooks passed the relevance gate; generation blocked to prevent brochure emails.",
+                        "report": _dump_model(report),
+                    }
+                )
+                yield _ndjson({"type": "done", "ts": _utcnow_iso(), "ok": False})
+                return
+            treasure_hooks = gated
+            if report.kept < report.total:
+                warnings.append(
+                    f"Hook gate filtered hooks: kept={report.kept}/{report.total} dropped={report.dropped_by_reason}"
+                )
+
+            # Select hooks
+            primary: Optional[SelectedHook] = None
+            secondary: Optional[SelectedHook] = None
+
+            if use_forced:
+                if len(forced_links) > 2:
+                    raise HTTPException(status_code=422, detail="selected_hook_links must contain at most 2 URLs.")
+
+                primary_link = (request.primary_hook_link or "").strip() or forced_links[0]
+                if primary_link not in forced_links:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="primary_hook_link must be one of selected_hook_links.",
+                    )
+
+                secondary_link = None
+                if len(forced_links) == 2:
+                    secondary_link = forced_links[1] if forced_links[0] == primary_link else forced_links[0]
+
+                def _find_hook(link: str):
+                    for h in treasure_hooks or []:
+                        if h.link == link:
+                            return h
+                    return None
+
+                ph = _find_hook(primary_link)
+                if not ph:
+                    raise HTTPException(status_code=422, detail=f"Primary hook URL not found in treasure_hooks: {primary_link}")
+                primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected"])
+
+                if secondary_link:
+                    sh = _find_hook(secondary_link)
+                    if not sh:
+                        raise HTTPException(
+                            status_code=422, detail=f"Secondary hook URL not found in treasure_hooks: {secondary_link}"
+                        )
+                    secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
+            else:
+                # Legacy behavior: choose one hook per audience deterministically.
+                yield _ndjson({"type": "stage_start", "ts": _utcnow_iso(), "stage": "hook_selector"})
+                t3 = time.perf_counter()
+                selected = select_primary_hooks(hooks=list(treasure_hooks), audiences=audiences)
+                stage_ms["hook_selector"] = int((time.perf_counter() - t3) * 1000)
+                yield _ndjson(
+                    {
+                        "type": "stage_end",
+                        "ts": _utcnow_iso(),
+                        "stage": "hook_selector",
+                        "ms": stage_ms["hook_selector"],
+                    }
+                )
+
+            # Generate variants
+            yield _ndjson({"type": "stage_start", "ts": _utcnow_iso(), "stage": "write_validate_repair"})
+            variants = []
+            t4 = time.perf_counter()
+            if use_forced:
+                for aud in audiences:
+                    if not primary:
+                        raise RuntimeError("Primary hook selection failed")
+                    variants.append(
+                        await _run_variant(
+                            product=product,
+                            state_code=state_code,
+                            state_full=state_full,
+                            audience=aud,
+                            evidence_pack=evidence_pack,
+                            selected_hook=primary,
+                            secondary_hook=secondary,
+                            treasure_hooks=treasure_hooks,
+                            district_name=request.district_name,
+                            district_url=request.district_url,
+                        )
+                    )
+            else:
+                # per-audience selected hooks
+                selected = select_primary_hooks(hooks=list(treasure_hooks), audiences=audiences)
+                for aud in audiences:
+                    sel = selected.get(aud)
+                    if not sel and treasure_hooks:
+                        sel = select_primary_hooks(hooks=list(treasure_hooks), audiences=[aud]).get(aud)
+                    if not sel:
+                        raise RuntimeError("No hooks available to generate an email (TreasureHunter returned none).")
+                    variants.append(
+                        await _run_variant(
+                            product=product,
+                            state_code=state_code,
+                            state_full=state_full,
+                            audience=aud,
+                            evidence_pack=evidence_pack,
+                            selected_hook=sel,
+                            secondary_hook=None,
+                            treasure_hooks=treasure_hooks,
+                            district_name=request.district_name,
+                            district_url=request.district_url,
+                        )
+                    )
+            stage_ms["write_validate_repair"] = int((time.perf_counter() - t4) * 1000)
+            yield _ndjson(
+                {
+                    "type": "stage_end",
+                    "ts": _utcnow_iso(),
+                    "stage": "write_validate_repair",
+                    "ms": stage_ms["write_validate_repair"],
+                }
+            )
+
+            trace = PipelineTrace(
+                run_id=run_id,
+                started_at=started_at,
+                finished_at=_utcnow(),
+                stage_ms=stage_ms,
+                variant_traces=[v.trace for v in variants],
+            )
+
+            # Only include the base request fields in the response contract.
+            request_out = PipelineRequestModel(
+                product=product,
+                state=state_code,
+                state_full=state_full,
+                audiences=audiences,
+                district_name=request.district_name,
+                district_url=request.district_url,
+            )
+
+            result = PipelineRunResponse(
+                run_id=run_id,
+                mode=_mode(request_out),
+                request=request_out,
+                evidence_pack=evidence_pack,
+                treasure_hooks=list(treasure_hooks),
+                variants=variants,
+                trace=trace,
+                warnings=warnings,
+            )
+
+            ms_total = int((time.perf_counter() - t4) * 1000)
+            yield _ndjson({"type": "run_ready", "ts": _utcnow_iso(), "payload": _dump_model(result)})
+            yield _ndjson({"type": "done", "ts": _utcnow_iso(), "ok": True, "ms": ms_total})
+
+        return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
 
 async def get_email_exemplars(

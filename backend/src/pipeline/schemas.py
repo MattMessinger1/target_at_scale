@@ -264,6 +264,7 @@ class AudienceVariantResult(BaseModel):
 
     audience: str
     selected_hook: SelectedHook
+    secondary_hook: Optional[SelectedHook] = None
     email_draft: EmailDraft
     claims_map: List[ClaimsMapEntry] = Field(default_factory=list)
 
