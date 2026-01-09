@@ -1982,11 +1982,35 @@ function EmailGeneratorPipeline() {
         {/* Step 2: Research (loading state) */}
         {wizardStep === 2 && (
           <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
-            <h2 className="text-lg font-medium text-slate-200 mb-6">Researching Funding & Compliance Requirements...</h2>
+            <h2 className="text-lg font-medium text-slate-200 mb-4">Researching Funding & Compliance Requirements...</h2>
+            
+            {/* Deep Research explanation */}
+            <div className="mb-6 p-4 rounded-lg border border-emerald-700/50 bg-emerald-900/20">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-emerald-600/30 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-emerald-300">
+                    Deep Research is analyzing funding and compliance requirements for {selectedStates[0]?.name || 'your state'}.
+                  </div>
+                  <div className="mt-2 text-sm text-emerald-200/80">
+                    This thorough research typically takes <span className="font-medium">5-30 minutes</span>. Feel free to leave this page and come back - we'll save your results.
+                  </div>
+                  <div className="mt-2 text-sm text-emerald-200/70">
+                    Your results will be saved for <span className="font-medium">14 days</span>. Future searches for {selectedStates[0]?.name || 'this state'} + {selectedProducts[0] || 'this product'} will return instantly until the cache expires.
+                  </div>
+                </div>
+              </div>
+            </div>
+            
             <div className="flex items-center gap-3 mb-6">
               <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-slate-300">Searching for requirements...</span>
+              <span className="text-slate-300">Running Deep Research...</span>
             </div>
+            
             {traceEvents.length > 0 && (
               <div className="p-4 rounded-lg border border-slate-700 bg-slate-900/30 max-h-64 overflow-y-auto">
                 <div className="text-xs text-slate-500 uppercase tracking-wide mb-2">Progress</div>
