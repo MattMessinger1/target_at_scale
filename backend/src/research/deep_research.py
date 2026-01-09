@@ -419,6 +419,8 @@ Remember: Return ONLY a valid JSON object, no other text."""
                     # }
                 }
             ],
+            # No limits on output - let Deep Research be thorough
+            max_output_tokens=16384,  # Maximum allowed for GPT-4o
         )
         
         if on_progress:
