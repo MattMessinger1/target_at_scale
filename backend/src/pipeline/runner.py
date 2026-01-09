@@ -32,6 +32,7 @@ from .stages.email_writer import write_email_variant
 from .stages.validator import validate_email_draft
 from .stages.repair import MAX_REPAIR_ITERATIONS, failures_to_instructions, should_stop_repair
 from .stages.treasure_hunter import run_treasure_hunter
+from .hook_gate import gate_treasure_hooks
 
 
 DEFAULT_AUDIENCES = [
@@ -67,6 +68,7 @@ async def _run_variant(
     audience: str,
     evidence_pack,
     selected_hook,
+    secondary_hook=None,
     treasure_hooks,
     district_name: Optional[str],
     district_url: Optional[str],
@@ -84,6 +86,7 @@ async def _run_variant(
         audience=audience,
         evidence_pack=evidence_pack,
         selected_hook=selected_hook,
+        secondary_hook=secondary_hook,
         district_name=district_name,
         district_url=district_url,
         repair_instructions=None,
@@ -95,6 +98,7 @@ async def _run_variant(
         subject_line=draft.subject_line,
         email_body=draft.email_body,
         selected_hook=selected_hook,
+        secondary_hook=secondary_hook,
         claims_map=claims,
         evidence_pack=evidence_pack,
         treasure_hooks=treasure_hooks,
@@ -120,6 +124,7 @@ async def _run_variant(
             audience=audience,
             evidence_pack=evidence_pack,
             selected_hook=selected_hook,
+            secondary_hook=secondary_hook,
             district_name=district_name,
             district_url=district_url,
             repair_instructions=instructions,
@@ -131,6 +136,7 @@ async def _run_variant(
             subject_line=draft_i.subject_line,
             email_body=draft_i.email_body,
             selected_hook=selected_hook,
+            secondary_hook=secondary_hook,
             claims_map=claims_i,
             evidence_pack=evidence_pack,
             treasure_hooks=treasure_hooks,
@@ -163,6 +169,7 @@ async def _run_variant(
     return AudienceVariantResult(
         audience=audience,
         selected_hook=selected_hook,
+        secondary_hook=secondary_hook,
         email_draft=final_draft,
         claims_map=final_claims,
         validation=final_validation,
@@ -306,6 +313,21 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
 
     if not treasure_hooks:
         warnings.append("No treasure hooks returned (check PERPLEXITY_API_KEY and prompt coverage).")
+    else:
+        # V3 guardrail: deterministic gate to prevent brochure emails.
+        gated, report = gate_treasure_hooks(treasure_hooks, evidence_pack=evidence_pack)
+        trace.stage_ms["hook_gate"] = 0  # placeholder; filled by prep/run split in V3 streaming endpoints
+        if report.kept == 0:
+            raise RuntimeError(
+                "No treasure hooks passed the relevance gate; generation blocked to prevent brochure emails. "
+                f"(kept=0/{report.total}, dropped={report.dropped_by_reason})"
+            )
+        if report.kept < report.total:
+            warnings.append(
+                f"Hook gate filtered hooks: kept={report.kept}/{report.total} "
+                f"dropped={report.dropped_by_reason}"
+            )
+        treasure_hooks = gated
 
     # Stage 3: HookSelector (deterministic)
     t2 = time.perf_counter()

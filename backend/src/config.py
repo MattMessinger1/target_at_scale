@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     firecrawl_api_key: str = ""
     perplexity_api_key: str = ""
     admin_token: str = ""
+
+    # Outreach CTA
+    calendly_url: str = "calendly.com/wceps"
     
     # Database
     database_url: str = "sqlite+aiosqlite:///./wceps.db"
