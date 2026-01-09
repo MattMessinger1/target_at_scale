@@ -1130,6 +1130,27 @@ const WIZARD_STEP_LABELS: Record<WizardStep, string> = {
   5: 'Review and Improve Email',
 }
 
+// Human-readable stage labels for thinking trace
+const STAGE_LABELS: Record<string, string> = {
+  'evidence_pack': 'Gathering evidence from knowledge base',
+  'treasure_hunter': 'Running Deep Research',
+  'hook_gate': 'Filtering requirements',
+  'hook_selector': 'Selecting best hooks',
+  'email_writer': 'Writing email',
+  'validator': 'Validating email',
+  'repair': 'Improving email',
+}
+
+// Get latest meaningful trace message
+const getLatestTraceStatus = (events: PipelineStreamEvent[]): string | null => {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i]
+    if (e.message && typeof e.message === 'string') return e.message
+    if (e.stage && STAGE_LABELS[e.stage as string]) return STAGE_LABELS[e.stage as string]
+  }
+  return null
+}
+
 type ReviewSectionKey = 'subject_line' | 'product_relevance' | 'tone' | 'flow' | 'cta'
 
 type ReviewRubricItemDraft = {
@@ -1803,17 +1824,18 @@ function EmailGeneratorPipeline() {
   const renderProgressBar = () => {
     const steps: WizardStep[] = [1, 2, 3, 4, 5]
     return (
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center mb-8">
         {steps.map((step, idx) => {
           const isActive = step === wizardStep
           const isCompleted = step < wizardStep
           const isClickable = step < wizardStep
           return (
-            <div key={step} className="flex items-center flex-1">
+            <div key={step} className="contents">
+              {/* Step circle and label */}
               <button
                 onClick={() => isClickable && handleBackToStep(step)}
                 disabled={!isClickable}
-                className={`flex flex-col items-center ${isClickable ? 'cursor-pointer' : 'cursor-default'}`}
+                className={`flex flex-col items-center flex-shrink-0 ${isClickable ? 'cursor-pointer' : 'cursor-default'}`}
               >
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium border-2 transition-all ${
                   isCompleted
@@ -1828,14 +1850,15 @@ function EmailGeneratorPipeline() {
                     </svg>
                   ) : step}
                 </div>
-                <div className={`mt-2 text-xs text-center max-w-[100px] ${
+                <div className={`mt-2 text-xs text-center w-20 ${
                   isActive ? 'text-emerald-300 font-medium' : isCompleted ? 'text-slate-300' : 'text-slate-500'
                 }`}>
                   {WIZARD_STEP_LABELS[step]}
                 </div>
               </button>
+              {/* Connector line between steps */}
               {idx < steps.length - 1 && (
-                <div className={`flex-1 h-0.5 mx-2 ${
+                <div className={`flex-1 h-0.5 mx-3 self-start mt-5 ${
                   step < wizardStep ? 'bg-emerald-600' : 'bg-slate-700'
                 }`} />
               )}
@@ -2082,20 +2105,25 @@ function EmailGeneratorPipeline() {
             
             <div className="flex items-center gap-3 mb-6">
               <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-slate-300">Running Deep Research...</span>
+              <span className="text-slate-300">
+                {getLatestTraceStatus(traceEvents) || 'Running Deep Research...'}
+              </span>
             </div>
             
             {traceEvents.length > 0 && (
-              <div className="p-4 rounded-lg border border-slate-700 bg-slate-900/30 max-h-64 overflow-y-auto">
-                <div className="text-xs text-slate-500 uppercase tracking-wide mb-2">Progress</div>
+              <div className="p-4 rounded-lg border border-slate-700 bg-slate-900/30 max-h-48 overflow-y-auto">
+                <div className="text-xs text-slate-500 uppercase tracking-wide mb-2">Activity Log</div>
                 <div className="space-y-1">
-                  {traceEvents.map((e, i) => (
-                    <div key={`${e.type}-${i}`} className="text-xs text-slate-300">
-                      <span className="font-mono text-slate-400">{String(e.type)}</span>
-                      {e.stage && <span className="ml-2 text-slate-300">stage: {String(e.stage)}</span>}
-                      {typeof e.message === 'string' && <div className="mt-1 text-slate-400">{e.message}</div>}
-                    </div>
-                  ))}
+                  {traceEvents.slice(-10).map((e, i) => {
+                    const stageLabel = e.stage ? STAGE_LABELS[e.stage as string] : null
+                    const displayText = (typeof e.message === 'string' && e.message) || stageLabel || String(e.type)
+                    return (
+                      <div key={`${e.type}-${i}`} className="text-xs text-slate-400 flex items-start gap-2">
+                        <span className="text-slate-600">•</span>
+                        <span>{displayText}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -2200,7 +2228,7 @@ function EmailGeneratorPipeline() {
                           filterReasonLabel: fr.reason_label,
                           isSelected: selectedHookLinks.includes(fr.hook.link),
                           isPrimary: primaryHookLink === fr.hook.link,
-                          onToggle: () => toggleHookSelection(fr.hook.link),
+                          onToggle: () => toggleHook(fr.hook.link),
                           onSetPrimary: () => setPrimaryHookLink(fr.hook.link),
                         })}
                       </div>
@@ -2256,19 +2284,24 @@ function EmailGeneratorPipeline() {
             <h2 className="text-lg font-medium text-slate-200 mb-6">Generating Email...</h2>
             <div className="flex items-center gap-3 mb-6">
               <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-slate-300">Creating audience variants...</span>
+              <span className="text-slate-300">
+                {getLatestTraceStatus(traceEvents) || 'Creating audience variants...'}
+              </span>
             </div>
             {traceEvents.length > 0 && (
-              <div className="p-4 rounded-lg border border-slate-700 bg-slate-900/30 max-h-64 overflow-y-auto">
-                <div className="text-xs text-slate-500 uppercase tracking-wide mb-2">Progress</div>
+              <div className="p-4 rounded-lg border border-slate-700 bg-slate-900/30 max-h-48 overflow-y-auto">
+                <div className="text-xs text-slate-500 uppercase tracking-wide mb-2">Activity Log</div>
                 <div className="space-y-1">
-                  {traceEvents.map((e, i) => (
-                    <div key={`${e.type}-${i}`} className="text-xs text-slate-300">
-                      <span className="font-mono text-slate-400">{String(e.type)}</span>
-                      {e.stage && <span className="ml-2 text-slate-300">stage: {String(e.stage)}</span>}
-                      {typeof e.message === 'string' && <div className="mt-1 text-slate-400">{e.message}</div>}
-                    </div>
-                  ))}
+                  {traceEvents.slice(-10).map((e, i) => {
+                    const stageLabel = e.stage ? STAGE_LABELS[e.stage as string] : null
+                    const displayText = (typeof e.message === 'string' && e.message) || stageLabel || String(e.type)
+                    return (
+                      <div key={`${e.type}-${i}`} className="text-xs text-slate-400 flex items-start gap-2">
+                        <span className="text-slate-600">•</span>
+                        <span>{displayText}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}

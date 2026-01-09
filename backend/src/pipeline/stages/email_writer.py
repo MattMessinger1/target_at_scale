@@ -225,30 +225,34 @@ def _choose_micro_offer(evidence_pack: EvidencePack) -> str:
     return (offers[0] if offers else "") or "evidence checklist for documentation"
 
 
-def _ensure_micro_offer_cta(email_body: str, *, evidence_pack: EvidencePack) -> str:
-    """Ensure the last paragraph contains micro-offer + 15-min Calendly CTA."""
+def _ensure_calendly_cta(email_body: str) -> str:
+    """Ensure the last paragraph contains Calendly meeting ask."""
     paras = _split_paragraphs(email_body)
     if not paras:
         return (email_body or "").strip()
 
     last = paras[-1]
-    if _contains_micro_offer(last) and _contains_calendly(last) and _contains_15_min(last):
+    # If already has Calendly and 15-min mention, we're good
+    if _contains_calendly(last) and _contains_15_min(last):
         return "\n\n".join(paras).strip()
 
     # If the model ended with a signature/sign-off, move it into the CTA paragraph.
     trailing_sig: List[str] = []
-    while paras and _is_signatureish_paragraph(paras[-1]) and not _contains_micro_offer(paras[-1]):
+    while paras and _is_signatureish_paragraph(paras[-1]) and not _contains_calendly(paras[-1]):
         trailing_sig.insert(0, paras.pop())
 
-    offer = _choose_micro_offer(evidence_pack)
-    meeting = f"If it's easier, happy to talk for 15 minutes: {CALENDLY_URL_RAW}"
-    if paras and _contains_micro_offer(paras[-1]):
-        # Keep their CTA paragraph; add missing Calendly/15-min ask.
+    meeting = f"Would you have 15 minutes to discuss? Here's my calendar: {CALENDLY_URL_RAW}"
+    if paras and _contains_calendly(paras[-1]):
+        # Keep their CTA paragraph; add missing 15-min ask if needed.
         cta = paras.pop().rstrip()
-        if not _contains_15_min(cta) or not _contains_calendly(cta):
+        if not _contains_15_min(cta):
             cta = cta.rstrip() + " " + meeting
     else:
-        cta = f"Would it help if I sent a {offer}? Where should I route it? {meeting}"
+        # Add meeting ask to last paragraph or create new CTA
+        if paras:
+            cta = paras.pop().rstrip() + " " + meeting
+        else:
+            cta = meeting
     if trailing_sig:
         cta = cta.rstrip() + "\n" + "\n".join(trailing_sig).strip()
     paras.append(cta)
@@ -547,7 +551,7 @@ async def write_email_variant(
     if prior_email_body:
         prior_block = "\nPRIOR EMAIL (minimally edit):\n" + prior_email_body.strip()
 
-    prompt = f"""Write a K–12 outreach email as WCEPS.\n\nConstraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain text only.\n- Do NOT include any URLs in the email body EXCEPT the Calendly link: {CALENDLY_URL_RAW}.\n- Exactly 3 bullets, each bullet ≤ 10 words.\n- Bullets must be DELIVERABLES/ARTIFACTS (e.g., checklist, template, draft, agenda, evidence pack) not vague benefits.\n- Each bullet should reuse 1–3 distinctive words from the cited KB excerpt (to keep it grounded).\n- Include at least ONE Product offering phrase verbatim (see list below). Ideally, use it as a bullet.\n- CTA must include BOTH:\n  - a micro-offer (e.g., \"I can send…\", \"Would it help if I sent…\", \"Want a 1-page…\")\n  - a 15-minute meeting ask with this scheduling link: {CALENDLY_URL_RAW}\n- If a secondary hook is provided, you MUST use it later in the email.\n\nSubject line constraints (critical):\n- Subject MUST include the trigger FAMILY for the selected hook_type:\n  - deadline: a date or FY token\n  - monitoring: monitoring/CAP/corrective-action language\n  - budget_coding: a 3–4 digit budget/function code\n  - allowable_use/funding_guidance: allowable/eligible/LEA/districts language\n- Subject must NOT be generic (avoid: \"Quick question\", \"Following up\", \"Checking in\", \"Touching base\").\n\nOpener constraints (critical):\n- The FIRST paragraph must include a specific trigger token that appears in the trigger excerpt from the selected hook source.\n  Suggested trigger token: {trigger_token or '(choose one from trigger excerpt)'}\n- Paraphrase the hook in natural language. Do NOT quote the source verbatim. Do NOT paste URLs.\n- Do NOT use a standalone greeting paragraph. If you use \"Dear {audience}\", keep it in the SAME paragraph as the opener.\n\nEnding constraints (critical):\n- The LAST paragraph must be the CTA.\n- Do NOT add a separate sign-off paragraph after the CTA.\n- If you include a sign-off, include it within the CTA paragraph (same paragraph).\n\nHook context (do not paste any URLs):\n- hook_type: {hook.hook_type}\n- trigger_excerpt: {hook.trigger_excerpt}\n- eligibility_excerpt: {hook.eligibility_excerpt or 'null'}\n{secondary_block}\n\nAudience: {audience}\nProduct: {product}\nState: {state_full} ({state_code})\nMode: {mode_text}\n{district_block}\n\nEvidence (KB chunks you may cite by id):\n{_format_evidence_chunks(evidence_pack)}\n\nProduct offerings/modules (copy at least ONE phrase verbatim):\n{_format_product_offerings(evidence_pack)}\n\nMicro-offer candidates (choose ONE and use it in CTA):\n{_format_micro_offers(evidence_pack)}\n\nClaims-map rules:\n- claims_map must cover:\n  - the opener hook claim (paraphrase)\n  - each deliverable bullet (3 entries)\n  - any funding/compliance/outcome claims you make\n  - if a secondary hook is provided, a SECOND hook claim\n- For hook claim(s): claim_text should match the relevant paragraph (paraphrase is OK). The server will attach the correct hook URL.\n  IMPORTANT: Do NOT output placeholder strings like \"hook.link\" in urls.\n- For each bullet claim: claim_text should match the bullet text (no bullet marker), and include kb_chunk_ids from EvidencePack (choose the most relevant chunk id). Use urls=[].\n- Connector/polite text can be omitted from claims_map.\n\nAvoid:\n- Generic bullets like \"Personalized coaching\" or \"Improve outcomes\" (not deliverables).\n- Placeholder signatures like \"[Your Name]\".\n\n{repair_block}\n{prior_block}\n\n{EMAIL_JSON_SPEC}\n\nReturn JSON now."""
+    prompt = f"""Write a K–12 outreach email as WCEPS.\n\nConstraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain text only.\n- Do NOT include any URLs in the email body EXCEPT the Calendly link: {CALENDLY_URL_RAW}.\n- Exactly 3 bullets, each bullet ≤ 10 words.\n- Bullets must be DELIVERABLES/ARTIFACTS (e.g., checklist, template, draft, agenda, evidence pack) not vague benefits.\n- Each bullet should reuse 1–3 distinctive words from the cited KB excerpt (to keep it grounded).\n- Include at least ONE Product offering phrase verbatim (see list below). Ideally, use it as a bullet.\n- CTA must be a simple 15-minute meeting ask with this Calendly link: {CALENDLY_URL_RAW}\n- Do NOT offer to \"send\" documents, templates, checklists, or resources.\n- Keep it conversational: e.g., \"Would you have 15 minutes to discuss? Here's my calendar: {CALENDLY_URL_RAW}\"\n- If a secondary hook is provided, you MUST use it later in the email.\n\nSubject line constraints (critical):\n- Subject MUST include the trigger FAMILY for the selected hook_type:\n  - deadline: a date or FY token\n  - monitoring: monitoring/CAP/corrective-action language\n  - budget_coding: a 3–4 digit budget/function code\n  - allowable_use/funding_guidance: allowable/eligible/LEA/districts language\n- Subject must NOT be generic (avoid: \"Quick question\", \"Following up\", \"Checking in\", \"Touching base\").\n\nOpener constraints (critical):\n- The FIRST paragraph must include a specific trigger token that appears in the trigger excerpt from the selected hook source.\n  Suggested trigger token: {trigger_token or '(choose one from trigger excerpt)'}\n- Paraphrase the hook in natural language. Do NOT quote the source verbatim. Do NOT paste URLs.\n- Address the email to a PERSON, not a title. Use \"Dear [Name],\" as a placeholder.\n- Do NOT address by title alone (e.g., \"Dear Title III Coordinator\" is WRONG).\n- The recipient's position/role should inform the CONTENT, not the greeting.\n- Keep the greeting in the SAME paragraph as the opener (no standalone greeting line).\n\nEnding constraints (critical):\n- The LAST paragraph must be the CTA.\n- Do NOT add a separate sign-off paragraph after the CTA.\n- If you include a sign-off, include it within the CTA paragraph (same paragraph).\n\nHook context (do not paste any URLs):\n- hook_type: {hook.hook_type}\n- trigger_excerpt: {hook.trigger_excerpt}\n- eligibility_excerpt: {hook.eligibility_excerpt or 'null'}\n{secondary_block}\n\nAudience: {audience}\nProduct: {product}\nState: {state_full} ({state_code})\nMode: {mode_text}\n{district_block}\n\nEvidence (KB chunks you may cite by id):\n{_format_evidence_chunks(evidence_pack)}\n\nProduct offerings/modules (copy at least ONE phrase verbatim):\n{_format_product_offerings(evidence_pack)}\n\nClaims-map rules:\n- claims_map must cover:\n  - the opener hook claim (paraphrase)\n  - each deliverable bullet (3 entries)\n  - any funding/compliance/outcome claims you make\n  - if a secondary hook is provided, a SECOND hook claim\n- For hook claim(s): claim_text should match the relevant paragraph (paraphrase is OK). The server will attach the correct hook URL.\n  IMPORTANT: Do NOT output placeholder strings like \"hook.link\" in urls.\n- For each bullet claim: claim_text should match the bullet text (no bullet marker), and include kb_chunk_ids from EvidencePack (choose the most relevant chunk id). Use urls=[].\n- Connector/polite text can be omitted from claims_map.\n\nAvoid:\n- Generic bullets like \"Personalized coaching\" or \"Improve outcomes\" (not deliverables).\n- Placeholder signatures like \"[Your Name]\".\n\n{repair_block}\n{prior_block}\n\n{EMAIL_JSON_SPEC}\n\nReturn JSON now."""
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     resp = await client.chat.completions.create(
@@ -572,7 +576,7 @@ async def write_email_variant(
     email_body = _pad_short_email(email_body, min_words=80)
     email_body = _strip_urls_from_email_body(email_body)
     email_body = _ensure_exact_bullets(email_body, evidence_pack=evidence_pack)
-    email_body = _ensure_micro_offer_cta(email_body, evidence_pack=evidence_pack)
+    email_body = _ensure_calendly_cta(email_body)
 
     # Parse claims
     claims_map: List[ClaimsMapEntry] = []

@@ -3,7 +3,7 @@
 Hard-gates:
 - Word count sanity bounds (recommended 110–150; allow variation)
 - exactly 3 bullets; each bullet ≤ 10 words
-- micro-offer CTA (Calendly optional)
+- CTA with 15-minute Calendly meeting ask (required)
 - email body must not contain URLs (sources live in claims_map/UI)
 - opener includes a trigger token AND is sourced from the selected hook (via trigger_excerpt overlap)
 - if any claim_kind=funding: eligibility excerpt required (LEA/district eligibility), source-backed
@@ -506,16 +506,8 @@ def validate_email_draft(
                 )
             )
 
-    # CTA micro-offer (in last paragraph)
+    # CTA Calendly meeting ask (in last paragraph)
     cta = last_paragraph(email_body)
-    if not _has_micro_offer(cta):
-        failures.append(
-            ValidationFailure(
-                code="missing_micro_offer_cta",
-                message="CTA must include a micro-offer (e.g., 'I can send…', 'Would it help if I sent…', 'Want a 1-page…').",
-            )
-        )
-
     if not _has_15_min_meeting_ask(cta):
         failures.append(
             ValidationFailure(
