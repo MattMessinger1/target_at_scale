@@ -120,10 +120,32 @@ class RAGService:
         
         # Filter by state if specified (done post-query due to ChromaDB limitations with contains)
         if filter_state and formatted:
-            formatted = [
-                r for r in formatted
-                if filter_state.lower() in r["metadata"].get("applicable_states", "").lower()
-            ]
+            state_norm = str(filter_state).strip().upper()
+            if state_norm:
+                in_state: List[Dict[str, Any]] = []
+                state_agnostic: List[Dict[str, Any]] = []
+
+                def _meta_states(meta: Dict[str, Any]) -> List[str]:
+                    raw = meta.get("applicable_states")
+                    if raw is None:
+                        return []
+                    parts = [p.strip().upper() for p in str(raw).split(",") if p and str(p).strip()]
+                    return parts
+
+                for r in formatted:
+                    meta = r.get("metadata") or {}
+                    states = _meta_states(meta)
+                    if not states:
+                        # Treat missing/empty applicable_states as "global" (usable in any state).
+                        state_agnostic.append(r)
+                    elif state_norm in states:
+                        in_state.append(r)
+                    else:
+                        # Explicitly tagged to other states; exclude.
+                        continue
+
+                # Prefer state-specific results first, then global product content.
+                formatted = in_state + state_agnostic
         
         return formatted
     

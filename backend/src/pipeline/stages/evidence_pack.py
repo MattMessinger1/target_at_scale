@@ -86,6 +86,28 @@ async def build_product_evidence_pack(
         filter_state=state_code,
         filter_category=None,
     )
+    # If we got nothing after state filtering, fall back to product-only retrieval.
+    # This prevents "No KB chunks returned" for products whose KB content is state-agnostic.
+    if not rag_results:
+        rag_results = service.query(
+            query_text=query_text,
+            n_results=18,
+            filter_product=product_key,
+            filter_state=None,
+            filter_category=None,
+        )
+
+    # If still empty, fail fast with a clear message (better than generating uncited filler).
+    if not rag_results:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"No KB chunks returned for product_key='{product_key}'. "
+                "This usually means KB items are not tagged with the expected product_name key, "
+                "or embeddings were built from a different KB snapshot. "
+                "Verify /api/kb/stats, then re-run POST /api/kb/embed after indexing."
+            ),
+        )
 
     citations: List[EvidenceChunkCitation] = []
     for r in rag_results or []:
