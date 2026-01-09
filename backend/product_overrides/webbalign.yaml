@@ -1,0 +1,51 @@
+elevator_pitch: "WebbAlign is a technical quality assessment tool that helps districts evaluate and improve the cognitive rigor and standards alignment of their assessments, ensuring EL students are appropriately challenged and assessed."
+
+offerings:
+  - "Depth of Knowledge (DOK) alignment analysis for district assessments"
+  - "Standards alignment review and gap analysis"
+  - "Assessment quality audit and improvement recommendations"
+  - "Teacher training on cognitive rigor in assessment design"
+  - "Customized DOK rubrics and item analysis tools"
+
+who_its_for:
+  - "Curriculum and assessment directors"
+  - "District assessment coordinators"
+  - "Instructional coaches focused on assessment"
+  - "EL program directors seeking assessment equity"
+
+problems_solved:
+  - "Ensuring assessments match the cognitive rigor of state standards"
+  - "Identifying assessments that under-challenge or inappropriately challenge EL students"
+  - "Meeting state requirements for assessment quality and alignment"
+  - "Building teacher capacity to create rigorous, standards-aligned assessments"
+  - "Providing evidence for assessment quality during audits or monitoring"
+
+implementation:
+  what_wceps_does:
+    - "Conducts DOK analysis of existing district assessments"
+    - "Provides detailed alignment reports with actionable recommendations"
+    - "Delivers professional development on assessment design"
+  what_district_does:
+    - "Provides sample assessments for analysis"
+    - "Identifies priority content areas or grade levels"
+    - "Commits staff time for training and implementation"
+  timeline: "Initial analysis can be completed in 4-6 weeks; ongoing support available."
+
+safe_claims:
+  - "WebbAlign provides research-based DOK analysis aligned to Webb's framework."
+  - "WebbAlign helps districts document assessment quality for compliance purposes."
+  - "WebbAlign supports equitable assessment practices for all learners including ELs."
+
+compliance_hooks:
+  - "assessment quality audits"
+  - "state assessment alignment requirements"
+  - "Title I assessment quality mandates"
+  - "monitoring review preparation"
+  - "school improvement plan assessment components"
+  - "DOK compliance for state standards"
+
+avoid_phrases:
+  - "Are you maximizing"
+  - "Did you know"
+  - "If you aren't"
+  - "You should have"
