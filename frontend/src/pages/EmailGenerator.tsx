@@ -1414,7 +1414,7 @@ function EmailGeneratorPipeline() {
     
     // Clear cache for this state/product before re-searching
     try {
-      await api.generate.clearDeepResearchCache(selectedState, selectedProduct)
+      await api.generate.clearDeepResearchCache(selectedStates[0]?.code || '', selectedProducts[0] || '')
     } catch (e) {
       console.warn('Failed to clear cache:', e)
       // Continue anyway - cache clear is best-effort
