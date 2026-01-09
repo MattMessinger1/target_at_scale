@@ -382,7 +382,12 @@ async def run_deep_research(
     )
     
     try:
-        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        # Set a very long timeout (60 minutes) - Deep Research can take 30+ minutes
+        # We don't want to artificially cut off thorough research
+        client = AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            timeout=3600.0,  # 60 minutes - let it run as long as needed
+        )
         
         if on_progress:
             on_progress("Starting web research (this may take several minutes)...", 10.0)
