@@ -62,7 +62,11 @@ def failures_to_instructions(failures: Sequence[ValidationFailure]) -> List[str]
             "(deadline date/FY, monitoring/CAP/corrective action, budget code, or allowable/eligible/LEA/districts language)."
         )
     if "bullet_count_invalid" in code_set or "bullet_too_long" in code_set:
-        instructions.append("Include exactly 3 bullets; each bullet must be ≤ 10 words.")
+        instructions.append(
+            "Include exactly 3 bullets; each bullet must be ≤ 10 words. "
+            "Formatting: each bullet must be on its own line and start with '- '. "
+            "Do NOT combine multiple bullets into a single line using ' - ' separators."
+        )
     if "missing_micro_offer_cta" in code_set:
         instructions.append("LAST paragraph must be the CTA and must include a micro-offer phrase (e.g., 'I can send…', 'Would it help if I sent…', 'Want a 1-page…'). Do not add a separate sign-off paragraph after the CTA. Calendly is optional.")
     if "email_contains_url" in code_set:
