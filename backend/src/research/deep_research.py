@@ -42,49 +42,142 @@ for English Learner (EL) programs in {state_full} ({state_code}).
 ## Product Context
 {product_context}
 
+## HOW TO USE THE PRODUCT CONTEXT ABOVE (CRITICAL!)
+
+The product context tells you what we offer and what problems we solve.
+Use it to find RELEVANT funding and compliance that matches our deliverables:
+
+1. **PRIORITIZE funding** that can be used for our offerings:
+   - If product offers "coaching" → find PD/coaching-eligible funding
+   - If product offers "assessments" → find assessment-related funding
+   - If product offers "data systems" → find technology/data infrastructure funding
+   - If product offers "professional learning" → find teacher training funding
+
+2. **MATCH compliance situations** to those listed in "Compliance situations we help with":
+   - Focus on compliance hooks that align with our deliverables
+   - Skip compliance that we cannot help address
+
+3. **In `relevance_to_product`, be SPECIFIC** - name the actual offering:
+   - BAD: "Relevant to EL programs"
+   - GOOD: "This funding covers job-embedded coaching, which matches our professional learning offering"
+   - GOOD: "CSI grants can fund program evaluation, which our service provides"
+
+4. **SKIP items with no product connection**:
+   - If funding is for teacher stipends and we don't offer stipend programs → skip
+   - If compliance is about transportation and we don't address that → skip
+   - Only include items where we can credibly help
+
+---
+
+## IMPORTANT - EXCLUDE "TABLE STAKES" (what every district already knows)
+
+Do NOT include:
+- Title I basic allocations (every district knows this)
+- Title III basic allocations (every district knows this)
+- Standard state categorical EL/bilingual funding
+- Foundations, private grants, or corporate sources
+- Generic "professional development funds" without specific program
+
+ONLY find truly UNIQUE or lesser-known government funding that districts might miss!
+
+---
+
 ## Research Objectives
 
-Find actionable "treasure" - funding or compliance information that creates urgency for a district to act:
+Find actionable "treasure" - funding or compliance that creates URGENCY and matches our product.
 
-### 1. Funding Opportunities (Hidden Gems)
-Search for funding sources BEYOND the obvious (Title I, Title III, standard state categorical):
-- CSI/TSI/ATSI school improvement grants
-- Competitive state grants for EL innovation
-- New federal programs (last 12 months)
-- Consent decree / settlement-mandated funding
-- Refugee/immigrant education grants
-- Remaining ESSER/ARP funds
+### 1. Federal "Hidden Gems" (beyond Title I/III)
+
+Search specifically for:
+- **ESSER/ARP remaining funds** - Which {state_code} districts still have unspent funds?
+- **Refugee/immigrant education grants** - Federal newcomer programs, unaccompanied minors funding
+- **IDEA funds** for EL students with disabilities (dual-identified students)
+- **21st Century Community Learning Centers** applicable to EL programming
+- **CSI/TSI/ATSI school improvement grants** - Which districts have CSI/TSI schools with EL subgroups?
+- **Comprehensive Literacy State Development (CLSD)** grants that include EL
+- **Title II-A** leadership/PD funds (if product offers coaching/PD)
+- **Competitive federal grants** currently open for EL programs
 
 For each funding source, find:
 - Official program name
 - Funding amounts available
 - Application deadlines or budget cycles
 - Eligibility requirements
+- Direct URL to official source (state DOE or federal)
+- **SPECIFIC DISTRICTS** that are eligible or have received this funding
+
+### 2. State "Hidden Gems" in {state_full}
+
+Search specifically for:
+- **NEW state funding** announced in past 12 months
+- **State competitive grants** for EL innovation/pilots
+- **State literacy initiatives** that include EL students
+- **Upcoming NEW state budget allocations** for 2025-2026
+- **Unique {state_full}-specific programs** (e.g., Texas has Bilingual Education Allotment, California has LCFF supplemental)
+- **State consent decree settlements** requiring EL program investments
+
+For each, NAME SPECIFIC DISTRICTS that are eligible or benefiting.
+
+### 3. State Interventions & Takeovers (HIGH PRIORITY!)
+
+Search specifically for:
+- **State takeovers** - Which {state_code} districts are under state control?
+- **Receivership** or state-appointed board of managers
+- **District conservators** or state-appointed superintendents
+- **Corrective Action Plan (CAP)** requirements for EL programs
+- **State monitoring** with consequences
+
+For each intervention found:
+- **NAME THE SPECIFIC DISTRICT**
+- What triggered the intervention?
+- Is the rationale connected to EL/bilingual/ESL? (If not explicit, note "EL link not explicit")
+- What are they required to do?
+- Timeline for compliance
+
+### 4. Compliance Requirements (NAME SPECIFIC DISTRICTS!)
+
+Search specifically for:
+- **DOJ investigations or consent decrees** - WHICH {state_code} DISTRICTS?
+- **OCR complaints or resolutions** - WHICH {state_code} DISTRICTS?
+- **CSI schools with EL subgroup** - WHICH DISTRICTS have the most? How many schools?
+- **TSI/ATSI schools for EL subgroup** - WHICH DISTRICTS? How many schools?
+- **State monitoring reviews** with findings - WHICH DISTRICTS are on corrective action?
+- **EL program audits** with citations - WHICH DISTRICTS failed?
+- **Certification/endorsement requirements** - Any new state mandates for ESL teachers?
+
+For each compliance item:
+- **NAME THE SPECIFIC DISTRICT(S)**
+- What is the specific requirement or violation?
+- What is the deadline or timeline?
+- What are the consequences of non-compliance?
 - Direct URL to official source
 
-### 2. Compliance Requirements (Pressure Points)
-Search for compliance situations that create urgency:
-- DOJ investigations or consent decrees (NAME SPECIFIC DISTRICTS)
-- CSI/TSI/ATSI schools for EL subgroup (NAME SPECIFIC DISTRICTS with counts)
-- State interventions, takeovers, or receivership (NAME SPECIFIC DISTRICTS)
-- Upcoming compliance deadlines
-- Monitoring review cycles
-- Corrective Action Plan requirements
+### 5. Compliance-Linked Funding (requires compliance trigger)
 
-For each compliance item, find:
-- The specific requirement or situation
-- Which districts are affected (NAME THEM)
-- Deadlines or timelines
-- Consequences of non-compliance
-- Direct URL to official source
+Some funding is ONLY available to districts in compliance situations:
+- **CSI/TSI/ATSI 1003 school improvement grants** - Which districts are eligible?
+- **State intervention funding** - What extra resources come with state takeover?
+- **Consent decree mandated spending** - What must districts spend money on?
 
-### 3. Verification Requirements
+For each:
+- What compliance trigger is required to access this funding?
+- How much funding is available?
+- Which districts currently qualify?
+
+---
+
+## Verification Requirements
+
 - ONLY include information current as of {current_date}
 - Verify each source is authoritative (state DOE, federal agencies, official district documents)
 - If you cannot verify currency, note "unverified" status
 - Exclude any items with passed deadlines
+- For compliance items, only include verified active situations
+
+---
 
 ## Output Format
+
 Return your findings as a structured JSON object:
 {{
   "funding_items": [
@@ -94,29 +187,51 @@ Return your findings as a structured JSON object:
       "amount": "Funding amount if known",
       "deadline": "Application deadline or cycle",
       "eligibility": "Who can apply",
+      "districts_eligible": ["Specific District 1", "Specific District 2"],
       "url": "Direct URL to source",
       "status": "active|upcoming|unverified",
-      "relevance_to_product": "How this connects to the product"
+      "relevance_to_product": "SPECIFIC: How this connects to a product offering (name the offering)"
     }}
   ],
   "compliance_items": [
     {{
       "title": "Requirement/situation name",
       "description": "1-2 sentence description",
-      "type": "consent_decree|csi_tsi|state_takeover|monitoring|certification|other",
-      "districts_affected": ["District 1", "District 2"],
+      "type": "consent_decree|csi_tsi|state_takeover|monitoring|certification|corrective_action|other",
+      "districts_affected": ["Specific District 1", "Specific District 2"],
+      "school_count": "Number of schools affected (if applicable)",
       "deadline": "When action is needed",
       "consequences": "What happens if not addressed",
+      "el_link_explicit": true,
       "url": "Direct URL to source",
       "status": "active|unverified",
-      "relevance_to_product": "How this connects to the product"
+      "relevance_to_product": "SPECIFIC: How this connects to a product offering (name the offering)"
     }}
   ],
-  "research_summary": "2-3 sentence summary of key findings",
+  "state_interventions": [
+    {{
+      "district_name": "Specific District Name",
+      "intervention_type": "takeover|receivership|conservator|cap|monitoring",
+      "trigger_reason": "What caused the intervention",
+      "el_connected": true,
+      "requirements": "What the district must do",
+      "timeline": "Deadline or duration",
+      "url": "Source URL"
+    }}
+  ],
+  "research_summary": "2-3 sentence summary of key findings, emphasizing specific district names",
   "confidence_notes": "Any caveats about the research"
 }}
 
-Be thorough but focus on actionable items that create urgency. Quality over quantity.
+---
+
+## Final Reminders
+
+1. **NAME SPECIFIC DISTRICTS** - Generic "some districts" is not useful for sales
+2. **EXCLUDE TABLE STAKES** - Skip Title I/III basics, standard state categorical
+3. **MATCH TO PRODUCT** - Only include items where our product can help
+4. **BE SPECIFIC IN RELEVANCE** - Name the exact product offering that connects
+5. **QUALITY OVER QUANTITY** - 5 actionable items beats 20 generic ones
 """
 
 
@@ -362,12 +477,20 @@ async def convert_to_webhooks(
     
     # Convert funding items
     for item in research_results.get("funding_items", []):
+        # Build eligibility text including specific districts if available
+        eligibility_parts = []
+        if item.get("eligibility"):
+            eligibility_parts.append(item["eligibility"])
+        districts_eligible = item.get("districts_eligible", [])
+        if districts_eligible:
+            eligibility_parts.append(f"Eligible districts: {', '.join(districts_eligible[:5])}")
+        
         hooks.append({
             "hook_type": "funding_guidance",
             "quote": item.get("description", ""),
             "link": item.get("url", ""),
             "trigger_excerpt": f"Deadline: {item.get('deadline', 'See source')}" if item.get("deadline") else item.get("description", ""),
-            "eligibility_excerpt": item.get("eligibility"),
+            "eligibility_excerpt": "; ".join(eligibility_parts) if eligibility_parts else None,
             "why_relevant": item.get("relevance_to_product", f"Funding opportunity for {product_key}"),
             "confidence": "high" if item.get("status") == "active" else "medium",
             "source_quality_reason": f"Status: {item.get('status', 'unverified')}",
@@ -380,19 +503,58 @@ async def convert_to_webhooks(
             hook_type = "monitoring"
         elif item.get("type") == "csi_tsi":
             hook_type = "monitoring"
+        elif item.get("type") == "corrective_action":
+            hook_type = "monitoring"
         
+        # Build district info with school counts if available
         districts = item.get("districts_affected", [])
-        district_text = f"Districts affected: {', '.join(districts)}" if districts else ""
+        district_parts = []
+        if districts:
+            district_parts.append(f"Districts affected: {', '.join(districts[:5])}")
+        if item.get("school_count"):
+            district_parts.append(f"Schools: {item['school_count']}")
+        district_text = "; ".join(district_parts) if district_parts else ""
+        
+        # Note if EL connection is explicit
+        el_note = ""
+        if item.get("el_link_explicit") is False:
+            el_note = " (EL link not explicit)"
         
         hooks.append({
             "hook_type": hook_type,
-            "quote": item.get("description", ""),
+            "quote": item.get("description", "") + el_note,
             "link": item.get("url", ""),
             "trigger_excerpt": item.get("deadline") or item.get("consequences") or item.get("description", ""),
             "eligibility_excerpt": district_text or None,
             "why_relevant": item.get("relevance_to_product", f"Compliance situation relevant to {product_key}"),
             "confidence": "high" if item.get("status") == "active" else "medium",
             "source_quality_reason": f"Type: {item.get('type', 'other')}; Status: {item.get('status', 'unverified')}",
+        })
+    
+    # Convert state interventions (HIGH PRIORITY - these are the most actionable)
+    for item in research_results.get("state_interventions", []):
+        district_name = item.get("district_name", "Unknown district")
+        intervention_type = item.get("intervention_type", "intervention")
+        
+        # Build a compelling quote
+        quote = f"{district_name} is under state {intervention_type}"
+        if item.get("trigger_reason"):
+            quote += f" due to {item['trigger_reason']}"
+        
+        # Note EL connection
+        el_note = ""
+        if item.get("el_connected") is False:
+            el_note = " (EL link not explicit, but intervention creates opportunity)"
+        
+        hooks.append({
+            "hook_type": "monitoring",
+            "quote": quote + el_note,
+            "link": item.get("url", ""),
+            "trigger_excerpt": item.get("requirements") or item.get("timeline") or f"State {intervention_type} in effect",
+            "eligibility_excerpt": f"District: {district_name}; Timeline: {item.get('timeline', 'Ongoing')}",
+            "why_relevant": f"State intervention creates urgency and often mandates specific improvements that our {product_key} can address",
+            "confidence": "high",
+            "source_quality_reason": f"Intervention type: {intervention_type}; EL connected: {item.get('el_connected', 'unknown')}",
         })
     
     return hooks
