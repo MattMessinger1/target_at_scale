@@ -462,8 +462,19 @@ Remember: Return ONLY a valid JSON object, no other text."""
             
             # Check for failure
             if response.status in ("failed", "cancelled"):
-                error_msg = f"Deep Research {response.status}"
-                logger.error(f"{error_msg} for {state_code}/{product_key}")
+                # Capture detailed error info from response
+                error_details = {
+                    "status": response.status,
+                    "error": getattr(response, 'error', None),
+                    "last_error": getattr(response, 'last_error', None),
+                    "incomplete_details": getattr(response, 'incomplete_details', None),
+                }
+                logger.error(f"Deep Research {response.status} for {state_code}/{product_key}: {error_details}")
+                
+                # Also log the full response object for debugging
+                logger.error(f"Full response: {response}")
+                
+                error_msg = f"Deep Research {response.status}: {error_details.get('error') or error_details.get('last_error') or 'unknown reason'}"
                 raise RuntimeError(error_msg)
             
             # Update progress
