@@ -44,10 +44,54 @@ _TITLE_I_III_RE = re.compile(r"\btitle\s+(i|1|iii|3)\b", re.I)
 _ALLOW_TITLE_I_III_RE = re.compile(r"\b(set[- ]aside|school improvement|csi|tsi|atsi)\b", re.I)
 
 # Deliverable / artifact language (must appear somewhere in why_relevant, ideally).
+# Expanded to include compliance/monitoring/coaching terms that our products address.
 _DELIVERABLE_RE = re.compile(
-    r"\b(checklist|template|draft|one[- ]page|1[- ]page|agenda|rubric|evidence|narrative|allowable[- ]use|budget|coding|crosswalk|pack)\b",
+    r"\b("
+    # Original artifact terms
+    r"checklist|template|draft|one[- ]page|1[- ]page|agenda|rubric|evidence|narrative|"
+    r"allowable[- ]use|budget|coding|crosswalk|pack|"
+    # Compliance/monitoring terms (CARE Coaching, etc.)
+    r"corrective[- ]?action|CAP|improvement[- ]?plan|action[- ]?plan|"
+    r"program[- ]?evaluation|evaluation|walk[- ]?through|walkthrough|"
+    r"monitoring|compliance|"
+    # School improvement tiers
+    r"CSI|TSI|ATSI|school[- ]?improvement|"
+    # Investigation/legal compliance
+    r"DOJ|investigation|consent[- ]?decree|"
+    # Coaching/PD terms
+    r"coaching|collaboration|professional[- ]?development|PD|"
+    # Support language
+    r"support|assist|guidance|preparation|prepare"
+    r")\b",
     re.I,
 )
+
+# ---------------------------------------------------------------------------
+# Product-specific deliverable terms
+# ---------------------------------------------------------------------------
+# Each product has specific artifacts/services that tie to compliance hooks.
+# These are checked in addition to the general _DELIVERABLE_RE.
+
+PRODUCT_DELIVERABLES: Dict[str, List[str]] = {
+    "care_coaching": [
+        "corrective action", "program evaluation", "walk-through", "walkthrough",
+        "coaching", "collaboration", "improvement plan", "monitoring",
+        "professional development", "observation", "feedback", "instructional support",
+        "EL compliance", "ELP", "assessment", "participation rate",
+    ],
+    "ellevation": [
+        "language plan", "LIEP", "ELD", "reclassification", "exit criteria",
+        "EL identification", "home language survey", "translation", "interpretation",
+        "family engagement", "progress monitoring", "English proficiency",
+    ],
+    # Add more products as needed
+}
+
+def _product_key_from_evidence_pack(evidence_pack: Optional[EvidencePack]) -> Optional[str]:
+    """Extract product_key from evidence pack."""
+    if not evidence_pack:
+        return None
+    return getattr(evidence_pack, "product_key", None)
 
 
 @dataclass(frozen=True)
@@ -111,12 +155,42 @@ def _is_table_stakes(h: WebHook) -> bool:
 
 
 def _has_deliverable_tie_in(h: WebHook, *, evidence_pack: Optional[EvidencePack]) -> bool:
-    # Prefer the hook's own why_relevant, since TreasureHunter prompt asks for artifact tie-in.
+    """Check if hook ties to a concrete deliverable/service we offer.
+    
+    For monitoring-type hooks, we use broader matching since compliance assistance
+    is inherently valuable (corrective action plans, program evaluations, etc.).
+    """
     why = h.why_relevant or ""
-    if _DELIVERABLE_RE.search(why):
+    quote = h.quote or ""
+    trigger = h.trigger_excerpt or ""
+    full_text = f"{why} {quote} {trigger}"
+    
+    # 1. Check against expanded deliverable regex (now includes compliance terms)
+    if _DELIVERABLE_RE.search(full_text):
         return True
 
-    # Secondary: match against known micro-offer candidates (if present).
+    # 2. For monitoring-type hooks, be more lenient - these inherently signal
+    #    compliance assistance value (CAPs, program evals, etc.)
+    if h.hook_type == "monitoring":
+        # Monitoring hooks that mention plans, rates, or requirements are valid
+        monitoring_terms = re.compile(
+            r"\b(plan|rate|requirement|compliance|assessment|participation|"
+            r"corrective|improvement|evaluation|review|audit)\b",
+            re.I,
+        )
+        if monitoring_terms.search(full_text):
+            return True
+
+    # 3. Check product-specific deliverable terms
+    product_key = _product_key_from_evidence_pack(evidence_pack)
+    if product_key:
+        product_terms = PRODUCT_DELIVERABLES.get(product_key.lower(), [])
+        full_text_lower = full_text.lower()
+        for term in product_terms:
+            if term.lower() in full_text_lower:
+                return True
+
+    # 4. Secondary: match against known micro-offer candidates (if present).
     if evidence_pack and evidence_pack.micro_offer_candidates:
         why_l = _norm(why)
         for mo in evidence_pack.micro_offer_candidates:
