@@ -192,6 +192,33 @@ def _contains_micro_offer(text: str) -> bool:
     return False
 
 
+def _choose_micro_offer(evidence_pack: EvidencePack) -> str:
+    offers = [o.offer for o in (evidence_pack.micro_offer_candidates or []) if o and o.offer]
+    return (offers[0] if offers else "") or "evidence checklist for documentation"
+
+
+def _ensure_micro_offer_cta(email_body: str, *, evidence_pack: EvidencePack) -> str:
+    """Ensure the last paragraph contains a micro-offer phrase (validator requirement)."""
+    paras = _split_paragraphs(email_body)
+    if not paras:
+        return (email_body or "").strip()
+
+    if _contains_micro_offer(paras[-1]):
+        return "\n\n".join(paras).strip()
+
+    # If the model ended with a signature/sign-off, move it into the CTA paragraph.
+    trailing_sig: List[str] = []
+    while paras and _is_signatureish_paragraph(paras[-1]) and not _contains_micro_offer(paras[-1]):
+        trailing_sig.insert(0, paras.pop())
+
+    offer = _choose_micro_offer(evidence_pack)
+    cta = f"Would it help if I sent a {offer}? Where should I route it?"
+    if trailing_sig:
+        cta = cta.rstrip() + "\n" + "\n".join(trailing_sig).strip()
+    paras.append(cta)
+    return "\n\n".join(paras).strip()
+
+
 def _normalize_email_body_for_validator(email_body: str, *, hook_quote: str, hook_link: str) -> str:
     """Post-process model output to satisfy strict opener/CTA paragraph placement rules."""
     paras = _split_paragraphs(email_body)
@@ -354,6 +381,7 @@ async def write_email_variant(
     # Best-effort: enforce strict paragraph placement rules deterministically.
     email_body = _normalize_email_body_for_validator(email_body, hook_quote=hook.quote, hook_link=hook.link)
     email_body = _pad_short_email(email_body, min_words=80)
+    email_body = _ensure_micro_offer_cta(email_body, evidence_pack=evidence_pack)
 
     # Parse claims
     claims_map: List[ClaimsMapEntry] = []
@@ -372,7 +400,7 @@ async def write_email_variant(
         email_body=email_body,
         word_count=word_count(email_body),
         bullets=bullets,
-        micro_offer=micro_offer,
+        micro_offer=micro_offer or _choose_micro_offer(evidence_pack),
     )
 
     # Deterministic claims-map hardening (reduces common validator FAIL modes).
