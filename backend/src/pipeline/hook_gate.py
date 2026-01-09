@@ -28,14 +28,36 @@ _DATE_OR_FY_RE = re.compile(
     re.I,
 )
 _MONITORING_RE = re.compile(r"\b(monitoring|corrective action|corrective-action|CAP|corrective action plan)\b", re.I)
-_ELIGIBILITY_RE = re.compile(r"\b(LEA|local educational agency|school district|districts)\b", re.I)
+# Eligibility language: expanded to match common government/education terms
+_ELIGIBILITY_RE = re.compile(
+    r"\b("
+    r"LEA|local educational agency|school district|districts|district|"
+    r"schools|K[- ]?12|public school|charter|ISD|USD|"
+    r"state education agency|SEA|ESC|education service|"
+    r"eligible|eligibility|applicant|recipient|grantee"
+    r")\b",
+    re.I,
+)
 
 # Budget/function codes: 3–4 digits, but exclude obvious years.
 _BUDGET_CODE_RE = re.compile(r"\b\d{3,4}\b")
 
 # Trigger-ish language that signals urgency/impetus even when not a clean date.
 _IMPetus_EXTRA_RE = re.compile(
-    r"\b(grant period|award period|period of performance|allocation|allocated|carryover|obligation deadline|due|deadline|apply|application)\b",
+    r"\b("
+    r"grant period|award period|period of performance|allocation|allocated|carryover|"
+    r"obligation deadline|due|deadline|apply|application|"
+    # Funding urgency terms
+    r"funding|grant|funds available|appropriation|budget|fiscal|"
+    # Action required terms  
+    r"required|requirement|must|mandated|mandate|"
+    # Compliance urgency
+    r"compliance|comply|corrective|improvement|intervention|"
+    # District-specific urgency
+    r"identified|designated|status|affected|eligible|"
+    # Investigation/legal
+    r"investigation|consent|decree|settlement|resolution"
+    r")\b",
     re.I,
 )
 

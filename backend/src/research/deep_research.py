@@ -385,52 +385,65 @@ async def run_deep_research(
         client = AsyncOpenAI(api_key=settings.openai_api_key)
         
         if on_progress:
-            on_progress("Researching funding opportunities and compliance requirements...", 20.0)
+            on_progress("Starting web research (this may take several minutes)...", 10.0)
         
-        # Use the responses API with web search for deep research
-        # Note: This uses the standard chat completions with a research-focused prompt
-        # For true Deep Research, you'd use the Responses API when available
-        response = await client.chat.completions.create(
+        # Use the Responses API with web_search tool for real web browsing
+        # This performs actual internet searches and can take 1-10+ minutes
+        logger.info(f"Starting Deep Research with web_search for {state_code}/{product_key}")
+        
+        # Wrap prompt with JSON output instruction since Responses API 
+        # doesn't have response_format parameter
+        full_prompt = f"""You are an expert K-12 education policy researcher with web search capabilities.
+Search the web thoroughly to find current, verified information.
+
+IMPORTANT: Return your findings as a valid JSON object matching the schema in the instructions below.
+
+{prompt}
+
+Remember: Return ONLY a valid JSON object, no other text."""
+        
+        response = await client.responses.create(
             model="gpt-4o",  # Use latest model for best research
-            messages=[
+            input=full_prompt,
+            tools=[
                 {
-                    "role": "system",
-                    "content": (
-                        "You are an expert K-12 education policy researcher. "
-                        "Conduct thorough research and return structured JSON results. "
-                        "Be specific about districts, deadlines, and URLs. "
-                        "Only include information you can verify is current."
-                    ),
-                },
-                {"role": "user", "content": prompt},
+                    "type": "web_search",
+                    # Optionally filter to authoritative education domains
+                    # "filters": {
+                    #     "allowed_domains": ["ed.gov", "*.gov"]
+                    # }
+                }
             ],
-            temperature=0.1,
-            max_tokens=4000,
-            response_format={"type": "json_object"},
         )
         
         if on_progress:
             on_progress("Processing research results...", 80.0)
         
-        raw_content = response.choices[0].message.content or "{}"
+        # Responses API returns output_text instead of choices[0].message.content
+        raw_content = response.output_text or "{}"
         results = _parse_research_response(raw_content)
         
         # Add metadata
+        # Responses API may have different attribute names
+        response_id = getattr(response, "id", None) or "unknown"
+        model_used = getattr(response, "model", None) or "gpt-4o"
+        
         results["_meta"] = {
             "state_code": state_code,
             "state_full": state_full,
             "product_key": product_key,
             "researched_at": datetime.utcnow().isoformat(),
-            "model": response.model,
-            "response_id": response.id,
+            "model": model_used,
+            "response_id": response_id,
+            "used_web_search": True,
         }
         
         # Update cache entry
         cache_entry.status = "completed"
         cache_entry.completed_at = datetime.utcnow()
         cache_entry.results_json = results
-        cache_entry.openai_response_id = response.id
-        cache_entry.model_used = response.model
+        cache_entry.openai_response_id = response_id
+        cache_entry.model_used = model_used
         await db.commit()
         
         if on_progress:
