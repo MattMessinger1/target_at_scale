@@ -57,6 +57,14 @@ class HookGateReport:
     dropped_by_reason: Dict[str, int]
 
 
+@dataclass(frozen=True)
+class FilteredRequirement:
+    """A requirement that was filtered out by the gate, with the reason."""
+    hook: WebHook
+    reason: str
+    reason_label: str  # Human-readable explanation
+
+
 def _norm(s: Optional[str]) -> str:
     return re.sub(r"\s+", " ", (s or "")).strip().lower()
 
@@ -119,41 +127,64 @@ def _has_deliverable_tie_in(h: WebHook, *, evidence_pack: Optional[EvidencePack]
     return False
 
 
+# Human-readable labels for rejection reasons
+REASON_LABELS: Dict[str, str] = {
+    "missing_link": "No source URL provided",
+    "low_confidence": "Source quality too uncertain",
+    "table_stakes_title_i_iii": "Generic Title I/III (not school improvement specific)",
+    "missing_impetus_now_trigger": "No deadline/FY/monitoring language found",
+    "missing_deliverable_tie_in": "Doesn't connect to a concrete artifact we offer",
+}
+
+
 def gate_treasure_hooks(
     hooks: List[WebHook],
     *,
     evidence_pack: Optional[EvidencePack] = None,
-) -> Tuple[List[WebHook], HookGateReport]:
-    """Filter hooks deterministically for V3.\n\n    Returns (kept_hooks, report).\n    """
+) -> Tuple[List[WebHook], List[FilteredRequirement], HookGateReport]:
+    """Filter hooks deterministically for V3.
+
+    Returns (kept_hooks, filtered_hooks, report).
+    """
 
     dropped: Dict[str, int] = {}
     kept: List[WebHook] = []
+    filtered: List[FilteredRequirement] = []
+
+    def _filter(h: WebHook, reason: str) -> None:
+        dropped[reason] = dropped.get(reason, 0) + 1
+        filtered.append(FilteredRequirement(
+            hook=h,
+            reason=reason,
+            reason_label=REASON_LABELS.get(reason, reason),
+        ))
 
     for h in hooks or []:
         # Basic sanity
         if not h or not (h.link and str(h.link).strip()):
-            dropped["missing_link"] = dropped.get("missing_link", 0) + 1
+            if h:
+                _filter(h, "missing_link")
             continue
 
         # Confidence: drop low-confidence hooks (too risky for outreach).
         if (h.confidence or "").lower() == "low":
-            dropped["low_confidence"] = dropped.get("low_confidence", 0) + 1
+            _filter(h, "low_confidence")
             continue
 
         if _is_table_stakes(h):
-            dropped["table_stakes_title_i_iii"] = dropped.get("table_stakes_title_i_iii", 0) + 1
+            _filter(h, "table_stakes_title_i_iii")
             continue
 
         if not _has_impetus_now(h):
-            dropped["missing_impetus_now_trigger"] = dropped.get("missing_impetus_now_trigger", 0) + 1
+            _filter(h, "missing_impetus_now_trigger")
             continue
 
         if not _has_deliverable_tie_in(h, evidence_pack=evidence_pack):
-            dropped["missing_deliverable_tie_in"] = dropped.get("missing_deliverable_tie_in", 0) + 1
+            _filter(h, "missing_deliverable_tie_in")
             continue
 
         kept.append(h)
 
     report = HookGateReport(total=len(hooks or []), kept=len(kept), dropped_by_reason=dropped)
-    return kept, report
+    return kept, filtered, report
 

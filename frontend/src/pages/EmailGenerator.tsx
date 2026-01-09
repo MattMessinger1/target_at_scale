@@ -21,6 +21,7 @@ import {
   EvidenceChunkCitation,
   EvidencePack,
   WebHook,
+  FilteredRequirement,
   PipelineRequest,
   PipelineRunStreamRequest,
   PipelineRunResponse,
@@ -1119,7 +1120,15 @@ function EmailGeneratorV1() {
   )
 }
 
-type PipelineStep = 'select' | 'generate' | 'done'
+// Wizard steps for V3 pipeline
+type WizardStep = 1 | 2 | 3 | 4 | 5
+const WIZARD_STEP_LABELS: Record<WizardStep, string> = {
+  1: 'Choose Product & Audience',
+  2: 'Research',
+  3: 'Select',
+  4: 'Generate Email',
+  5: 'Review and Improve Email',
+}
 
 type ReviewSectionKey = 'subject_line' | 'product_relevance' | 'tone' | 'flow' | 'cta'
 
@@ -1135,7 +1144,7 @@ type ReviewDraft = {
 }
 
 function EmailGeneratorPipeline() {
-  const [, setStep] = useState<PipelineStep>('select')
+  const [wizardStep, setWizardStep] = useState<WizardStep>(1)
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   const [selectedStates, setSelectedStates] = useState<SelectedState[]>([])
   const [selectedAudiences, setSelectedAudiences] = useState<string[]>([])
@@ -1147,12 +1156,14 @@ function EmailGeneratorPipeline() {
   const [activeAudience, setActiveAudience] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [traceEvents, setTraceEvents] = useState<PipelineStreamEvent[]>([])
-  const [prep, setPrep] = useState<{ evidence_pack: EvidencePack; treasure_hooks: WebHook[]; warnings: string[] } | null>(null)
+  const [prep, setPrep] = useState<{ evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; warnings: string[] } | null>(null)
+  const [blockedFilteredRequirements, setBlockedFilteredRequirements] = useState<FilteredRequirement[]>([])
   const [selectedHookLinks, setSelectedHookLinks] = useState<string[]>([])
   const [primaryHookLink, setPrimaryHookLink] = useState<string | null>(null)
   const [hookReasonTags, setHookReasonTags] = useState<Record<string, string[]>>({})
   const [hookReasonNotes, setHookReasonNotes] = useState<Record<string, string>>({})
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, ReviewDraft>>({})
+  const [showFilteredSection, setShowFilteredSection] = useState(false)
 
   useEffect(() => {
     if (selectedHookLinks.length === 1) {
@@ -1193,8 +1204,8 @@ function EmailGeneratorPipeline() {
       if (prev.includes(link)) return prev.filter((x) => x !== link)
       if (prev.length >= 2) {
         toast({
-          title: 'Max 2 hooks',
-          description: 'Select at most two treasure hooks.',
+          title: 'Max 2 requirements',
+          description: 'Select at most two funding/compliance requirements.',
           variant: 'destructive',
         })
         return prev
@@ -1204,8 +1215,8 @@ function EmailGeneratorPipeline() {
   }
 
   const prepMutation = useMutation<
-    { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; warnings: string[] },
-    Error,
+    { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; warnings: string[] },
+    Error & { filteredRequirements?: FilteredRequirement[] },
     void
   >({
     mutationFn: () => {
@@ -1223,20 +1234,26 @@ function EmailGeneratorPipeline() {
     },
     onSuccess: (data) => {
       setPrep(data)
+      setBlockedFilteredRequirements([])
       setSelectedHookLinks([])
       setPrimaryHookLink(null)
       setResult(null)
       setReviewDrafts({})
       setActiveAudience(null)
-      setStep('generate')
+      setWizardStep(3) // Go to Select step
     },
     onError: (error) => {
+      // Capture filtered requirements even on blocked/error
+      if (error && 'filteredRequirements' in error && error.filteredRequirements) {
+        setBlockedFilteredRequirements(error.filteredRequirements)
+        setShowFilteredSection(true)
+      }
       toast({
-        title: 'Treasure hunt failed',
+        title: 'Research failed',
         description: error instanceof Error ? error.message : 'Unknown error',
         variant: 'destructive',
       })
-      setStep('select')
+      setWizardStep(3) // Still go to Select step to show filtered requirements
     },
   })
 
@@ -1267,9 +1284,9 @@ function EmailGeneratorPipeline() {
       setResult(data)
       const first = data.variants?.[0]?.audience
       setActiveAudience(first || null)
-      setStep('done')
+      setWizardStep(5) // Go to Review step
 
-      // Training loop: log the explicit human-selected hooks (no implicit rejections).
+      // Training loop: log the explicit human-selected requirements (no implicit rejections).
       try {
         if (prep && selectedHookLinks.length > 0) {
           const map = new Map((prep.treasure_hooks || []).map((h) => [h.link, h]))
@@ -1310,11 +1327,11 @@ function EmailGeneratorPipeline() {
     },
     onError: (error) => {
       toast({
-        title: 'Pipeline failed',
+        title: 'Email generation failed',
         description: error instanceof Error ? error.message : 'Unknown error',
         variant: 'destructive',
       })
-      setStep('select')
+      setWizardStep(3) // Go back to Select step
     },
   })
 
@@ -1368,6 +1385,7 @@ function EmailGeneratorPipeline() {
     if (!canPrep) return
     setTraceEvents([])
     setPrep(null)
+    setBlockedFilteredRequirements([])
     setSelectedHookLinks([])
     setPrimaryHookLink(null)
     setHookReasonTags({})
@@ -1375,21 +1393,22 @@ function EmailGeneratorPipeline() {
     setReviewDrafts({})
     setResult(null)
     setActiveAudience(null)
-    setStep('generate')
+    setWizardStep(2) // Go to Research step
     prepMutation.mutate()
   }
 
   const handleRun = () => {
     if (!canGenerate) return
     setTraceEvents([])
-    setStep('generate')
+    setWizardStep(4) // Go to Generate step
     pipelineMutation.mutate()
   }
 
   const handleReset = () => {
-    setStep('select')
+    setWizardStep(1)
     setResult(null)
     setPrep(null)
+    setBlockedFilteredRequirements([])
     setSelectedHookLinks([])
     setPrimaryHookLink(null)
     setHookReasonTags({})
@@ -1398,6 +1417,13 @@ function EmailGeneratorPipeline() {
     setActiveAudience(null)
     setCopied(false)
     setTraceEvents([])
+    setShowFilteredSection(false)
+  }
+
+  const handleBackToStep = (step: WizardStep) => {
+    if (step < wizardStep) {
+      setWizardStep(step)
+    }
   }
 
   const handleCopy = () => {
@@ -1699,10 +1725,10 @@ function EmailGeneratorPipeline() {
     return (
       <div className="mt-4 p-4 rounded-lg border border-slate-700 bg-slate-800/50">
         <div className="flex items-center justify-between">
-          <div className="text-sm font-medium text-slate-200">Selected hooks</div>
+          <div className="text-sm font-medium text-slate-200">Selected Requirements</div>
           <div className="text-xs text-slate-500">{h.hook_type} · {h.confidence}</div>
         </div>
-        <div className="mt-2 text-xs text-slate-500 uppercase tracking-wide">Primary (opener)</div>
+        <div className="mt-2 text-xs text-slate-500 uppercase tracking-wide">Primary Requirement (opener)</div>
         <div className="mt-2 text-sm text-slate-300">“{h.quote}”</div>
         <a className="mt-2 block text-sm text-emerald-300 hover:text-emerald-200 underline break-all" href={h.link} target="_blank" rel="noreferrer">
           {h.link}
@@ -1720,7 +1746,7 @@ function EmailGeneratorPipeline() {
           <>
             <div className="mt-4 pt-4 border-t border-slate-700">
               <div className="flex items-center justify-between">
-                <div className="text-xs text-slate-500 uppercase tracking-wide">Secondary (later impetus)</div>
+                <div className="text-xs text-slate-500 uppercase tracking-wide">Secondary Requirement (supporting)</div>
                 <div className="text-xs text-slate-500">{sh.hook_type} · {sh.confidence}</div>
               </div>
               <div className="mt-2 text-sm text-slate-300">“{sh.quote}”</div>
@@ -1742,25 +1768,174 @@ function EmailGeneratorPipeline() {
     )
   }
 
+  // Helper: get all filtered requirements (from prep or from blocked state)
+  const allFilteredRequirements = prep?.filtered_requirements || blockedFilteredRequirements || []
+  const passedRequirements = prep?.treasure_hooks || []
+
+  // Render the wizard progress bar
+  const renderProgressBar = () => {
+    const steps: WizardStep[] = [1, 2, 3, 4, 5]
+    return (
+      <div className="flex items-center justify-between mb-8">
+        {steps.map((step, idx) => {
+          const isActive = step === wizardStep
+          const isCompleted = step < wizardStep
+          const isClickable = step < wizardStep
+          return (
+            <div key={step} className="flex items-center flex-1">
+              <button
+                onClick={() => isClickable && handleBackToStep(step)}
+                disabled={!isClickable}
+                className={`flex flex-col items-center ${isClickable ? 'cursor-pointer' : 'cursor-default'}`}
+              >
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-medium border-2 transition-all ${
+                  isCompleted
+                    ? 'bg-emerald-600 border-emerald-600 text-white'
+                    : isActive
+                    ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300'
+                    : 'bg-slate-800 border-slate-600 text-slate-500'
+                }`}>
+                  {isCompleted ? (
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  ) : step}
+                </div>
+                <div className={`mt-2 text-xs text-center max-w-[100px] ${
+                  isActive ? 'text-emerald-300 font-medium' : isCompleted ? 'text-slate-300' : 'text-slate-500'
+                }`}>
+                  {WIZARD_STEP_LABELS[step]}
+                </div>
+              </button>
+              {idx < steps.length - 1 && (
+                <div className={`flex-1 h-0.5 mx-2 ${
+                  step < wizardStep ? 'bg-emerald-600' : 'bg-slate-700'
+                }`} />
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // Render a single requirement card (for both passed and filtered)
+  const renderRequirementCard = (h: WebHook, opts: { 
+    isFiltered?: boolean
+    filterReason?: string
+    filterReasonLabel?: string
+    isSelected?: boolean
+    isPrimary?: boolean
+    onToggle?: () => void
+    onSetPrimary?: () => void
+  }) => {
+    const hookTypeLabels: Record<string, string> = {
+      deadline: 'Deadline',
+      funding_guidance: 'Funding Guidance',
+      budget_coding: 'Budget Coding',
+      monitoring: 'Monitoring',
+      allowable_use: 'Allowable Use',
+      district_specific: 'District Specific',
+    }
+    return (
+      <div className={`p-4 rounded-lg border ${
+        opts.isFiltered 
+          ? 'border-slate-700 bg-slate-900/30 opacity-75' 
+          : opts.isSelected 
+          ? 'border-emerald-600 bg-emerald-900/20' 
+          : 'border-slate-700 bg-slate-800/50'
+      }`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                opts.isFiltered ? 'bg-slate-700 text-slate-400' : 'bg-emerald-900/50 text-emerald-300'
+              }`}>
+                {hookTypeLabels[h.hook_type] || h.hook_type}
+              </span>
+              <span className={`text-xs ${
+                h.confidence === 'high' ? 'text-emerald-400' : h.confidence === 'medium' ? 'text-amber-400' : 'text-red-400'
+              }`}>
+                {h.confidence} confidence
+              </span>
+              {opts.isFiltered && opts.filterReasonLabel && (
+                <span className="px-2 py-0.5 rounded bg-red-900/30 text-red-300 text-xs">
+                  {opts.filterReasonLabel}
+                </span>
+              )}
+            </div>
+            <div className="mt-2 text-sm text-slate-200">"{h.quote}"</div>
+            <div className="mt-2 text-xs text-slate-500 uppercase tracking-wide">Trigger</div>
+            <div className="text-sm text-slate-300">{h.trigger_excerpt}</div>
+            {h.eligibility_excerpt && (
+              <>
+                <div className="mt-2 text-xs text-slate-500 uppercase tracking-wide">Eligibility</div>
+                <div className="text-sm text-slate-300">{h.eligibility_excerpt}</div>
+              </>
+            )}
+            <div className="mt-2 text-xs text-slate-500 uppercase tracking-wide">Why Relevant</div>
+            <div className="text-sm text-slate-400">{h.why_relevant}</div>
+            <a 
+              href={h.link} 
+              target="_blank" 
+              rel="noreferrer"
+              className="mt-2 block text-sm text-emerald-400 hover:text-emerald-300 underline break-all"
+            >
+              {h.link}
+            </a>
+          </div>
+          {!opts.isFiltered && opts.onToggle && (
+            <div className="flex flex-col items-end gap-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={opts.isSelected}
+                  onChange={opts.onToggle}
+                  className="w-5 h-5 rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500"
+                />
+                <span className="text-sm text-slate-300">Select</span>
+              </label>
+              {opts.isSelected && selectedHookLinks.length === 2 && opts.onSetPrimary && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="primaryHook"
+                    checked={opts.isPrimary}
+                    onChange={opts.onSetPrimary}
+                    className="w-4 h-4 border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500"
+                  />
+                  <span className="text-xs text-slate-400">Primary</span>
+                </label>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      <div className="max-w-6xl mx-auto px-4 py-10">
-        <div className="flex items-start justify-between gap-4">
+      <div className="max-w-5xl mx-auto px-4 py-10">
+        <div className="flex items-start justify-between gap-4 mb-6">
           <div>
             <h1 className="text-2xl sm:text-3xl font-semibold text-slate-100">
-              Email Generator (Pipeline)
+              Email Generator
             </h1>
             <div className="mt-1 text-sm text-slate-400">
-              Generate 3 audience variants with evidence + validation.
+              Find funding/compliance requirements and generate targeted emails.
             </div>
           </div>
           <ThemeToggle />
         </div>
 
-        <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {renderProgressBar()}
+
+        {/* Step 1: Choose Product & Audience */}
+        {wizardStep === 1 && (
           <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
-            <div className="text-sm font-medium text-slate-200">Inputs</div>
-            <div className="mt-4 space-y-6">
+            <h2 className="text-lg font-medium text-slate-200 mb-6">Choose Product & Audience</h2>
+            <div className="space-y-6">
               <ProductSelector selectedProducts={selectedProducts} onSelect={setSelectedProducts} />
               <StateSelector selectedStates={selectedStates} onSelect={setSelectedStates} />
 
@@ -1787,292 +1962,312 @@ function EmailGeneratorPipeline() {
                 </div>
               </div>
 
-              <button
-                onClick={handlePrep}
-                disabled={!canPrep || prepMutation.isPending || pipelineMutation.isPending}
-                className={`w-full px-6 py-3 rounded-lg font-medium transition-colors ${
-                  !canPrep || prepMutation.isPending || pipelineMutation.isPending
-                    ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                    : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
-                }`}
-              >
-                {prepMutation.isPending ? 'Searching for treasure…' : prep ? 'Re-run treasure hunt' : 'Find treasure hooks'}
-              </button>
+              <div className="pt-4 flex justify-end">
+                <button
+                  onClick={handlePrep}
+                  disabled={!canPrep}
+                  className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                    !canPrep
+                      ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  }`}
+                >
+                  Find Requirements →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-              {prepMutation.isError && (
-                <div className="p-3 rounded border border-red-800 bg-red-900/30 text-red-300 text-sm">
-                  {prepMutation.error instanceof Error ? prepMutation.error.message : 'Treasure hunt error'}
+        {/* Step 2: Research (loading state) */}
+        {wizardStep === 2 && (
+          <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
+            <h2 className="text-lg font-medium text-slate-200 mb-6">Researching Funding & Compliance Requirements...</h2>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-slate-300">Searching for requirements...</span>
+            </div>
+            {traceEvents.length > 0 && (
+              <div className="p-4 rounded-lg border border-slate-700 bg-slate-900/30 max-h-64 overflow-y-auto">
+                <div className="text-xs text-slate-500 uppercase tracking-wide mb-2">Progress</div>
+                <div className="space-y-1">
+                  {traceEvents.map((e, i) => (
+                    <div key={`${e.type}-${i}`} className="text-xs text-slate-300">
+                      <span className="font-mono text-slate-400">{String(e.type)}</span>
+                      {e.stage && <span className="ml-2 text-slate-300">stage: {String(e.stage)}</span>}
+                      {typeof e.message === 'string' && <div className="mt-1 text-slate-400">{e.message}</div>}
+                    </div>
+                  ))}
                 </div>
-              )}
+              </div>
+            )}
+          </div>
+        )}
 
-              {prep && (
-                <div className="p-4 rounded-lg border border-slate-700 bg-slate-900/30 space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-medium text-slate-200">Pick treasure hooks</div>
-                    <div className="text-xs text-slate-500">
-                      selected: {selectedHookLinks.length}/2
-                    </div>
-                  </div>
+        {/* Step 3: Select Requirements */}
+        {wizardStep === 3 && (
+          <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
+            <h2 className="text-lg font-medium text-slate-200 mb-2">Select Funding & Compliance Requirements</h2>
+            <p className="text-sm text-slate-400 mb-6">
+              Select 1-2 requirements to include in your email. Each selected requirement needs at least one reason tag.
+            </p>
 
-                  {(prep.treasure_hooks || []).length === 0 && (
-                    <div className="text-sm text-slate-400">No hooks returned.</div>
-                  )}
-
-                  {(prep.treasure_hooks || []).slice(0, 20).map((h, i) => {
-                    const checked = selectedHookLinks.includes(h.link)
-                    return (
-                      <label
-                        key={`${h.link}-${i}`}
-                        className={`block p-3 rounded border cursor-pointer transition-colors ${
-                          checked ? 'border-emerald-600 bg-emerald-900/10' : 'border-slate-700 bg-slate-900/20 hover:bg-slate-900/30'
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleHook(h.link)}
-                            className="mt-1"
-                          />
-                          <div className="min-w-0">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="text-xs text-slate-400 font-mono">
-                                {h.hook_type} · {h.confidence}
-                              </div>
-                            </div>
-                            <div className="mt-1 text-sm text-slate-200">“{h.quote}”</div>
-                            <div className="mt-1 text-xs text-slate-400">{h.why_relevant}</div>
-                            <a
-                              className="mt-2 block text-xs text-emerald-300 hover:text-emerald-200 underline break-all"
-                              href={h.link}
-                              target="_blank"
-                              rel="noreferrer"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              {h.link}
-                            </a>
-                          </div>
-                        </div>
-                      </label>
-                    )
-                  })}
-
-                  {selectedHookLinks.length === 2 && (
-                    <div className="pt-2 border-t border-slate-700">
-                      <div className="text-xs text-slate-500 uppercase tracking-wide">Primary opener hook</div>
-                      <div className="mt-2 space-y-2">
-                        {selectedHookLinks.map((link) => (
-                          <label key={link} className="flex items-center gap-2 text-sm text-slate-200">
-                            <input
-                              type="radio"
-                              name="primaryHook"
-                              checked={primaryHookLink === link}
-                              onChange={() => setPrimaryHookLink(link)}
-                            />
-                            <span className="truncate">{link}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedHookLinks.length > 0 && (
-                    <div className="pt-2 border-t border-slate-700 space-y-3">
-                      <div className="text-xs text-slate-500 uppercase tracking-wide">
-                        Selection reasons (required)
-                      </div>
-                      {selectedHookLinks.map((link) => {
-                        const hook = (prep.treasure_hooks || []).find((x) => x.link === link)
-                        const tags = hookReasonTags[link] || []
-                        const options = [
-                          { tag: 'time_bound', label: 'Time-bound' },
-                          { tag: 'actionable', label: 'Actionable' },
-                          { tag: 'strong_source', label: 'Strong source' },
-                          { tag: 'matches_offering', label: 'Matches offering' },
-                          { tag: 'district_specific', label: 'District-specific' },
-                        ]
-                        return (
-                          <div key={link} className="p-3 rounded border border-slate-700 bg-slate-900/20">
-                            <div className="text-xs text-slate-400 break-all">
-                              {link}
-                            </div>
-                            {hook?.quote && (
-                              <div className="mt-1 text-sm text-slate-200">“{hook.quote}”</div>
-                            )}
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {options.map((opt) => (
-                                <label
-                                  key={`${link}-${opt.tag}`}
-                                  className={`flex items-center gap-2 px-2 py-1 rounded border text-xs cursor-pointer ${
-                                    tags.includes(opt.tag)
-                                      ? 'border-emerald-600 bg-emerald-900/10 text-emerald-200'
-                                      : 'border-slate-700 bg-slate-900/10 text-slate-300 hover:bg-slate-900/20'
-                                  }`}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={tags.includes(opt.tag)}
-                                    onChange={() => toggleReasonTag(link, opt.tag)}
-                                  />
-                                  <span>{opt.label}</span>
-                                </label>
-                              ))}
-                            </div>
-                            <textarea
-                              value={hookReasonNotes[link] || ''}
-                              onChange={(e) => setHookReasonNotes((prev) => ({ ...prev, [link]: e.target.value }))}
-                              placeholder="Optional notes"
-                              className="mt-3 w-full min-h-[72px] px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                            />
-                          </div>
-                        )
+            {/* Passed requirements */}
+            {passedRequirements.length > 0 ? (
+              <div className="space-y-4 mb-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-medium text-emerald-300">
+                    Requirements that passed ({passedRequirements.length})
+                  </h3>
+                  <span className="text-xs text-slate-500">Selected: {selectedHookLinks.length}/2</span>
+                </div>
+                {passedRequirements.map((h) => {
+                  const isSelected = selectedHookLinks.includes(h.link)
+                  const isPrimary = primaryHookLink === h.link
+                  return (
+                    <div key={h.link}>
+                      {renderRequirementCard(h, {
+                        isSelected,
+                        isPrimary,
+                        onToggle: () => toggleHook(h.link),
+                        onSetPrimary: () => setPrimaryHookLink(h.link),
                       })}
-                      {!tagsOk && (
-                        <div className="text-xs text-amber-300">
-                          Add at least one reason tag for each selected hook to continue.
+                      {/* Reason tags for selected requirements */}
+                      {isSelected && (
+                        <div className="mt-3 ml-4 p-3 rounded-lg border border-slate-700 bg-slate-900/30">
+                          <div className="text-xs text-slate-400 mb-2">Why did you select this requirement?</div>
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              { tag: 'timely', label: 'Timely/Urgent' },
+                              { tag: 'relevant', label: 'Relevant to offering' },
+                              { tag: 'actionable', label: 'Actionable' },
+                              { tag: 'credible', label: 'Credible source' },
+                            ].map((opt) => (
+                              <label
+                                key={`${h.link}-${opt.tag}`}
+                                className={`flex items-center gap-2 px-2 py-1 rounded border text-xs cursor-pointer ${
+                                  (hookReasonTags[h.link] || []).includes(opt.tag)
+                                    ? 'border-emerald-600 bg-emerald-900/10 text-emerald-200'
+                                    : 'border-slate-700 bg-slate-900/10 text-slate-300 hover:bg-slate-900/20'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={(hookReasonTags[h.link] || []).includes(opt.tag)}
+                                  onChange={() => toggleReasonTag(h.link, opt.tag)}
+                                  className="sr-only"
+                                />
+                                <span>{opt.label}</span>
+                              </label>
+                            ))}
+                          </div>
+                          <textarea
+                            value={hookReasonNotes[h.link] || ''}
+                            onChange={(e) => setHookReasonNotes((prev) => ({ ...prev, [h.link]: e.target.value }))}
+                            placeholder="Optional notes..."
+                            className="mt-2 w-full min-h-[60px] px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                          />
                         </div>
                       )}
                     </div>
-                  )}
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="p-4 rounded-lg border border-amber-800 bg-amber-900/20 text-amber-300 mb-6">
+                <div className="font-medium">No requirements passed the relevance gate</div>
+                <div className="text-sm mt-1">All found requirements were filtered out. See below for details.</div>
+              </div>
+            )}
 
-                  <button
-                    onClick={handleRun}
-                    disabled={!canGenerate || pipelineMutation.isPending}
-                    className={`w-full px-6 py-3 rounded-lg font-medium transition-colors ${
-                      !canGenerate || pipelineMutation.isPending
-                        ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                    }`}
-                  >
-                    {pipelineMutation.isPending ? 'Generating…' : 'Generate email variants'}
-                  </button>
-
-                  {pipelineMutation.isError && (
-                    <div className="p-3 rounded border border-red-800 bg-red-900/30 text-red-300 text-sm">
-                      {pipelineMutation.error instanceof Error ? pipelineMutation.error.message : 'Pipeline error'}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {traceEvents.length > 0 && (
-                <div className="p-3 rounded border border-slate-700 bg-slate-900/30">
-                  <div className="text-xs text-slate-500 uppercase tracking-wide">Trace</div>
-                  <div className="mt-2 space-y-1 max-h-48 overflow-y-auto pr-1">
-                    {traceEvents.map((e, i) => (
-                      <div key={`${e.type}-${i}`} className="text-xs text-slate-300">
-                        <span className="font-mono text-slate-400">{String(e.type)}</span>
-                        {e.stage && (
-                          <span className="ml-2 text-slate-300">
-                            <span className="text-slate-500">stage:</span> {String(e.stage)}
-                          </span>
-                        )}
-                        {typeof e.message === 'string' && (
-                          <div className="mt-1 text-slate-400">{e.message}</div>
-                        )}
+            {/* Filtered requirements (collapsible) */}
+            {allFilteredRequirements.length > 0 && (
+              <div className="border-t border-slate-700 pt-4">
+                <button
+                  onClick={() => setShowFilteredSection(!showFilteredSection)}
+                  className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-300"
+                >
+                  <svg className={`w-4 h-4 transition-transform ${showFilteredSection ? 'rotate-90' : ''}`} fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Filtered out ({allFilteredRequirements.length}) — click to see why
+                </button>
+                {showFilteredSection && (
+                  <div className="mt-4 space-y-4">
+                    {allFilteredRequirements.map((fr, idx) => (
+                      <div key={`filtered-${idx}`}>
+                        {renderRequirementCard(fr.hook, {
+                          isFiltered: true,
+                          filterReason: fr.reason,
+                          filterReasonLabel: fr.reason_label,
+                        })}
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
-            <div className="text-sm font-medium text-slate-200">Output</div>
-            {!result && (
-              <div className="mt-4 text-sm text-slate-400">
-                Run the treasure hunt, pick 1–2 hooks, then generate audience variants.
-              </div>
-            )}
-
-            {result && (
-              <div className="mt-4">
-                <div className="flex flex-wrap gap-2">
-                  {variants.map((v) => (
-                    <button
-                      key={v.audience}
-                      onClick={() => setActiveAudience(v.audience)}
-                      className={`px-3 py-2 rounded-md text-sm border transition-colors ${
-                        (activeVariant?.audience || variants[0]?.audience) === v.audience
-                          ? 'bg-emerald-600/20 border-emerald-500 text-emerald-200'
-                          : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700/50'
-                      }`}
-                    >
-                      {v.audience}
-                    </button>
-                  ))}
-                </div>
-
-                {activeVariant && (
-                  <>
-                    <div className="mt-4 rounded-lg border border-slate-700 bg-slate-900/30 overflow-hidden">
-                      <div className="px-4 py-3 border-b border-slate-700">
-                        <div className="text-xs text-slate-500 uppercase tracking-wide">Subject</div>
-                        <div className="mt-1 text-lg font-medium text-slate-200">
-                          {activeVariant.email_draft.subject_line}
-                        </div>
-                      </div>
-                      <div className="px-4 py-3">
-                        <div className="text-xs text-slate-500 uppercase tracking-wide">Email</div>
-                        <div className="mt-2 text-slate-300 whitespace-pre-wrap leading-relaxed">
-                          {activeVariant.email_draft.email_body}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <button
-                        onClick={handleCopy}
-                        className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                          copied ? 'bg-emerald-600 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
-                        }`}
-                      >
-                        {copied ? 'Copied!' : 'Copy'}
-                      </button>
-                      <button
-                        onClick={handleExportCsv}
-                        className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors"
-                      >
-                        Export CSV
-                      </button>
-                      <button
-                        onClick={() => {
-                          setStep('generate')
-                          setTraceEvents([])
-                          pipelineMutation.mutate()
-                        }}
-                        className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors"
-                      >
-                        Regenerate
-                      </button>
-                      <button
-                        onClick={handleReset}
-                        className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-colors"
-                      >
-                        New run
-                      </button>
-                    </div>
-
-                    {renderHook()}
-                    {renderValidation()}
-                    {renderReview()}
-                  </>
                 )}
               </div>
             )}
-          </div>
-        </div>
 
-        {result && (
-          <>
+            {/* Validation message */}
+            {!tagsOk && selectedHookLinks.length > 0 && (
+              <div className="mt-4 p-3 rounded border border-amber-800 bg-amber-900/20 text-amber-300 text-sm">
+                Add at least one reason tag for each selected requirement to continue.
+              </div>
+            )}
+
+            {/* Navigation */}
+            <div className="mt-6 pt-4 border-t border-slate-700 flex justify-between">
+              <button
+                onClick={() => setWizardStep(1)}
+                className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors"
+              >
+                ← Back
+              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={handlePrep}
+                  disabled={prepMutation.isPending}
+                  className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors"
+                >
+                  Re-search
+                </button>
+                <button
+                  onClick={handleRun}
+                  disabled={!canGenerate}
+                  className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                    !canGenerate
+                      ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  }`}
+                >
+                  Generate Email →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 4: Generate Email (loading state) */}
+        {wizardStep === 4 && (
+          <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
+            <h2 className="text-lg font-medium text-slate-200 mb-6">Generating Email...</h2>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-slate-300">Creating audience variants...</span>
+            </div>
+            {traceEvents.length > 0 && (
+              <div className="p-4 rounded-lg border border-slate-700 bg-slate-900/30 max-h-64 overflow-y-auto">
+                <div className="text-xs text-slate-500 uppercase tracking-wide mb-2">Progress</div>
+                <div className="space-y-1">
+                  {traceEvents.map((e, i) => (
+                    <div key={`${e.type}-${i}`} className="text-xs text-slate-300">
+                      <span className="font-mono text-slate-400">{String(e.type)}</span>
+                      {e.stage && <span className="ml-2 text-slate-300">stage: {String(e.stage)}</span>}
+                      {typeof e.message === 'string' && <div className="mt-1 text-slate-400">{e.message}</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step 5: Review and Improve Email */}
+        {wizardStep === 5 && result && (
+          <div className="space-y-6">
+            <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
+              <h2 className="text-lg font-medium text-slate-200 mb-4">Review and Improve Email</h2>
+              
+              {/* Audience tabs */}
+              <div className="flex flex-wrap gap-2 mb-6">
+                {variants.map((v) => (
+                  <button
+                    key={v.audience}
+                    onClick={() => setActiveAudience(v.audience)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      (activeVariant?.audience || variants[0]?.audience) === v.audience
+                        ? 'bg-emerald-600/20 border-emerald-500 text-emerald-200'
+                        : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700/50'
+                    }`}
+                  >
+                    {v.audience}
+                  </button>
+                ))}
+              </div>
+
+              {activeVariant && (
+                <>
+                  {/* Email display */}
+                  <div className="rounded-lg border border-slate-700 bg-slate-900/30 overflow-hidden">
+                    <div className="px-4 py-3 border-b border-slate-700">
+                      <div className="text-xs text-slate-500 uppercase tracking-wide">Subject</div>
+                      <div className="mt-1 text-lg font-medium text-slate-200">
+                        {activeVariant.email_draft.subject_line}
+                      </div>
+                    </div>
+                    <div className="px-4 py-3">
+                      <div className="text-xs text-slate-500 uppercase tracking-wide">Email Body</div>
+                      <div className="mt-2 text-slate-300 whitespace-pre-wrap leading-relaxed">
+                        {activeVariant.email_draft.email_body}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button
+                      onClick={handleCopy}
+                      className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                        copied ? 'bg-emerald-600 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
+                      }`}
+                    >
+                      {copied ? 'Copied!' : 'Copy'}
+                    </button>
+                    <button
+                      onClick={handleExportCsv}
+                      className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors"
+                    >
+                      Export CSV
+                    </button>
+                    <button
+                      onClick={() => {
+                        setWizardStep(4)
+                        setTraceEvents([])
+                        pipelineMutation.mutate()
+                      }}
+                      className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors"
+                    >
+                      Regenerate
+                    </button>
+                    <button
+                      onClick={handleReset}
+                      className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium transition-colors"
+                    >
+                      New Run
+                    </button>
+                  </div>
+
+                  {/* Selected requirements display */}
+                  {renderHook()}
+                  
+                  {/* Validation */}
+                  {renderValidation()}
+                  
+                  {/* Review form */}
+                  {renderReview()}
+                </>
+              )}
+            </div>
+
+            {/* Evidence panel (collapsible at bottom) */}
             {renderEvidence()}
-          </>
+          </div>
         )}
       </div>
     </div>
   )
 }
+
 
 export default function EmailGenerator() {
   const mode = (() => {

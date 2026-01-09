@@ -30,12 +30,13 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 try:
-    from ...pipeline.schemas import EvidencePack, PipelineRequest, PipelineRunResponse, WebHook
+    from ...pipeline.schemas import EvidencePack, FilteredRequirement, PipelineRequest, PipelineRunResponse, WebHook
 except Exception:
     PipelineRequest = None  # type: ignore
     PipelineRunResponse = None  # type: ignore
     EvidencePack = None  # type: ignore
     WebHook = None  # type: ignore
+    FilteredRequirement = None  # type: ignore
 
 
 # Email style guides by audience
@@ -181,6 +182,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
     class PipelinePrepResponse(BaseModel):
         evidence_pack: EvidencePack
         treasure_hooks: List[WebHook]
+        filtered_requirements: List[FilteredRequirement] = []
         warnings: List[str] = []
 
     class PipelineRunStreamRequest(PipelineRequest):
@@ -326,7 +328,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             # Stage 2.5: HookGate
             yield _ndjson({"type": "stage_start", "ts": _utcnow_iso(), "stage": "hook_gate"})
             t2 = time.perf_counter()
-            gated, report = gate_treasure_hooks(treasure_hooks, evidence_pack=evidence_pack)
+            gated, filtered_reqs, report = gate_treasure_hooks(treasure_hooks, evidence_pack=evidence_pack)
             ms2 = int((time.perf_counter() - t2) * 1000)
             yield _ndjson(
                 {
@@ -338,14 +340,21 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 }
             )
 
+            # Convert dataclass FilteredRequirement to Pydantic model for serialization
+            filtered_requirements_models = [
+                FilteredRequirement(hook=fr.hook, reason=fr.reason, reason_label=fr.reason_label)
+                for fr in filtered_reqs
+            ]
+
             if report.kept == 0:
                 yield _ndjson(
                     {
                         "type": "blocked",
                         "ts": _utcnow_iso(),
                         "reason": "no_hooks_passed_gate",
-                        "message": "No treasure hooks passed the relevance gate; generation blocked to prevent brochure emails.",
+                        "message": "No funding/compliance requirements passed the relevance gate; generation blocked to prevent brochure emails.",
                         "report": _dump_model(report),
+                        "filtered_requirements": [_dump_model(fr) for fr in filtered_requirements_models],
                     }
                 )
                 yield _ndjson({"type": "done", "ts": _utcnow_iso(), "ok": False, "warnings": warnings})
@@ -353,12 +362,13 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
 
             if report.kept < report.total:
                 warnings.append(
-                    f"Hook gate filtered hooks: kept={report.kept}/{report.total} dropped={report.dropped_by_reason}"
+                    f"Relevance gate filtered requirements: kept={report.kept}/{report.total} dropped={report.dropped_by_reason}"
                 )
 
             payload = PipelinePrepResponse(
                 evidence_pack=evidence_pack,
                 treasure_hooks=gated,
+                filtered_requirements=filtered_requirements_models,
                 warnings=warnings,
             )
             yield _ndjson({"type": "prep_ready", "ts": _utcnow_iso(), "payload": _dump_model(payload)})
@@ -497,7 +507,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             # HookGate (always re-run deterministically; cheap + safety)
             yield _ndjson({"type": "stage_start", "ts": _utcnow_iso(), "stage": "hook_gate"})
             t2 = time.perf_counter()
-            gated, report = gate_treasure_hooks(treasure_hooks, evidence_pack=evidence_pack)
+            gated, filtered_reqs, report = gate_treasure_hooks(treasure_hooks, evidence_pack=evidence_pack)
             stage_ms["hook_gate"] = int((time.perf_counter() - t2) * 1000)
             yield _ndjson(
                 {
@@ -508,14 +518,22 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     "report": _dump_model(report),
                 }
             )
+
+            # Convert dataclass FilteredRequirement to Pydantic model for serialization
+            filtered_requirements_models = [
+                FilteredRequirement(hook=fr.hook, reason=fr.reason, reason_label=fr.reason_label)
+                for fr in filtered_reqs
+            ]
+
             if report.kept == 0:
                 yield _ndjson(
                     {
                         "type": "blocked",
                         "ts": _utcnow_iso(),
                         "reason": "no_hooks_passed_gate",
-                        "message": "No treasure hooks passed the relevance gate; generation blocked to prevent brochure emails.",
+                        "message": "No funding/compliance requirements passed the relevance gate; generation blocked to prevent brochure emails.",
                         "report": _dump_model(report),
+                        "filtered_requirements": [_dump_model(fr) for fr in filtered_requirements_models],
                     }
                 )
                 yield _ndjson({"type": "done", "ts": _utcnow_iso(), "ok": False})
@@ -523,7 +541,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             treasure_hooks = gated
             if report.kept < report.total:
                 warnings.append(
-                    f"Hook gate filtered hooks: kept={report.kept}/{report.total} dropped={report.dropped_by_reason}"
+                    f"Relevance gate filtered requirements: kept={report.kept}/{report.total} dropped={report.dropped_by_reason}"
                 )
 
             # Select hooks

@@ -159,6 +159,16 @@ class SelectedHook(BaseModel):
     reasons: List[str] = Field(default_factory=list)
 
 
+class FilteredRequirement(BaseModel):
+    """A requirement that was filtered out by the relevance gate, with the reason."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    hook: WebHook
+    reason: str = Field(..., description="Machine-readable reason code.")
+    reason_label: str = Field(..., description="Human-readable explanation.")
+
+
 # ---------------------------------------------------------------------------
 # Email draft + claims map
 # ---------------------------------------------------------------------------

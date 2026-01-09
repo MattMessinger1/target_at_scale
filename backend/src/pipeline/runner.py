@@ -315,16 +315,16 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
         warnings.append("No treasure hooks returned (check PERPLEXITY_API_KEY and prompt coverage).")
     else:
         # V3 guardrail: deterministic gate to prevent brochure emails.
-        gated, report = gate_treasure_hooks(treasure_hooks, evidence_pack=evidence_pack)
+        gated, _filtered, report = gate_treasure_hooks(treasure_hooks, evidence_pack=evidence_pack)
         trace.stage_ms["hook_gate"] = 0  # placeholder; filled by prep/run split in V3 streaming endpoints
         if report.kept == 0:
             raise RuntimeError(
-                "No treasure hooks passed the relevance gate; generation blocked to prevent brochure emails. "
+                "No funding/compliance requirements passed the relevance gate; generation blocked to prevent brochure emails. "
                 f"(kept=0/{report.total}, dropped={report.dropped_by_reason})"
             )
         if report.kept < report.total:
             warnings.append(
-                f"Hook gate filtered hooks: kept={report.kept}/{report.total} "
+                f"Relevance gate filtered requirements: kept={report.kept}/{report.total} "
                 f"dropped={report.dropped_by_reason}"
             )
         treasure_hooks = gated

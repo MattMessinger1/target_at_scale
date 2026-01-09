@@ -371,6 +371,12 @@ export interface SelectedHook {
   reasons: string[]
 }
 
+export interface FilteredRequirement {
+  hook: WebHook
+  reason: string
+  reason_label: string
+}
+
 export interface EmailDraft {
   subject_line: string
   email_body: string
@@ -848,16 +854,26 @@ export const api = {
     pipeline: (data: PipelineRequest) =>
       fetchApi<PipelineRunResponse>('/generate/', { method: 'POST', body: JSON.stringify(data) }),
     pipelinePrepStream: async (data: PipelineRequest, onEvent: (evt: PipelineStreamEvent) => void) => {
-      let payload: { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; warnings: string[] } | null = null
+      let payload: { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; warnings: string[] } | null = null
       let blockedMsg: string | null = null
+      let blockedFiltered: FilteredRequirement[] = []
       await fetchNdjson('/generate/pipeline/prep/stream', data, (evt) => {
         onEvent(evt)
         if (evt.type === 'blocked') {
           blockedMsg = typeof evt.message === 'string' ? evt.message : 'Blocked'
+          // Capture filtered requirements even when blocked
+          if (evt.filtered_requirements) {
+            blockedFiltered = evt.filtered_requirements as FilteredRequirement[]
+          }
         }
         if (evt.type === 'prep_ready') payload = evt.payload as typeof payload
       })
-      if (blockedMsg) throw new Error(blockedMsg)
+      if (blockedMsg) {
+        // Return partial data with filtered requirements so UI can show what was found
+        const err = new Error(blockedMsg) as Error & { filteredRequirements?: FilteredRequirement[] }
+        err.filteredRequirements = blockedFiltered
+        throw err
+      }
       if (!payload) throw new Error('No prep payload returned')
       return payload
     },
