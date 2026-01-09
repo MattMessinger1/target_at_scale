@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,6 +85,21 @@ def _format_citations(urls: List[str]) -> str:
         if u and str(u).strip():
             lines.append(f"[{i+1}] {u}")
     return "\n".join(lines) if lines else "(none)"
+
+
+def _is_disallowed_hook_source(url: str) -> bool:
+    """Exclude obviously self-referential marketing pages from hook sources."""
+    u = (url or "").strip()
+    if not u:
+        return True
+    try:
+        host = urlparse(u).netloc.lower()
+    except Exception:
+        host = ""
+    # Never use our own sites as “external” compliance/funding hooks.
+    if "wceps" in host:
+        return True
+    return False
 
 
 async def run_treasure_hunter(
@@ -157,7 +173,10 @@ async def run_treasure_hunter(
             parts.append(str(r["content"])[:3500])
         for c in (r.get("citations") or []):
             if isinstance(c, str) and c.strip() and c not in citations:
-                citations.append(c.strip())
+                u = c.strip()
+                if _is_disallowed_hook_source(u):
+                    continue
+                citations.append(u)
 
     research_text = "\n\n---\n\n".join(parts)[:12000]
 

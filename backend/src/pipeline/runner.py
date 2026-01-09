@@ -218,6 +218,15 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
             ex = (c.excerpt or "").strip()
             if not ex:
                 continue
+            # Avoid leaking URLs into Perplexity queries (can bias search/citations toward our own site).
+            try:
+                import re
+
+                ex = re.sub(r"https?://\\S+", "", ex).strip()
+                ex = re.sub(r"\\bwww\\.\\S+", "", ex).strip()
+                ex = re.sub(r"\\s+", " ", ex).strip()
+            except Exception:
+                pass
             if len(ex) > 220:
                 ex = ex[:219] + "…"
             if title:
