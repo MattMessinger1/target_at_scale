@@ -701,12 +701,19 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             state: Optional - clear only for this state code (e.g., "GA")
             product: Optional - clear only for this product display name
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Cache clear requested: state={state}, product={product}")
+        
         from ...research.deep_research import clear_deep_research_cache
         from ...research.product_briefs import normalize_product_key
         
         product_key = normalize_product_key(product) if product else None
+        logger.info(f"Normalized product_key={product_key}")
+        
         deleted = await clear_deep_research_cache(db, state_code=state, product_key=product_key)
         
+        logger.info(f"Cache clear complete: deleted {deleted} entries")
         return {
             "message": f"Cleared {deleted} deep research cache entries",
             "state": state,
