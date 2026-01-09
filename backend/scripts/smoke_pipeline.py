@@ -86,6 +86,11 @@ def main() -> None:
         }
         resp = _post_json(client, "/api/generate/pipeline", payload)
 
+        # Quick visibility into evidence + hooks (helps diagnose “generic AI” outputs)
+        evidence = resp.get("evidence_pack") or {}
+        chunks = (evidence.get("retrieved_chunks") or []) if isinstance(evidence, dict) else []
+        print(f"EvidencePack: retrieved_chunks={len(chunks)}")
+
         variants: List[Dict[str, Any]] = resp.get("variants") or []
         if not variants:
             _die(f"Pipeline returned no variants: {json.dumps(resp)[:800]}")
@@ -93,6 +98,13 @@ def main() -> None:
         failed = []
         for v in variants:
             aud = v.get("audience")
+            sel = v.get("selected_hook") or {}
+            hook = (sel.get("hook") or {}) if isinstance(sel, dict) else {}
+            hook_type = hook.get("hook_type")
+            hook_link = hook.get("link")
+            draft = v.get("email_draft") or {}
+            subject = (draft.get("subject_line") or "").strip() if isinstance(draft, dict) else ""
+
             validation = v.get("validation") or {}
             if not validation.get("passed"):
                 failed.append(
@@ -101,6 +113,7 @@ def main() -> None:
                         "failures": validation.get("failures") or [],
                     }
                 )
+            print(f"- {aud}: passed={bool(validation.get('passed'))} hook_type={hook_type} link={hook_link} subject={subject[:90]}")
 
         if failed:
             _die("Pipeline validation failed:\n" + json.dumps(failed, indent=2)[:4000])

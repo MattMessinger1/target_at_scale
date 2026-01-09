@@ -1240,6 +1240,11 @@ Focus on:
 4. Federal programs with current applications open
 5. Any new funding announced in past 12 months
 
+Exclude:
+- Teacher stipends, scholarships, fellowships, or university-only programs unless districts/LEAs can apply and funds can be budgeted by districts.
+- Private foundations/corporate funding.
+- Generic pages that do not specify eligibility, timing, and an official URL.
+
 For each funding source:
 - Program name
 - Funding amount available
@@ -1265,6 +1270,9 @@ Focus on:
 6. State-specific EL service mandates
 7. Assessment and reporting deadlines (exclude WIDA ACCESS - we know about that)
 
+Treasure constraints (exclude table stakes):
+- Do NOT restate generic obligations like “districts must provide EL services” without a specific deadline, monitoring/audit trigger, or clear consequence.
+- Prefer time-bound or risk-bound triggers that create urgency:\n  - monitoring cycles / compliance reviews / CAP requirements\n  - reporting windows and deadlines (ESSA/state reporting)\n  - audit findings / corrective action language\n  - new or updated guidance in the past 12 months\n  - explicit consequences (funding hold, required plan submission, sanctions, etc.)\n+- Prefer official sources (state DOE/SEA guidance, admin code, audit reports). Open web is allowed, but lower confidence for non-official sources.\n+
 For each requirement:
 - Requirement name
 - Deadline or frequency

@@ -192,13 +192,95 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
 
     # Stage 2: TreasureHunter (shared)
     t1 = time.perf_counter()
-    # A short context string for Perplexity (avoid giant prompts)
-    product_context_text = None
-    try:
-        if isinstance(evidence_pack.supplemental_brief, dict) and evidence_pack.supplemental_brief.get("elevator_pitch"):
-            product_context_text = f"Product: {product}\n{evidence_pack.supplemental_brief.get('elevator_pitch')}"
-    except Exception:
-        product_context_text = None
+    # A bounded context string for Perplexity (avoid giant prompts).
+    # Include (1) a few product "artifact" keywords, (2) micro-offers, and (3) short KB excerpts
+    # so web hooks stay aligned to what the product actually delivers.
+    def _build_perplexity_context() -> str:
+        parts: List[str] = [f"Product: {product}"]
+
+        # Optional: brief elevator pitch (best-effort)
+        try:
+            if isinstance(evidence_pack.supplemental_brief, dict) and evidence_pack.supplemental_brief.get("elevator_pitch"):
+                parts.append(f"Elevator pitch:\n{str(evidence_pack.supplemental_brief.get('elevator_pitch')).strip()[:360]}")
+        except Exception:
+            pass
+
+        # Micro-offers / artifacts we can send
+        offers = [o.offer for o in (evidence_pack.micro_offer_candidates or []) if o and o.offer]
+        offers = offers[:3]
+        if offers:
+            parts.append("Artifacts we can send (micro-offers):\n" + "\n".join(f"- {o}" for o in offers))
+
+        # Top KB excerpts (keep short)
+        ex_lines: List[str] = []
+        for c in (evidence_pack.retrieved_chunks or [])[:4]:
+            title = (c.title or "").strip()
+            ex = (c.excerpt or "").strip()
+            if not ex:
+                continue
+            if len(ex) > 220:
+                ex = ex[:219] + "…"
+            if title:
+                ex_lines.append(f"- {title}: {ex}")
+            else:
+                ex_lines.append(f"- {ex}")
+        if ex_lines:
+            parts.append("KB evidence snippets (ground truth):\n" + "\n".join(ex_lines))
+
+        # Lightweight keyword extraction (keep compact)
+        try:
+            import re
+
+            stop = {
+                "the",
+                "and",
+                "for",
+                "with",
+                "that",
+                "this",
+                "from",
+                "your",
+                "our",
+                "are",
+                "can",
+                "will",
+                "into",
+                "how",
+                "what",
+                "when",
+                "where",
+                "which",
+                "district",
+                "districts",
+                "state",
+                "program",
+                "programs",
+                "students",
+                "teachers",
+            }
+            blob = " ".join(offers + [x.excerpt or "" for x in (evidence_pack.retrieved_chunks or [])[:3]])
+            toks = re.findall(r"[A-Za-z][A-Za-z\\-]{3,}", blob.lower())
+            seen = set()
+            keywords: List[str] = []
+            for t in toks:
+                if t in stop:
+                    continue
+                if t in seen:
+                    continue
+                seen.add(t)
+                keywords.append(t)
+                if len(keywords) >= 12:
+                    break
+            if keywords:
+                parts.append("Keywords:\n" + ", ".join(keywords))
+        except Exception:
+            pass
+
+        ctx = "\n\n".join(parts).strip()
+        # Bound prompt size
+        return ctx[:1800]
+
+    product_context_text = _build_perplexity_context()
 
     treasure_hooks = await run_treasure_hunter(
         db=db,

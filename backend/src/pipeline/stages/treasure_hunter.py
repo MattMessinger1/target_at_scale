@@ -55,6 +55,8 @@ Hard requirements:
 - For hook_type=monitoring: trigger_excerpt must include monitoring/corrective-action/CAP language.
 - For hook_type=district_specific (only if district info is provided): prefer sources on the district domain or clearly district-authored PDFs/board packets. Otherwise set confidence=\"low\" and explain why.
 
+Relevance requirements (critical):
+- Use the provided \"Product evidence context\" to judge whether a hook is relevant to the product.\n  Hooks should connect to the artifacts/deliverables we can provide (e.g., evidence checklist, budget narrative draft, allowable-use checklist).\n  In `why_relevant`, explicitly mention the artifact/deliverable tie-in.\n+- Avoid irrelevant programs (teacher stipends/scholarships/university programs) unless the source explicitly states districts/LEAs can use/apply.\n+- Prefer official/authoritative sources (state DOE/SEA pages, admin code, USDOE, audits) when available.\n  If a source is not official, keep confidence=\"medium\" or \"low\" and explain.\n+
 Keep quotes SHORT (1–2 sentences). Keep trigger_excerpt SHORT (1–2 sentences).
 Return 4–10 hooks when possible; return fewer if not enough evidence.
 
@@ -64,6 +66,9 @@ Context:
 - District mode: {district_mode}
 - District name: {district_name}
 - District URL: {district_url}
+
+Product evidence context (from our KB; use for relevance, do not invent):
+{product_context}
 
 Available citations (choose from these URLs):
 {citations}
@@ -169,6 +174,7 @@ async def run_treasure_hunter(
         district_mode="yes" if (district_name or district_url) else "no",
         district_name=district_name or "",
         district_url=district_url or "",
+        product_context=(product_context_text or f"Product: {product}"),
         citations=_format_citations(citations),
         research_text=research_text,
     )
