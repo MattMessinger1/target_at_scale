@@ -21,7 +21,7 @@ router = APIRouter()
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.utcnow()  # Returns naive UTC datetime for PostgreSQL compatibility
 
 
 def _clean_tags(tags: List[str]) -> List[str]:
@@ -171,7 +171,7 @@ async def export_hook_feedback(
 class RubricItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    score: int = Field(..., ge=1, le=5)
+    score: Optional[int] = Field(None, ge=1, le=5)  # Optional: 1-5, or null if not provided
     comment: Optional[str] = None
 
 

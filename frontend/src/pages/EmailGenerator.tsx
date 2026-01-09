@@ -1554,12 +1554,8 @@ function EmailGeneratorPipeline() {
       { key: 'cta', label: 'CTA' },
     ]
 
-    const allScores = sections.every(({ key }) => {
-      const s = draft.rubric[key]?.score
-      return typeof s === 'number' && s >= 1 && s <= 5
-    })
     const textOk = draft.edited_subject_line.trim().length > 0 && draft.edited_email_body.trim().length > 0
-    const canSave = allScores && textOk && !reviewMutation.isPending
+    const canSave = textOk && !reviewMutation.isPending  // Scores are optional
 
     return (
       <div className="mt-4 p-4 rounded-lg border border-slate-700 bg-slate-800/50">
@@ -1599,11 +1595,12 @@ function EmailGeneratorPipeline() {
         </div>
 
         <div className="mt-4">
-          <div className="text-xs text-slate-500 uppercase tracking-wide">Rubric (1–5 + comments)</div>
+          <div className="text-base font-medium text-slate-200">Rubric (optional)</div>
+          <div className="text-sm text-slate-400 mt-1">1 = Poor, 5 = Excellent. All fields are optional.</div>
           <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-4">
             {sections.map(({ key, label }) => (
               <div key={key} className="p-3 rounded border border-slate-700 bg-slate-900/20">
-                <div className="text-sm text-slate-200">{label}</div>
+                <div className="text-base font-medium text-slate-200">{label}</div>
                 <div className="mt-2 flex items-center gap-3">
                   <label className="text-xs text-slate-500">Score</label>
                   <input
@@ -1650,11 +1647,15 @@ function EmailGeneratorPipeline() {
         <button
           onClick={() => {
             const rubric = draft.rubric
-            const required = (key: ReviewSectionKey) => {
+            const getScore = (key: ReviewSectionKey) => {
               const item = rubric[key]
               const score = item?.score
-              if (typeof score !== 'number' || score < 1 || score > 5) return null
-              return { score, comment: (item.comment || '').trim() || null }
+              // Return score object if valid, otherwise use defaults for optional fields
+              if (typeof score === 'number' && score >= 1 && score <= 5) {
+                return { score, comment: (item.comment || '').trim() || null }
+              }
+              // Return null score with any comment that was provided
+              return { score: null, comment: (item?.comment || '').trim() || null }
             }
 
             const payload: EmailReviewRequest = {
@@ -1671,11 +1672,11 @@ function EmailGeneratorPipeline() {
               edited_subject_line: draft.edited_subject_line,
               edited_email_body: draft.edited_email_body,
               rubric: {
-                subject_line: required('subject_line')!,
-                product_relevance: required('product_relevance')!,
-                tone: required('tone')!,
-                flow: required('flow')!,
-                cta: required('cta')!,
+                subject_line: getScore('subject_line'),
+                product_relevance: getScore('product_relevance'),
+                tone: getScore('tone'),
+                flow: getScore('flow'),
+                cta: getScore('cta'),
               },
             }
 

@@ -478,7 +478,7 @@ export interface HookFeedbackResponse {
 }
 
 export interface RubricItem {
-  score: number
+  score: number | null  // Optional: 1-5, or null if not provided
   comment?: string | null
 }
 
