@@ -328,3 +328,45 @@ class EmailImprovementReview(Base):
 
     # Rubric: store as JSON for flexibility
     rubric: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+
+class DeepResearchCache(Base):
+    """Cache for OpenAI Deep Research results (14-day TTL).
+    
+    Deep Research takes 5-30 minutes and is expensive, so we cache results
+    by (state_code, product_key) for reuse.
+    """
+    
+    __tablename__ = "deep_research_cache"
+    __table_args__ = (
+        UniqueConstraint("state_code", "product_key", "research_type", name="uq_deep_research_cache_key"),
+    )
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    
+    # Cache key components
+    state_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    product_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    research_type: Mapped[str] = mapped_column(String(50), nullable=False, default="funding_compliance")
+    
+    # Optional district for district-specific deep dives
+    district_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    
+    # Research results (JSON blob)
+    results_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    
+    # OpenAI response metadata
+    openai_response_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    model_used: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    
+    # Status: pending, in_progress, completed, failed
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # Timing
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    
+    # Timestamps for cache invalidation (14-day TTL)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
