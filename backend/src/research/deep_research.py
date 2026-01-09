@@ -443,6 +443,7 @@ Remember: Return ONLY a valid JSON object, no other text."""
         response = await client.responses.create(
             model="o3-deep-research",  # OpenAI's actual Deep Research model
             input=full_prompt,
+            tools=[{"type": "web_search_preview"}],  # Required for deep research
             background=True,  # Run async for long-running research
             reasoning={"effort": "high"},  # Thorough analysis
         )

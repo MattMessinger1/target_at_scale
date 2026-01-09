@@ -312,7 +312,7 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
     trace.stage_ms["treasure_hunter"] = int((time.perf_counter() - t1) * 1000)
 
     if not treasure_hooks:
-        warnings.append("No treasure hooks returned (check PERPLEXITY_API_KEY and prompt coverage).")
+        warnings.append("No treasure hooks returned (Deep Research returned no results - verify OPENAI_API_KEY is set).")
     else:
         # V3 guardrail: deterministic gate to prevent brochure emails.
         gated, _filtered, report = gate_treasure_hooks(treasure_hooks, evidence_pack=evidence_pack)

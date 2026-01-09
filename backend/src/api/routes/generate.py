@@ -313,7 +313,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 pass
 
             if not treasure_hooks:
-                warnings.append("No treasure hooks returned (check PERPLEXITY_API_KEY and prompt coverage).")
+                warnings.append("No treasure hooks returned (Deep Research returned no results - verify OPENAI_API_KEY is set).")
                 yield _ndjson(
                     {
                         "type": "blocked",
@@ -498,7 +498,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         "type": "blocked",
                         "ts": _utcnow_iso(),
                         "reason": "no_treasure_hooks",
-                        "message": "No treasure hooks returned (check PERPLEXITY_API_KEY and prompt coverage).",
+                        "message": "No treasure hooks returned (Deep Research returned no results - verify OPENAI_API_KEY is set).",
                     }
                 )
                 yield _ndjson({"type": "done", "ts": _utcnow_iso(), "ok": False})
