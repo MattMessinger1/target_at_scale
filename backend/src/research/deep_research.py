@@ -445,7 +445,7 @@ Remember: Return ONLY a valid JSON object, no other text."""
             input=full_prompt,
             tools=[{"type": "web_search_preview"}],  # Required for deep research
             background=True,  # Run async for long-running research
-            reasoning={"effort": "high"},  # Thorough analysis
+            reasoning={"effort": "medium"},  # o3-deep-research only supports medium
         )
         
         logger.info(f"Deep Research task started: id={response.id}, status={response.status}")
