@@ -424,15 +424,13 @@ async def run_deep_research(
     # Get or create tracking entry
     cache_entry = await get_or_create_research_job(db, state_code, product_key, research_type)
     
-    # Mark as in progress
-    cache_entry.status = "in_progress"
-    cache_entry.started_at = datetime.utcnow()
-    await db.commit()
+    # Set a very long timeout (60 minutes) - Deep Research can take 30+ minutes
+    client = AsyncOpenAI(
+        api_key=settings.openai_api_key,
+        timeout=3600.0,  # 60 minutes - let it run as long as needed
+    )
     
-    if on_progress:
-        on_progress("Starting Deep Research (this may take 5-30 minutes)...", 5.0)
-    
-    # Build the prompt
+    # Build the prompt upfront (needed for retries even if resuming)
     prompt = DEEP_RESEARCH_PROMPT.format(
         state_code=state_code,
         state_full=state_full,
@@ -440,23 +438,8 @@ async def run_deep_research(
         current_date=datetime.utcnow().strftime("%B %Y"),
     )
     
-    try:
-        # Set a very long timeout (60 minutes) - Deep Research can take 30+ minutes
-        # We don't want to artificially cut off thorough research
-        client = AsyncOpenAI(
-            api_key=settings.openai_api_key,
-            timeout=3600.0,  # 60 minutes - let it run as long as needed
-        )
-        
-        if on_progress:
-            on_progress("Starting Deep Research (this may take 5-30 minutes)...", 5.0)
-        
-        # Use OpenAI's actual Deep Research model with background mode
-        # This performs thorough, multi-step web research
-        logger.info(f"Starting o3-deep-research for {state_code}/{product_key}")
-        
-        # Wrap prompt with JSON output instruction
-        full_prompt = f"""You are an expert K-12 education policy researcher.
+    # Wrap prompt with JSON output instruction
+    full_prompt = f"""You are an expert K-12 education policy researcher.
 Conduct thorough, multi-step research using web search to find current, verified information.
 
 IMPORTANT: Return your findings as a valid JSON object matching the schema in the instructions below.
@@ -464,6 +447,49 @@ IMPORTANT: Return your findings as a valid JSON object matching the schema in th
 {prompt}
 
 Remember: Return ONLY a valid JSON object, no other text."""
+    
+    # Check if we can resume an existing in-progress task
+    response = None
+    resumed = False
+    
+    if cache_entry.status == "in_progress" and cache_entry.openai_response_id:
+        # Check if task is stale (> 60 minutes old)
+        elapsed = datetime.utcnow() - (cache_entry.started_at or cache_entry.created_at)
+        if elapsed > timedelta(hours=1):
+            # Task is stale, reset and start fresh
+            logger.info(f"Stale in-progress task for {state_code}/{product_key} (elapsed: {elapsed}), starting fresh")
+            cache_entry.status = "pending"
+            cache_entry.openai_response_id = None
+            await db.commit()
+        else:
+            # Try to resume the existing task
+            try:
+                logger.info(f"Resuming existing Deep Research task: {cache_entry.openai_response_id}")
+                if on_progress:
+                    on_progress(f"Reconnecting to existing research task (started {int(elapsed.total_seconds() // 60)} min ago)...", 10.0)
+                response = await client.responses.retrieve(cache_entry.openai_response_id)
+                resumed = True
+                logger.info(f"Resumed task status: {response.status}")
+            except Exception as e:
+                # Task not found or error - start fresh
+                logger.warning(f"Could not resume task {cache_entry.openai_response_id}: {e}, starting fresh")
+                cache_entry.status = "pending"
+                cache_entry.openai_response_id = None
+                await db.commit()
+    
+    # If not resuming, start a new task
+    if response is None:
+        # Mark as in progress
+        cache_entry.status = "in_progress"
+        cache_entry.started_at = datetime.utcnow()
+        await db.commit()
+        
+        if on_progress:
+            on_progress("Starting Deep Research (this may take 5-30 minutes)...", 5.0)
+        
+        # Use OpenAI's actual Deep Research model with background mode
+        # This performs thorough, multi-step web research
+        logger.info(f"Starting o3-deep-research for {state_code}/{product_key}")
         
         # Start background Deep Research task
         # This uses OpenAI's o3-deep-research model which can take 5-30 minutes
@@ -476,6 +502,13 @@ Remember: Return ONLY a valid JSON object, no other text."""
         )
         
         logger.info(f"Deep Research task started: id={response.id}, status={response.status}")
+        
+        # Save response ID immediately so we can resume if connection is lost
+        cache_entry.openai_response_id = response.id
+        cache_entry.model_used = "o3-deep-research"
+        await db.commit()
+    
+    try:
         
         # Poll for completion (can take 5-30 minutes)
         poll_interval = 30  # seconds
