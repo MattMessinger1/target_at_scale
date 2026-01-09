@@ -39,9 +39,15 @@ _IMPetus_EXTRA_RE = re.compile(
     re.I,
 )
 
-# Table-stakes: exclude Title I/III unless clearly school-improvement / set-aside context.
+# Table-stakes: exclude Title I/III unless clearly school-improvement / set-aside context,
+# OR when there's a compliance/monitoring need (corrective action, audit, etc.).
 _TITLE_I_III_RE = re.compile(r"\btitle\s+(i|1|iii|3)\b", re.I)
-_ALLOW_TITLE_I_III_RE = re.compile(r"\b(set[- ]aside|school improvement|csi|tsi|atsi)\b", re.I)
+_ALLOW_TITLE_I_III_RE = re.compile(
+    r"\b(set[- ]aside|school improvement|csi|tsi|atsi|"
+    r"corrective[- ]?action|CAP|improvement[- ]?plan|monitoring|compliance|"
+    r"audit|review|findings|citation|non[- ]?compliance)\b",
+    re.I,
+)
 
 # Deliverable / artifact language (must appear somewhere in why_relevant, ideally).
 # Expanded to include compliance/monitoring/coaching terms that our products address.
