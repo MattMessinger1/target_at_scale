@@ -255,6 +255,38 @@ async def get_cached_research(
     return result.scalar_one_or_none()
 
 
+async def clear_deep_research_cache(
+    db: AsyncSession,
+    state_code: Optional[str] = None,
+    product_key: Optional[str] = None,
+) -> int:
+    """Clear deep research cache entries.
+    
+    Args:
+        db: Database session
+        state_code: Optional - clear only for this state
+        product_key: Optional - clear only for this product
+    
+    Returns:
+        Number of entries deleted
+    """
+    from sqlalchemy import delete
+    
+    query = delete(DeepResearchCache)
+    
+    if state_code:
+        query = query.where(DeepResearchCache.state_code == state_code)
+    if product_key:
+        query = query.where(DeepResearchCache.product_key == product_key)
+    
+    result = await db.execute(query)
+    await db.commit()
+    
+    deleted_count = result.rowcount
+    logger.info(f"Cleared {deleted_count} deep research cache entries (state={state_code}, product={product_key})")
+    return deleted_count
+
+
 async def get_or_create_research_job(
     db: AsyncSession,
     state_code: str,

@@ -686,6 +686,33 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
 
         return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
+    @router.delete("/pipeline/cache")
+    async def clear_deep_research_cache_endpoint(
+        state: Optional[str] = None,
+        product: Optional[str] = None,
+        db: AsyncSession = Depends(get_db),
+    ):
+        """Clear deep research cache to force re-research.
+        
+        Use this after updating the Deep Research implementation to clear
+        old cached results from the previous (wrong) implementation.
+        
+        Args:
+            state: Optional - clear only for this state code (e.g., "GA")
+            product: Optional - clear only for this product display name
+        """
+        from ...research.deep_research import clear_deep_research_cache
+        from ...research.product_briefs import normalize_product_key
+        
+        product_key = normalize_product_key(product) if product else None
+        deleted = await clear_deep_research_cache(db, state_code=state, product_key=product_key)
+        
+        return {
+            "message": f"Cleared {deleted} deep research cache entries",
+            "state": state,
+            "product": product,
+        }
+
 
 async def get_email_exemplars(
     *,
