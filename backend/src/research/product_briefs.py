@@ -29,6 +29,19 @@ settings = get_settings()
 openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
 
 
+def _extract_response_text(resp) -> str:
+    """Extract text from Responses API response format."""
+    if hasattr(resp, 'output') and resp.output:
+        for item in resp.output:
+            if hasattr(item, 'content') and item.content:
+                for content_item in item.content:
+                    if hasattr(content_item, 'text'):
+                        return content_item.text.strip()
+    if hasattr(resp, 'output_text'):
+        return resp.output_text.strip()
+    return ""
+
+
 # Display name -> canonical key used by KB product_name when possible
 DISPLAY_TO_KEY: Dict[str, str] = {
     "CARE Coaching": "care_coaching",
@@ -419,17 +432,14 @@ KB MATERIAL:
 
 JSON:"""
 
-    response = await openai_client.chat.completions.create(
-        model=settings.openai_model,
-        response_format={"type": "json_object"},
-        messages=[
-            {"role": "system", "content": "Return only valid JSON. No markdown."},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0,
-        max_completion_tokens=3500,  # GPT-5.2 uses max_completion_tokens
+    # Use GPT-5.2 Pro with Responses API for extended reasoning
+    full_prompt = f"Return only valid JSON. No markdown.\n\n{prompt}"
+    response = await openai_client.responses.create(
+        model=settings.openai_pro_model,  # gpt-5.2-pro
+        input=full_prompt,
+        reasoning={"effort": "xhigh"},  # Maximum reasoning depth for better brief extraction
     )
-    text = response.choices[0].message.content.strip()
+    text = _extract_response_text(response)
     brief = _parse_json_response(text)
 
     # Fallback: ensure at least one case study entry if we provided any case_study KB items.
