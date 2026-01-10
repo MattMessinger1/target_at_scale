@@ -222,11 +222,15 @@ Mark these as HIGH PRIORITY - they affect ALL districts statewide and create imm
 
 ### Grant Deadline Verification (CRITICAL)
 - Today's date is {current_date}
-- For grant competitions: EXCLUDE if application deadline has passed
-- Example: If deadline was "Nov 24, 2025" and today is January 2026 → EXCLUDE
-- Only include grants with FUTURE application deadlines
-- If the next funding cycle dates are not yet announced, note "FY2026 dates TBD" and check if applications are open
-- For recurring grants: only include if THIS YEAR'S cycle is open or upcoming
+- For grant competitions with PAST deadlines:
+  1. ALWAYS search for the NEXT funding round (e.g., "Cohort 3", "FY2027 cycle", "next RFP", "upcoming application window")
+  2. If next round found with future dates: include with that future deadline
+  3. If next round found but dates TBD: include with note "Next round dates TBD - check for updates"
+  4. If NO next round found: DO NOT INCLUDE - the grant may have ended
+- NEVER include a grant with only a past deadline - always verify future availability
+- Example: If "Cohort 2 ended May 2025", search for "Cohort 3" or "next cohort" before including
+- Example: If "FY2025 RFP closed", search for "FY2026 RFP" or "next funding cycle"
+- For recurring federal grants (like CLSD, 21st CCLC): search "[program name] next application" or "[program name] upcoming RFP"
 
 ### General Time Requirements
 - **CRITICAL: EXCLUDE any funding with deadlines BEFORE {current_date}**
