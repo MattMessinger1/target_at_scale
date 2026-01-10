@@ -615,13 +615,32 @@ Remember: Return ONLY a valid JSON object, no other text."""
             "background_mode": True,
         }
         
-        # Update cache entry
-        cache_entry.status = "completed"
-        cache_entry.completed_at = datetime.utcnow()
-        cache_entry.results_json = results
-        cache_entry.openai_response_id = response_id
-        cache_entry.model_used = model_used
-        await db.commit()
+        # Update cache entry (handle case where it was deleted during research)
+        try:
+            # Refresh to check if entry still exists
+            await db.refresh(cache_entry)
+            cache_entry.status = "completed"
+            cache_entry.completed_at = datetime.utcnow()
+            cache_entry.results_json = results
+            cache_entry.openai_response_id = response_id
+            cache_entry.model_used = model_used
+            await db.commit()
+        except Exception as cache_err:
+            # Cache entry was deleted during research - create a new one
+            logger.warning(f"Cache entry was deleted during research, creating new one: {cache_err}")
+            await db.rollback()
+            new_cache = DeepResearchCache(
+                state_code=state_code,
+                product_key=product_key,
+                research_type=research_type,
+                status="completed",
+                completed_at=datetime.utcnow(),
+                results_json=results,
+                openai_response_id=response_id,
+                model_used=model_used,
+            )
+            db.add(new_cache)
+            await db.commit()
         
         if on_progress:
             on_progress("Research complete!", 100.0)
@@ -643,10 +662,16 @@ Remember: Return ONLY a valid JSON object, no other text."""
     except Exception as e:
         logger.error(f"Deep research failed for {state_code}/{product_key}: {e}")
         
-        # Update cache entry with error
-        cache_entry.status = "failed"
-        cache_entry.error_message = str(e)
-        await db.commit()
+        # Update cache entry with error (handle case where it was deleted)
+        try:
+            await db.rollback()  # Clear any pending transaction
+            await db.refresh(cache_entry)
+            cache_entry.status = "failed"
+            cache_entry.error_message = str(e)
+            await db.commit()
+        except Exception:
+            # Cache entry was deleted - just log and continue
+            logger.warning("Could not update cache entry with error status (may have been deleted)")
         
         if on_progress:
             on_progress(f"Research failed: {str(e)}", 0.0)
