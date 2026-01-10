@@ -164,6 +164,17 @@ For each compliance item:
 - Is this currently active or upcoming? (REQUIRED - skip if historical)
 - Direct URL to official source
 
+### Underperforming Schools (HIGH PRIORITY for CARE Coaching!)
+
+CSI/ATSI/TSI school designations are HIGHLY relevant to CARE Coaching:
+- Schools underperforming due to EL subgroup gaps are ESPECIALLY relevant
+- These do NOT need a specific application deadline - the compliance situation IS the trigger
+- CARE Coaching helps implement "evidence-based strategies" required in improvement plans
+- For each: name SPECIFIC districts and how many schools are affected
+- If EL performance is the reason for designation, mark as HIGH PRIORITY
+
+Example relevance: "CSI schools need evidence-based interventions for EL subgroups - CARE Coaching provides exactly this through job-embedded professional learning"
+
 ### 5. Compliance-Linked Funding (requires compliance trigger)
 
 Some funding is ONLY available to districts in compliance situations:
@@ -198,6 +209,26 @@ Mark these as HIGH PRIORITY - they affect ALL districts statewide and create imm
 ## Verification Requirements
 
 - Today's date is {current_date}
+
+### Funding Verification (CRITICAL)
+- If you find an article about PROPOSED funding or legislation, you MUST:
+  1. Search for follow-up to determine if it was ENACTED
+  2. If enacted: cite the official source (state budget, DOE announcement, signed bill)
+  3. If NOT enacted or status unknown: DO NOT INCLUDE IT
+  4. PREFER citing official government sources over news articles
+- Do NOT include funding that is merely "proposed" or "being discussed" without verification
+- For state budget allocations: verify against the actual signed budget
+- News articles about "lawmakers pushing for" funding are NOT sufficient - find the actual outcome
+
+### Grant Deadline Verification (CRITICAL)
+- Today's date is {current_date}
+- For grant competitions: EXCLUDE if application deadline has passed
+- Example: If deadline was "Nov 24, 2025" and today is January 2026 → EXCLUDE
+- Only include grants with FUTURE application deadlines
+- If the next funding cycle dates are not yet announced, note "FY2026 dates TBD" and check if applications are open
+- For recurring grants: only include if THIS YEAR'S cycle is open or upcoming
+
+### General Time Requirements
 - **CRITICAL: EXCLUDE any funding with deadlines BEFORE {current_date}**
 - **CRITICAL: EXCLUDE any compliance requirements that are no longer in effect**
 - Only include funding that is:
@@ -209,9 +240,11 @@ Mark these as HIGH PRIORITY - they affect ALL districts statewide and create imm
 - If a deadline has passed (even by one day), DO NOT include it
 - If a compliance window has closed (e.g., "3-year window concluded by 2023" when we're in {current_date}), DO NOT include it
 - For ongoing mandates, verify they are still actively enforced - not just historical
-- For recurring annual funding, only include if the CURRENT cycle is open or upcoming
+
+### Source Quality
 - Verify each source is authoritative (state DOE, federal agencies, official district documents)
-- If you cannot verify currency, note "unverified" status
+- PREFER official .gov sources over news articles
+- If you cannot verify currency, DO NOT INCLUDE
 
 ---
 

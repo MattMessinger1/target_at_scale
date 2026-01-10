@@ -53,6 +53,10 @@ _IMPetus_EXTRA_RE = re.compile(
     r"required|requirement|must|mandated|mandate|"
     # Compliance urgency
     r"compliance|comply|corrective|improvement|intervention|"
+    # School improvement / underperforming (HIGH PRIORITY)
+    r"CSI|ATSI|TSI|comprehensive support|targeted support|"
+    r"underperform|low[- ]perform|failing|at[- ]risk|"
+    r"school[- ]?improvement|improvement[- ]?plan|"
     # District-specific urgency
     r"identified|designated|status|affected|eligible|"
     # Investigation/legal
@@ -155,23 +159,26 @@ def _has_budget_code(text: str) -> bool:
 
 def _has_impetus_now(h: WebHook) -> bool:
     trig = h.trigger_excerpt or ""
+    elig = h.eligibility_excerpt or ""
+    full_text = f"{trig} {elig}"  # Check both trigger and eligibility
     ht = h.hook_type
 
     if ht == "deadline":
         return bool(_DATE_OR_FY_RE.search(trig))
     if ht == "monitoring":
-        return bool(_MONITORING_RE.search(trig))
+        # Monitoring includes CSI/ATSI/TSI schools - these are ongoing compliance situations
+        # Also check eligibility text since affected districts are often listed there
+        return bool(_MONITORING_RE.search(full_text) or _IMPetus_EXTRA_RE.search(full_text))
     if ht == "budget_coding":
         return _has_budget_code(trig)
     if ht in ("funding_guidance", "allowable_use"):
         # For funding-related hooks, require explicit LEA/district eligibility excerpt.
-        elig = h.eligibility_excerpt or ""
         return bool(_ELIGIBILITY_RE.search(elig))
     if ht == "district_specific":
         # District-specific hooks must still have an impetus-now signal.
-        return bool(_DATE_OR_FY_RE.search(trig) or _MONITORING_RE.search(trig) or _has_budget_code(trig) or _IMPetus_EXTRA_RE.search(trig))
+        return bool(_DATE_OR_FY_RE.search(trig) or _MONITORING_RE.search(trig) or _has_budget_code(trig) or _IMPetus_EXTRA_RE.search(full_text))
     # Default: be conservative—require some impetus token.
-    return bool(_DATE_OR_FY_RE.search(trig) or _MONITORING_RE.search(trig) or _has_budget_code(trig) or _IMPetus_EXTRA_RE.search(trig))
+    return bool(_DATE_OR_FY_RE.search(trig) or _MONITORING_RE.search(trig) or _has_budget_code(trig) or _IMPetus_EXTRA_RE.search(full_text))
 
 
 def _is_table_stakes(h: WebHook) -> bool:
