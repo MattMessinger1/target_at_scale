@@ -577,6 +577,62 @@ def _format_product_offerings(evidence_pack: EvidencePack, *, max_items: int = 8
     return "\n".join(f"- {o}" for o in cleaned) if cleaned else "(none)"
 
 
+def _format_full_product_context(evidence_pack: EvidencePack) -> str:
+    """Format complete product context from YAML for better synthesis.
+    
+    Includes elevator_pitch, problems_solved, offerings, implementation, and safe_claims
+    to give GPT-5.2 full context for making explicit product-to-grant connections.
+    """
+    brief = evidence_pack.supplemental_brief if isinstance(evidence_pack.supplemental_brief, dict) else None
+    if not isinstance(brief, dict):
+        return "(no product context available)"
+    
+    sections = []
+    
+    # Elevator pitch - what the product IS
+    if brief.get("elevator_pitch"):
+        sections.append(f"WHAT IT IS: {brief['elevator_pitch']}")
+    
+    # Problems solved - critical for grant/compliance matching
+    problems = brief.get("problems_solved")
+    if isinstance(problems, list) and problems:
+        problems_text = "\n".join(f"  - {p}" for p in problems if isinstance(p, str))
+        if problems_text:
+            sections.append(f"PROBLEMS WE SOLVE:\n{problems_text}")
+    
+    # Offerings - specific deliverables
+    offerings = brief.get("offerings")
+    if isinstance(offerings, list) and offerings:
+        offerings_text = "\n".join(f"  - {o}" for o in offerings if isinstance(o, str))
+        if offerings_text:
+            sections.append(f"OUR OFFERINGS (use at least one phrase verbatim):\n{offerings_text}")
+    
+    # Who it's for
+    who = brief.get("who_its_for")
+    if isinstance(who, list) and who:
+        who_text = "\n".join(f"  - {w}" for w in who if isinstance(w, str))
+        if who_text:
+            sections.append(f"WHO IT'S FOR:\n{who_text}")
+    
+    # Implementation - how it works
+    impl = brief.get("implementation", {})
+    if isinstance(impl, dict):
+        wceps_does = impl.get("what_wceps_does")
+        if isinstance(wceps_does, list) and wceps_does:
+            wceps_text = "\n".join(f"  - {w}" for w in wceps_does if isinstance(w, str))
+            if wceps_text:
+                sections.append(f"WHAT WCEPS DOES:\n{wceps_text}")
+    
+    # Safe claims - what we can confidently say
+    claims = brief.get("safe_claims")
+    if isinstance(claims, list) and claims:
+        claims_text = "\n".join(f"  - {c}" for c in claims if isinstance(c, str))
+        if claims_text:
+            sections.append(f"SAFE CLAIMS:\n{claims_text}")
+    
+    return "\n\n".join(sections) if sections else "(no product context)"
+
+
 EMAIL_JSON_SPEC = """Return STRICT JSON with this shape:
 {
   "subject_line": string,
@@ -652,7 +708,7 @@ Here are examples of the quality, tone, and style we want:
 
 Now write an email for THIS specific situation. Follow the constraints below.
 
-Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain text only.\n- Do NOT include any URLs in the email body EXCEPT the Calendly link: {CALENDLY_URL_RAW}.\n- 2-3 bullets, each ≤ 10 words. Use 2 if that's all that adds value - don't pad with fluff.\n- Bullets must be specific DELIVERABLES or OUTCOMES (e.g., implementation plan, coaching schedules, progress monitoring).\n- NEVER use the product name itself as a bullet (e.g., "CARE Coaching Professional Learning Program" is WRONG - it's redundant).\n- Each bullet should reuse 1–3 distinctive words from the cited KB excerpt (to keep it grounded).\n- Include at least ONE Product offering phrase verbatim (see list below). Use it in body text, NOT as a bullet.\n- CTA must be a simple 15-minute meeting ask with this Calendly link: {CALENDLY_URL_RAW}\n- Do NOT offer to \"send\" documents, templates, checklists, or resources.\n- Keep it conversational: e.g., \"Would you have 15 minutes to discuss? Here's my calendar: {CALENDLY_URL_RAW}\"\n- If a secondary hook is provided, you MUST use it later in the email.\n\nSubject line constraints (critical):\n- Ideally mention the product name (e.g., \"CARE Coaching\") - makes it clear what we offer.\n- Ideally mention the specific funding/compliance opportunity (e.g., \"CLSD Grant\", \"CSI Schools\") - shows relevance.\n- Aim for a DIRECT connection between product and opportunity when possible.\n- Avoid generic subjects (\"Quick question\", \"Following up\", \"Checking in\", \"Touching base\").\n- Do NOT use specific past years (2024, 2025) in subject - use \"Current\" or \"FY26\" if referencing time.\n- Best: \"CARE Coaching Fits with CLSD Grant\" (product + specific opportunity)\n- Good: \"CARE Coaching for Alaska CSI Schools\" (product + compliance situation)\n- Good: \"Support for Alaska Literacy Initiative\" (specific opportunity, clear value)\n- Avoid: \"Alaska Districts: Eligible for 2024 Funding Guidance\" (vague, stale year)\n\nOpener constraints (critical):\n- The FIRST paragraph must include a specific trigger token that appears in the trigger excerpt from the selected hook source.\n  Suggested trigger token: {trigger_token or '(choose one from trigger excerpt)'}\n- Paraphrase the hook in natural language. Do NOT quote the source verbatim. Do NOT paste URLs.\n- Address the email to a PERSON, not a title. Use \"Dear [Name],\" as a placeholder.\n- Do NOT address by title alone (e.g., \"Dear Title III Coordinator\" is WRONG).\n- The recipient's position/role should inform the CONTENT, not the greeting.\n- Keep the greeting in the SAME paragraph as the opener (no standalone greeting line).\n\nProduct-to-Grant Connection (CRITICAL - spell it out!):\n- EXPLICITLY connect product capabilities to grant/compliance requirements. Do NOT assume the reader will make the connection.\n- If grant is for literacy/reading → mention how the product supports literacy instruction (e.g., \"CARE Coaching helps teachers develop effective literacy instruction for multilingual learners\")\n- If grant requires PD hours → mention \"coaching cycles count toward professional development requirements\"\n- If compliance is for EL monitoring → mention specific monitoring support the product provides\n- If grant mentions specific outcomes (e.g., \"reading outcomes\", \"academic achievement\") → connect product to those outcomes\n- Bad: \"Our CARE Coaching program offers job-embedded coaching cycles\" (too generic, no connection to grant)\n- Good: \"CARE Coaching helps teachers develop literacy instruction skills - directly aligned with CLSD's focus on reading outcomes for EL students\" (explicit connection)\n- Good: \"Our coaching cycles support the literacy improvement goals required by this grant\" (explicit connection)\n\nEnding constraints (critical):\n- The LAST paragraph must be the CTA.\n- Do NOT add a separate sign-off paragraph after the CTA.\n- If you include a sign-off, include it within the CTA paragraph (same paragraph).\n\nHook context (do not paste any URLs):\n- hook_type: {hook.hook_type}\n- trigger_excerpt: {hook.trigger_excerpt}\n- eligibility_excerpt: {hook.eligibility_excerpt or 'null'}\n{secondary_block}\n\nAudience: {audience}\nProduct: {product}\nState: {state_full} ({state_code})\nMode: {mode_text}\n{district_block}\n\nEvidence (KB chunks you may cite by id):\n{_format_evidence_chunks(evidence_pack)}\n\nProduct offerings/modules (copy at least ONE phrase verbatim):\n{_format_product_offerings(evidence_pack)}\n\nClaims-map rules:\n- claims_map must cover:\n  - the opener hook claim (paraphrase)\n  - each deliverable bullet (2-3 entries, one per bullet)\n  - any funding/compliance/outcome claims you make\n  - if a secondary hook is provided, a SECOND hook claim\n- For hook claim(s): claim_text should match the relevant paragraph (paraphrase is OK). The server will attach the correct hook URL.\n  IMPORTANT: Do NOT output placeholder strings like \"hook.link\" in urls.\n- For each bullet claim: claim_text should match the bullet text (no bullet marker), and include kb_chunk_ids from EvidencePack (choose the most relevant chunk id). Use urls=[].\n- Connector/polite text can be omitted from claims_map.\n\nAvoid:\n- Generic bullets like \"Personalized coaching\" or \"Improve outcomes\" (not deliverables).\n- Placeholder signatures like \"[Your Name]\".\n\n{repair_block}\n{prior_block}\n\n{EMAIL_JSON_SPEC}\n\nReturn JSON now."""
+Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain text only.\n- Do NOT include any URLs in the email body EXCEPT the Calendly link: {CALENDLY_URL_RAW}.\n- 2-3 bullets, each ≤ 10 words. Use 2 if that's all that adds value - don't pad with fluff.\n- Bullets must be specific DELIVERABLES or OUTCOMES (e.g., implementation plan, coaching schedules, progress monitoring).\n- NEVER use the product name itself as a bullet (e.g., "CARE Coaching Professional Learning Program" is WRONG - it's redundant).\n- Each bullet should reuse 1–3 distinctive words from the cited KB excerpt (to keep it grounded).\n- Include at least ONE Product offering phrase verbatim (see list below). Use it in body text, NOT as a bullet.\n- CTA must be a simple 15-minute meeting ask with this Calendly link: {CALENDLY_URL_RAW}\n- Do NOT offer to \"send\" documents, templates, checklists, or resources.\n- Keep it conversational: e.g., \"Would you have 15 minutes to discuss? Here's my calendar: {CALENDLY_URL_RAW}\"\n- If a secondary hook is provided, you MUST use it later in the email.\n\nSubject line constraints (critical):\n- Ideally mention the product name (e.g., \"CARE Coaching\") - makes it clear what we offer.\n- Ideally mention the specific funding/compliance opportunity (e.g., \"CLSD Grant\", \"CSI Schools\") - shows relevance.\n- Aim for a DIRECT connection between product and opportunity when possible.\n- Avoid generic subjects (\"Quick question\", \"Following up\", \"Checking in\", \"Touching base\").\n- Do NOT use specific past years (2024, 2025) in subject - use \"Current\" or \"FY26\" if referencing time.\n- Best: \"CARE Coaching Fits with CLSD Grant\" (product + specific opportunity)\n- Good: \"CARE Coaching for Alaska CSI Schools\" (product + compliance situation)\n- Good: \"Support for Alaska Literacy Initiative\" (specific opportunity, clear value)\n- Avoid: \"Alaska Districts: Eligible for 2024 Funding Guidance\" (vague, stale year)\n\nOpener constraints (critical):\n- The FIRST paragraph must include a specific trigger token that appears in the trigger excerpt from the selected hook source.\n  Suggested trigger token: {trigger_token or '(choose one from trigger excerpt)'}\n- Paraphrase the hook in natural language. Do NOT quote the source verbatim. Do NOT paste URLs.\n- Address the email to a PERSON, not a title. Use \"Dear [Name],\" as a placeholder.\n- Do NOT address by title alone (e.g., \"Dear Title III Coordinator\" is WRONG).\n- The recipient's position/role should inform the CONTENT, not the greeting.\n- Keep the greeting in the SAME paragraph as the opener (no standalone greeting line).\n\nProduct-to-Grant Connection (CRITICAL - spell it out!):\n- EXPLICITLY connect product capabilities to grant/compliance requirements. Do NOT assume the reader will make the connection.\n- If grant is for literacy/reading → mention how the product supports literacy instruction (e.g., \"CARE Coaching helps teachers develop effective literacy instruction for multilingual learners\")\n- If grant requires PD hours → mention \"coaching cycles count toward professional development requirements\"\n- If compliance is for EL monitoring → mention specific monitoring support the product provides\n- If grant mentions specific outcomes (e.g., \"reading outcomes\", \"academic achievement\") → connect product to those outcomes\n- Bad: \"Our CARE Coaching program offers job-embedded coaching cycles\" (too generic, no connection to grant)\n- Good: \"CARE Coaching helps teachers develop literacy instruction skills - directly aligned with CLSD's focus on reading outcomes for EL students\" (explicit connection)\n- Good: \"Our coaching cycles support the literacy improvement goals required by this grant\" (explicit connection)\n\nEnding constraints (critical):\n- The LAST paragraph must be the CTA.\n- Do NOT add a separate sign-off paragraph after the CTA.\n- If you include a sign-off, include it within the CTA paragraph (same paragraph).\n\nHook context (do not paste any URLs):\n- hook_type: {hook.hook_type}\n- trigger_excerpt: {hook.trigger_excerpt}\n- eligibility_excerpt: {hook.eligibility_excerpt or 'null'}\n{secondary_block}\n\nAudience: {audience}\nProduct: {product}\nState: {state_full} ({state_code})\nMode: {mode_text}\n{district_block}\n\nEvidence (KB chunks you may cite by id):\n{_format_evidence_chunks(evidence_pack)}\n\nProduct context (use this to make EXPLICIT connections to the grant/compliance requirement):\n{_format_full_product_context(evidence_pack)}\n\nClaims-map rules:\n- claims_map must cover:\n  - the opener hook claim (paraphrase)\n  - each deliverable bullet (2-3 entries, one per bullet)\n  - any funding/compliance/outcome claims you make\n  - if a secondary hook is provided, a SECOND hook claim\n- For hook claim(s): claim_text should match the relevant paragraph (paraphrase is OK). The server will attach the correct hook URL.\n  IMPORTANT: Do NOT output placeholder strings like \"hook.link\" in urls.\n- For each bullet claim: claim_text should match the bullet text (no bullet marker), and include kb_chunk_ids from EvidencePack (choose the most relevant chunk id). Use urls=[].\n- Connector/polite text can be omitted from claims_map.\n\nAvoid:\n- Generic bullets like \"Personalized coaching\" or \"Improve outcomes\" (not deliverables).\n- Placeholder signatures like \"[Your Name]\".\n\n{repair_block}\n{prior_block}\n\n{EMAIL_JSON_SPEC}\n\nReturn JSON now."""
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     resp = await client.chat.completions.create(

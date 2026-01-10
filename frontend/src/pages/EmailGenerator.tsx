@@ -2624,6 +2624,30 @@ function EmailGeneratorPipeline() {
                     </button>
                   </div>
 
+                  {/* Targeting Context - for sender's reference */}
+                  {prep && selectedHookLinks.length > 0 && (
+                    <div className="mt-4 p-4 rounded-lg border border-slate-700 bg-slate-800/30">
+                      <div className="text-sm font-medium text-slate-300 mb-2">
+                        Targeting Context <span className="text-slate-500 font-normal">(for your reference - not in email)</span>
+                      </div>
+                      <div className="text-sm text-slate-400 space-y-2">
+                        {prep.treasure_hooks
+                          .filter(h => selectedHookLinks.includes(h.link))
+                          .map((hook, idx) => (
+                            <div key={idx}>
+                              {hook.eligibility_excerpt && (
+                                <div>
+                                  <span className="text-slate-500">Eligibility info:</span>{' '}
+                                  {hook.eligibility_excerpt}
+                                </div>
+                              )}
+                            </div>
+                          ))
+                        }
+                      </div>
+                    </div>
+                  )}
+
                   {/* Selected requirements display */}
                   {renderHook()}
                   
