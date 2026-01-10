@@ -378,6 +378,99 @@ async def clear_deep_research_cache(
     return deleted_count
 
 
+async def cancel_research(
+    db: AsyncSession,
+    state_code: str,
+    product_key: str,
+) -> Dict[str, Any]:
+    """Cancel an in-progress research task without deleting results.
+    
+    Sets the status to "cancelled" which signals the polling loop to stop.
+    
+    Returns:
+        Dict with cancelled status and info
+    """
+    from sqlalchemy import update
+    
+    # Find the entry
+    result = await db.execute(
+        select(DeepResearchCache)
+        .where(DeepResearchCache.state_code == state_code)
+        .where(DeepResearchCache.product_key == product_key)
+    )
+    entry = result.scalar_one_or_none()
+    
+    if not entry:
+        return {"cancelled": False, "reason": "not_found"}
+    
+    if entry.status != "in_progress":
+        return {"cancelled": False, "reason": f"status_is_{entry.status}", "status": entry.status}
+    
+    # Mark as cancelled
+    entry.status = "cancelled"
+    await db.commit()
+    
+    logger.info(f"Cancelled research task for {state_code}/{product_key}")
+    return {"cancelled": True, "status": "cancelled"}
+
+
+async def get_cache_status(
+    db: AsyncSession,
+    state_code: str,
+    product_key: str,
+) -> Dict[str, Any]:
+    """Get the current status of a research cache entry.
+    
+    Returns:
+        Dict with status info:
+        - status: "completed", "in_progress", "pending", "failed", "cancelled", or "not_found"
+        - For completed: cache_age_days, expires_in_days, hook_count
+        - For in_progress: elapsed_minutes, started_at
+    """
+    result = await db.execute(
+        select(DeepResearchCache)
+        .where(DeepResearchCache.state_code == state_code)
+        .where(DeepResearchCache.product_key == product_key)
+    )
+    entry = result.scalar_one_or_none()
+    
+    if not entry:
+        return {"status": "not_found"}
+    
+    # Check if it's expired (older than TTL)
+    cache_age = datetime.utcnow() - entry.created_at
+    if cache_age.days >= CACHE_TTL_DAYS:
+        return {"status": "expired", "cache_age_days": cache_age.days}
+    
+    response = {
+        "status": entry.status,
+        "cache_age_days": cache_age.days,
+        "cached_at": entry.created_at.isoformat(),
+    }
+    
+    if entry.status == "completed" and entry.results_json:
+        # Count hooks in results
+        results = entry.results_json
+        hook_count = (
+            len(results.get("funding_items", [])) +
+            len(results.get("compliance_items", [])) +
+            len(results.get("state_interventions", []))
+        )
+        response["hook_count"] = hook_count
+        response["expires_in_days"] = CACHE_TTL_DAYS - cache_age.days
+    
+    elif entry.status == "in_progress":
+        started = entry.started_at or entry.created_at
+        elapsed = datetime.utcnow() - started
+        response["elapsed_minutes"] = int(elapsed.total_seconds() // 60)
+        response["started_at"] = started.isoformat()
+    
+    elif entry.status == "failed":
+        response["error"] = entry.error_message
+    
+    return response
+
+
 async def get_or_create_research_job(
     db: AsyncSession,
     state_code: str,

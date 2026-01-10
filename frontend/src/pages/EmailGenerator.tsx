@@ -1164,6 +1164,18 @@ type ReviewDraft = {
   rubric: Record<ReviewSectionKey, ReviewRubricItemDraft>
 }
 
+// Cache status type
+type CacheStatus = {
+  status: 'completed' | 'in_progress' | 'pending' | 'failed' | 'cancelled' | 'not_found' | 'expired' | 'loading'
+  cache_age_days?: number
+  cached_at?: string
+  expires_in_days?: number
+  hook_count?: number
+  elapsed_minutes?: number
+  started_at?: string
+  error?: string
+}
+
 function EmailGeneratorPipeline() {
   const [wizardStep, setWizardStep] = useState<WizardStep>(1)
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
@@ -1172,6 +1184,10 @@ function EmailGeneratorPipeline() {
 
   const [districtName, setDistrictName] = useState('')
   const [districtUrl, setDistrictUrl] = useState('')
+
+  // Cache status for the current state+product selection
+  const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null)
+  const [showReSearchConfirm, setShowReSearchConfirm] = useState(false)
 
   const [result, setResult] = useState<PipelineRunResponse | null>(null)
   const [activeAudience, setActiveAudience] = useState<string | null>(null)
@@ -1211,6 +1227,31 @@ function EmailGeneratorPipeline() {
       return next
     })
   }, [selectedHookLinks])
+
+  // Check cache status when state+product changes
+  useEffect(() => {
+    const state = selectedStates[0]?.code
+    const product = selectedProducts[0]
+    
+    if (!state || !product) {
+      setCacheStatus(null)
+      return
+    }
+
+    // Don't check while researching
+    if (wizardStep === 2) return
+
+    setCacheStatus({ status: 'loading' })
+    
+    api.generate.checkCacheStatus(state, product)
+      .then((status) => {
+        setCacheStatus(status)
+      })
+      .catch((err) => {
+        console.warn('Failed to check cache status:', err)
+        setCacheStatus(null)
+      })
+  }, [selectedStates, selectedProducts, wizardStep])
 
   const toggleReasonTag = (link: string, tag: string) => {
     setHookReasonTags((prev) => {
@@ -1419,8 +1460,9 @@ function EmailGeneratorPipeline() {
   }
 
   // Re-search clears the cache first to force fresh Deep Research
-  const handleReSearch = async () => {
+  const handleReSearchConfirmed = async () => {
     if (!canPrep) return
+    setShowReSearchConfirm(false)
     setTraceEvents([])
     setPrep(null)
     setBlockedFilteredRequirements([])
@@ -1431,6 +1473,7 @@ function EmailGeneratorPipeline() {
     setReviewDrafts({})
     setResult(null)
     setActiveAudience(null)
+    setCacheStatus(null)
     setWizardStep(2) // Go to Research step
     
     // Clear cache for this state/product before re-searching
@@ -1442,6 +1485,39 @@ function EmailGeneratorPipeline() {
     }
     
     prepMutation.mutate()
+  }
+
+  // Show confirmation before re-searching if there are completed results
+  const handleReSearch = () => {
+    if (!canPrep) return
+    if (cacheStatus?.status === 'completed' || prep) {
+      setShowReSearchConfirm(true)
+    } else {
+      handleReSearchConfirmed()
+    }
+  }
+
+  // Cancel an in-progress research task
+  const handleCancelResearch = async () => {
+    const state = selectedStates[0]?.code
+    const product = selectedProducts[0]
+    if (!state || !product) return
+
+    try {
+      await api.generate.cancelResearch(state, product)
+      setCacheStatus({ status: 'cancelled' })
+      toast({
+        title: 'Research cancelled',
+        description: 'The research task has been cancelled.',
+      })
+    } catch (e) {
+      console.warn('Failed to cancel research:', e)
+      toast({
+        title: 'Failed to cancel',
+        description: 'Could not cancel the research task.',
+        variant: 'destructive',
+      })
+    }
   }
 
   const handleRun = () => {
@@ -2070,7 +2146,87 @@ function EmailGeneratorPipeline() {
                 </div>
               </div>
 
-              <div className="pt-4 flex justify-end">
+              {/* Cache status notification */}
+              {cacheStatus && cacheStatus.status !== 'not_found' && cacheStatus.status !== 'loading' && (
+                <div className={`p-4 rounded-lg border ${
+                  cacheStatus.status === 'completed' 
+                    ? 'border-emerald-700/50 bg-emerald-900/20'
+                    : cacheStatus.status === 'in_progress'
+                    ? 'border-amber-700/50 bg-amber-900/20'
+                    : 'border-slate-700 bg-slate-800/50'
+                }`}>
+                  {cacheStatus.status === 'completed' && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-emerald-600/30 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-emerald-300">
+                          Cached results available!
+                        </div>
+                        <div className="mt-1 text-sm text-emerald-200/80">
+                          Found {cacheStatus.hook_count} requirements {cacheStatus.cache_age_days === 0 ? 'today' : `${cacheStatus.cache_age_days} days ago`}.
+                          Expires in {cacheStatus.expires_in_days} days.
+                        </div>
+                        <div className="mt-2 text-xs text-emerald-200/60">
+                          Click "Find Requirements" to view them instantly, or "Re-search" to run fresh research (5-30 min).
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {cacheStatus.status === 'in_progress' && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-amber-600/30 flex items-center justify-center flex-shrink-0">
+                        <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-amber-300">
+                          Research in progress!
+                        </div>
+                        <div className="mt-1 text-sm text-amber-200/80">
+                          Started {cacheStatus.elapsed_minutes} minutes ago. Click "Find Requirements" to resume viewing progress.
+                        </div>
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            onClick={handleCancelResearch}
+                            className="text-xs px-3 py-1 rounded bg-amber-800/50 text-amber-300 hover:bg-amber-800 transition-colors"
+                          >
+                            Cancel Research
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {cacheStatus.status === 'failed' && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-red-600/30 flex items-center justify-center flex-shrink-0">
+                        <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-red-300">Previous research failed</div>
+                        <div className="mt-1 text-sm text-red-200/80">
+                          {cacheStatus.error || 'Unknown error'}. Click "Find Requirements" to try again.
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="pt-4 flex justify-end gap-3">
+                {cacheStatus?.status === 'completed' && (
+                  <button
+                    onClick={handleReSearch}
+                    disabled={!canPrep}
+                    className="px-4 py-2 rounded-lg font-medium text-slate-300 border border-slate-600 hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Re-search (Fresh)
+                  </button>
+                )}
                 <button
                   onClick={handlePrep}
                   disabled={!canPrep}
@@ -2080,7 +2236,9 @@ function EmailGeneratorPipeline() {
                       : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                   }`}
                 >
-                  Find Requirements →
+                  {cacheStatus?.status === 'completed' ? 'View Cached Results →' : 
+                   cacheStatus?.status === 'in_progress' ? 'Resume Research →' :
+                   'Find Requirements →'}
                 </button>
               </div>
             </div>
@@ -2411,6 +2569,38 @@ function EmailGeneratorPipeline() {
           </div>
         )}
       </div>
+
+      {/* Re-search confirmation dialog */}
+      {showReSearchConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 max-w-md mx-4 shadow-xl">
+            <h3 className="text-lg font-medium text-slate-200 mb-3">
+              Run Fresh Research?
+            </h3>
+            <p className="text-sm text-slate-400 mb-6">
+              {prep 
+                ? 'This will discard your current research results and start fresh. The new research will take 5-30 minutes.'
+                : cacheStatus?.status === 'completed'
+                ? `You have cached results from ${cacheStatus.cache_age_days === 0 ? 'today' : `${cacheStatus.cache_age_days} days ago`}. Re-searching will delete them and start fresh (5-30 minutes).`
+                : 'This will start a fresh research task, which takes 5-30 minutes.'}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowReSearchConfirm(false)}
+                className="px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReSearchConfirmed}
+                className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium transition-colors"
+              >
+                Re-search (Fresh)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

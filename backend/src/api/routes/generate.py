@@ -796,6 +796,58 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             "product": product,
         }
 
+    @router.get("/pipeline/cache/status")
+    async def get_cache_status_endpoint(
+        state: str,
+        product: str,
+        db: AsyncSession = Depends(get_db),
+    ):
+        """Get the status of a research cache entry.
+        
+        Returns status info:
+        - status: "completed", "in_progress", "pending", "failed", "cancelled", or "not_found"
+        - For completed: cache_age_days, expires_in_days, hook_count
+        - For in_progress: elapsed_minutes, started_at
+        
+        Use this to check if there are cached results available before starting
+        a new research task, or to see if a task is still running.
+        """
+        from ...research.deep_research import get_cache_status
+        from ...research.product_briefs import normalize_product_key
+        
+        product_key = normalize_product_key(product) if product else None
+        state_code = state.strip().upper() if state else None
+        
+        if not state_code or not product_key:
+            raise HTTPException(status_code=400, detail="Both state and product are required")
+        
+        status = await get_cache_status(db, state_code=state_code, product_key=product_key)
+        return status
+
+    @router.post("/pipeline/cancel")
+    async def cancel_research_endpoint(
+        state: str,
+        product: str,
+        db: AsyncSession = Depends(get_db),
+    ):
+        """Cancel an in-progress research task.
+        
+        Sets the status to "cancelled" which signals the polling loop to stop.
+        Does not delete any existing results.
+        """
+        from ...research.deep_research import cancel_research
+        from ...research.product_briefs import normalize_product_key
+        
+        product_key = normalize_product_key(product) if product else None
+        state_code = state.strip().upper() if state else None
+        
+        if not state_code or not product_key:
+            raise HTTPException(status_code=400, detail="Both state and product are required")
+        
+        result = await cancel_research(db, state_code=state_code, product_key=product_key)
+        logger.info(f"Cancel request for {state_code}/{product_key}: {result}")
+        return result
+
 
 async def get_email_exemplars(
     *,

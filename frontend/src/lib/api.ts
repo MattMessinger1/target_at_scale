@@ -863,6 +863,31 @@ export const api = {
         { method: 'DELETE' }
       )
     },
+    checkCacheStatus: (state: string, product: string) => {
+      const params = new URLSearchParams()
+      params.set('state', state)
+      params.set('product', product)
+      return fetchApi<{
+        status: 'completed' | 'in_progress' | 'pending' | 'failed' | 'cancelled' | 'not_found' | 'expired'
+        cache_age_days?: number
+        cached_at?: string
+        expires_in_days?: number
+        hook_count?: number
+        elapsed_minutes?: number
+        started_at?: string
+        error?: string
+      }>(`/generate/pipeline/cache/status?${params.toString()}`)
+    },
+    cancelResearch: (state: string, product: string) => {
+      const params = new URLSearchParams()
+      params.set('state', state)
+      params.set('product', product)
+      return fetchApi<{
+        cancelled: boolean
+        reason?: string
+        status?: string
+      }>(`/generate/pipeline/cancel?${params.toString()}`, { method: 'POST' })
+    },
     pipelinePrepStream: async (data: PipelineRequest, onEvent: (evt: PipelineStreamEvent) => void) => {
       let payload: { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; warnings: string[] } | null = null
       let blockedMsg: string | null = null
