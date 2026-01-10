@@ -166,14 +166,16 @@ async def run_treasure_hunter(
         # Convert to WebHook-compatible format
         hook_dicts = await convert_to_webhooks(research_results, product_key)
         
-        # Convert to WebHook objects and filter
+        # Convert to WebHook objects - let hook_gate handle filtering so users see why
         hooks: List[WebHook] = []
         for item in hook_dicts:
             try:
                 hook = WebHook(**item)
-                # Filter out disallowed sources
-                if hook.link and not _is_disallowed_hook_source(hook.link):
-                    hooks.append(hook)
+                # Don't silently filter here - let hook_gate track filtered requirements
+                # so users can see what was found and why it was filtered
+                if hook.link and _is_disallowed_hook_source(hook.link):
+                    logger.debug("Hook from disallowed source will be filtered by gate: %s", hook.link)
+                hooks.append(hook)
             except Exception as e:
                 logger.warning("Failed to create WebHook from research item: %s", e)
                 continue
