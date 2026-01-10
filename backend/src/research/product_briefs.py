@@ -427,7 +427,7 @@ JSON:"""
             {"role": "user", "content": prompt},
         ],
         temperature=0,
-        max_tokens=3500,
+        max_completion_tokens=3500,  # GPT-5.2 uses max_completion_tokens
     )
     text = response.choices[0].message.content.strip()
     brief = _parse_json_response(text)

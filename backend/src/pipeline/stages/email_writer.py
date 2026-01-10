@@ -663,7 +663,7 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
             {"role": "user", "content": prompt},
         ],
         temperature=0.5,  # Higher for more natural writing synthesis
-        max_tokens=1200,
+        max_completion_tokens=1200,  # GPT-5.2 uses max_completion_tokens instead of max_tokens
     )
     raw = (resp.choices[0].message.content or "").strip()
 

@@ -1018,7 +1018,7 @@ Generate plain text emails only. No markdown, no formatting characters."""
             {"role": "user", "content": prompt}
         ],
         temperature=0.7,
-        max_tokens=1000,
+        max_completion_tokens=1000,  # GPT-5.2 uses max_completion_tokens
     )
     
     content = response.choices[0].message.content.strip()
@@ -1349,7 +1349,7 @@ async def refine_email_tone(
             {"role": "user", "content": prompt},
         ],
         temperature=0.2,
-        max_tokens=900,
+        max_completion_tokens=900,  # GPT-5.2 uses max_completion_tokens
     )
     text = resp.choices[0].message.content.strip()
     return parse_email_response(text)
