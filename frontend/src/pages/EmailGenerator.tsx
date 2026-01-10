@@ -1345,6 +1345,10 @@ function EmailGeneratorPipeline() {
       setResult(null)
       setReviewDrafts({})
       setActiveAudience(null)
+      // Auto-expand filtered section if nothing passed but requirements were found
+      if ((data.treasure_hooks?.length || 0) === 0 && (data.filtered_requirements?.length || 0) > 0) {
+        setShowFilteredSection(true)
+      }
       setWizardStep(3) // Go to Select step
     },
     onError: (error) => {
@@ -1941,6 +1945,13 @@ function EmailGeneratorPipeline() {
   const allFilteredRequirements = prep?.filtered_requirements || blockedFilteredRequirements || []
   const passedRequirements = prep?.treasure_hooks || []
 
+  // Auto-expand filtered section when nothing passed but requirements were found
+  useEffect(() => {
+    if (passedRequirements.length === 0 && allFilteredRequirements.length > 0) {
+      setShowFilteredSection(true)
+    }
+  }, [passedRequirements.length, allFilteredRequirements.length])
+
   // Render the wizard progress bar
   const renderProgressBar = () => {
     const steps: WizardStep[] = [1, 2, 3, 4, 5]
@@ -2414,23 +2425,41 @@ function EmailGeneratorPipeline() {
               </div>
             ) : (
               <div className="p-4 rounded-lg border border-amber-800 bg-amber-900/20 text-amber-300 mb-6">
-                <div className="font-medium">No requirements passed the relevance gate</div>
-                <div className="text-sm mt-1">All found requirements were filtered out. See below for details.</div>
+                <div className="font-medium text-lg">
+                  Deep Research found {allFilteredRequirements.length} potential requirement{allFilteredRequirements.length !== 1 ? 's' : ''}
+                </div>
+                <div className="text-sm mt-2 text-amber-200">
+                  Our relevance filter flagged all of them, but you can review and select them below.
+                  Click any requirement to see why it was filtered - you can override the filter.
+                </div>
               </div>
             )}
 
             {/* Filtered requirements (collapsible) */}
             {allFilteredRequirements.length > 0 && (
-              <div className="border-t border-slate-700 pt-4">
-                <button
-                  onClick={() => setShowFilteredSection(!showFilteredSection)}
-                  className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-300"
-                >
-                  <svg className={`w-4 h-4 transition-transform ${showFilteredSection ? 'rotate-90' : ''}`} fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                  </svg>
-                  Filtered out ({allFilteredRequirements.length}) — click to see why
-                </button>
+              <div className="mt-4">
+                <div className="p-4 rounded-lg bg-slate-700/50 border border-slate-600">
+                  <button
+                    onClick={() => setShowFilteredSection(!showFilteredSection)}
+                    className="w-full text-left"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-medium text-slate-200">
+                          {showFilteredSection ? 'Hide' : 'Review'} {allFilteredRequirements.length} Research Result{allFilteredRequirements.length !== 1 ? 's' : ''}
+                        </div>
+                        <div className="text-sm text-slate-400 mt-1">
+                          {passedRequirements.length === 0 
+                            ? 'These were flagged by our filter but may still be relevant - you can select them'
+                            : 'Additional results that were flagged by our filter'}
+                        </div>
+                      </div>
+                      <svg className={`w-5 h-5 text-slate-400 transition-transform ${showFilteredSection ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </button>
+                </div>
                 {showFilteredSection && (
                   <div className="mt-4 space-y-4">
                     {allFilteredRequirements.map((fr, idx) => (

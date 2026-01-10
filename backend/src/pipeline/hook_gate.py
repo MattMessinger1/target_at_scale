@@ -158,9 +158,11 @@ def _has_budget_code(text: str) -> bool:
 
 
 def _has_impetus_now(h: WebHook) -> bool:
+    """Check if hook has urgency/impetus. More lenient now to avoid over-filtering."""
     trig = h.trigger_excerpt or ""
     elig = h.eligibility_excerpt or ""
-    full_text = f"{trig} {elig}"  # Check both trigger and eligibility
+    why = h.why_relevant or ""
+    full_text = f"{trig} {elig} {why}"  # Check all text fields
     ht = h.hook_type
 
     if ht == "deadline":
@@ -172,13 +174,20 @@ def _has_impetus_now(h: WebHook) -> bool:
     if ht == "budget_coding":
         return _has_budget_code(trig)
     if ht in ("funding_guidance", "allowable_use"):
-        # For funding-related hooks, require explicit LEA/district eligibility excerpt.
-        return bool(_ELIGIBILITY_RE.search(elig))
+        # For funding-related hooks, be MORE LENIENT - check full text, not just eligibility
+        # Deep Research often puts eligibility info in trigger or why_relevant
+        return bool(_ELIGIBILITY_RE.search(full_text) or _IMPetus_EXTRA_RE.search(full_text))
     if ht == "district_specific":
         # District-specific hooks must still have an impetus-now signal.
-        return bool(_DATE_OR_FY_RE.search(trig) or _MONITORING_RE.search(trig) or _has_budget_code(trig) or _IMPetus_EXTRA_RE.search(full_text))
-    # Default: be conservative—require some impetus token.
-    return bool(_DATE_OR_FY_RE.search(trig) or _MONITORING_RE.search(trig) or _has_budget_code(trig) or _IMPetus_EXTRA_RE.search(full_text))
+        return bool(_DATE_OR_FY_RE.search(full_text) or _MONITORING_RE.search(full_text) or _has_budget_code(full_text) or _IMPetus_EXTRA_RE.search(full_text))
+    
+    # NEW: For unknown hook types, be lenient if there's ANY impetus language anywhere
+    # This catches Deep Research hooks that have useful info but non-standard hook_type
+    if _IMPetus_EXTRA_RE.search(full_text) or _ELIGIBILITY_RE.search(full_text):
+        return True
+    
+    # Default: check for standard impetus tokens
+    return bool(_DATE_OR_FY_RE.search(full_text) or _MONITORING_RE.search(full_text) or _has_budget_code(full_text))
 
 
 def _is_table_stakes(h: WebHook) -> bool:
@@ -194,17 +203,26 @@ def _has_deliverable_tie_in(h: WebHook, *, evidence_pack: Optional[EvidencePack]
     
     For monitoring-type hooks, we use broader matching since compliance assistance
     is inherently valuable (corrective action plans, program evaluations, etc.).
+    
+    NOW MORE LENIENT: Deep Research provides relevance_to_product text that explains
+    the connection - if this exists and is substantive, we trust it.
     """
     why = h.why_relevant or ""
     quote = h.quote or ""
     trigger = h.trigger_excerpt or ""
-    full_text = f"{why} {quote} {trigger}"
+    elig = h.eligibility_excerpt or ""
+    full_text = f"{why} {quote} {trigger} {elig}"
     
-    # 1. Check against expanded deliverable regex (now includes compliance terms)
+    # 1. NEW: If why_relevant has substantive text (>20 chars), trust Deep Research's judgment
+    # Deep Research explicitly connects hooks to product offerings - honor that
+    if len(why.strip()) > 20:
+        return True
+    
+    # 2. Check against expanded deliverable regex (now includes compliance terms)
     if _DELIVERABLE_RE.search(full_text):
         return True
 
-    # 2. For monitoring-type hooks, be more lenient - these inherently signal
+    # 3. For monitoring-type hooks, be more lenient - these inherently signal
     #    compliance assistance value (CAPs, program evals, etc.)
     if h.hook_type == "monitoring":
         # Monitoring hooks that mention plans, rates, or requirements are valid
@@ -215,8 +233,18 @@ def _has_deliverable_tie_in(h: WebHook, *, evidence_pack: Optional[EvidencePack]
         )
         if monitoring_terms.search(full_text):
             return True
+    
+    # 4. NEW: For funding-type hooks, be more lenient - funding is inherently actionable
+    if h.hook_type in ("funding_guidance", "allowable_use", "deadline"):
+        funding_terms = re.compile(
+            r"\b(grant|fund|allocat|budget|PD|professional\s+development|"
+            r"training|coaching|EL|English\s+learner|bilingual|ESL)\b",
+            re.I,
+        )
+        if funding_terms.search(full_text):
+            return True
 
-    # 3. Check product-specific deliverable terms
+    # 5. Check product-specific deliverable terms
     product_key = _product_key_from_evidence_pack(evidence_pack)
     if product_key:
         product_terms = PRODUCT_DELIVERABLES.get(product_key.lower(), [])
@@ -225,7 +253,7 @@ def _has_deliverable_tie_in(h: WebHook, *, evidence_pack: Optional[EvidencePack]
             if term.lower() in full_text_lower:
                 return True
 
-    # 4. Secondary: match against known micro-offer candidates (if present).
+    # 6. Secondary: match against known micro-offer candidates (if present).
     if evidence_pack and evidence_pack.micro_offer_candidates:
         why_l = _norm(why)
         for mo in evidence_pack.micro_offer_candidates:
