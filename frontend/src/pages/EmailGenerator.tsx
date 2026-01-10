@@ -1151,6 +1151,48 @@ const getLatestTraceStatus = (events: PipelineStreamEvent[]): string | null => {
   return null
 }
 
+// Filter events for activity log: collapse heartbeats to just the most recent one
+const filterTraceEventsForLog = (events: PipelineStreamEvent[]): PipelineStreamEvent[] => {
+  const recent = events.slice(-20) // Take recent events
+  const result: PipelineStreamEvent[] = []
+  let lastHeartbeatIdx = -1
+  
+  // Find the last heartbeat index
+  for (let i = recent.length - 1; i >= 0; i--) {
+    if (recent[i].type === 'heartbeat') {
+      lastHeartbeatIdx = i
+      break
+    }
+  }
+  
+  // Include all non-heartbeat events, plus only the last heartbeat
+  for (let i = 0; i < recent.length; i++) {
+    if (recent[i].type !== 'heartbeat' || i === lastHeartbeatIdx) {
+      result.push(recent[i])
+    }
+  }
+  
+  return result.slice(-10) // Return last 10
+}
+
+// Get display text for a trace event
+const getEventDisplayText = (
+  e: PipelineStreamEvent, 
+  researchStartTime: Date | null
+): string => {
+  if (e.type === 'heartbeat') {
+    const elapsed = researchStartTime 
+      ? Math.floor((Date.now() - researchStartTime.getTime()) / 1000)
+      : 0
+    const mins = Math.floor(elapsed / 60)
+    const secs = elapsed % 60
+    return `Still researching... (${mins}m ${secs}s)`
+  }
+  
+  const stageLabel = e.stage ? STAGE_LABELS[e.stage as string] : null
+  return (typeof e.message === 'string' && e.message) || stageLabel || String(e.type)
+}
+
 type ReviewSectionKey = 'subject_line' | 'product_relevance' | 'tone' | 'flow' | 'cta'
 
 type ReviewRubricItemDraft = {
@@ -1193,6 +1235,7 @@ function EmailGeneratorPipeline() {
   const [activeAudience, setActiveAudience] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [traceEvents, setTraceEvents] = useState<PipelineStreamEvent[]>([])
+  const [researchStartTime, setResearchStartTime] = useState<Date | null>(null)
   const [prep, setPrep] = useState<{ evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; warnings: string[] } | null>(null)
   const [blockedFilteredRequirements, setBlockedFilteredRequirements] = useState<FilteredRequirement[]>([])
   const [selectedHookLinks, setSelectedHookLinks] = useState<string[]>([])
@@ -1446,6 +1489,7 @@ function EmailGeneratorPipeline() {
   const handlePrep = () => {
     if (!canPrep) return
     setTraceEvents([])
+    setResearchStartTime(new Date())
     setPrep(null)
     setBlockedFilteredRequirements([])
     setSelectedHookLinks([])
@@ -1464,6 +1508,7 @@ function EmailGeneratorPipeline() {
     if (!canPrep) return
     setShowReSearchConfirm(false)
     setTraceEvents([])
+    setResearchStartTime(new Date())
     setPrep(null)
     setBlockedFilteredRequirements([])
     setSelectedHookLinks([])
@@ -2283,9 +2328,8 @@ function EmailGeneratorPipeline() {
               <div className="p-4 rounded-lg border border-slate-700 bg-slate-900/30 max-h-48 overflow-y-auto">
                 <div className="text-xs text-slate-500 uppercase tracking-wide mb-2">Activity Log</div>
                 <div className="space-y-1">
-                  {traceEvents.slice(-10).map((e, i) => {
-                    const stageLabel = e.stage ? STAGE_LABELS[e.stage as string] : null
-                    const displayText = (typeof e.message === 'string' && e.message) || stageLabel || String(e.type)
+                  {filterTraceEventsForLog(traceEvents).map((e, i) => {
+                    const displayText = getEventDisplayText(e, researchStartTime)
                     return (
                       <div key={`${e.type}-${i}`} className="text-xs text-slate-400 flex items-start gap-2">
                         <span className="text-slate-600">•</span>
@@ -2461,9 +2505,8 @@ function EmailGeneratorPipeline() {
               <div className="p-4 rounded-lg border border-slate-700 bg-slate-900/30 max-h-48 overflow-y-auto">
                 <div className="text-xs text-slate-500 uppercase tracking-wide mb-2">Activity Log</div>
                 <div className="space-y-1">
-                  {traceEvents.slice(-10).map((e, i) => {
-                    const stageLabel = e.stage ? STAGE_LABELS[e.stage as string] : null
-                    const displayText = (typeof e.message === 'string' && e.message) || stageLabel || String(e.type)
+                  {filterTraceEventsForLog(traceEvents).map((e, i) => {
+                    const displayText = getEventDisplayText(e, researchStartTime)
                     return (
                       <div key={`${e.type}-${i}`} className="text-xs text-slate-400 flex items-start gap-2">
                         <span className="text-slate-600">•</span>
