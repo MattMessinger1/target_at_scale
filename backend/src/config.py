@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     # API Keys
     openai_api_key: str = ""
     # OpenAI model for parsing + email generation (override via OPENAI_MODEL)
-    openai_model: str = "gpt-4o"
+    openai_model: str = "gpt-5.2"
     firecrawl_api_key: str = ""
     perplexity_api_key: str = ""
     admin_token: str = ""
