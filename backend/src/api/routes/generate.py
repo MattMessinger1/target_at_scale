@@ -7,9 +7,12 @@ This endpoint generates personalized sales emails using:
 """
 from typing import Any, Dict, List, Optional
 import json
+import logging
 import time
 from datetime import datetime, timezone
 import dataclasses
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -281,19 +284,22 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             progress_queue: asyncio.Queue = asyncio.Queue()
             treasure_hooks_result: List[Any] = []
             treasure_error: Optional[Exception] = None
+            heartbeat_count = 0
             
             def progress_callback(message: str, percent: float):
                 """Callback that puts progress events into the queue."""
                 try:
-                    progress_queue.put_nowait({
+                    event = {
                         "type": "progress",
                         "ts": _utcnow_iso(),
                         "stage": "treasure_hunter",
                         "message": message,
                         "percent": percent,
-                    })
-                except Exception:
-                    pass
+                    }
+                    progress_queue.put_nowait(event)
+                    logger.info(f"Progress event queued: {message} ({percent}%)")
+                except Exception as e:
+                    logger.warning(f"Failed to queue progress event: {e}")
             
             async def run_treasure_hunter_task():
                 """Run treasure hunter and store result."""
@@ -310,26 +316,35 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         on_progress=progress_callback,
                     )
                 except Exception as e:
+                    logger.error(f"Treasure hunter task error: {e}")
                     treasure_error = e
                 finally:
                     # Signal completion
                     await progress_queue.put(None)
+                    logger.info("Treasure hunter task completed, signaled queue")
             
             # Start the treasure hunter task
             task = asyncio.create_task(run_treasure_hunter_task())
+            logger.info("Started treasure hunter background task")
             
-            # Yield progress events as they come in
+            # Yield progress events as they come in (0.5s timeout for frequent heartbeats)
             while True:
                 try:
-                    event = await asyncio.wait_for(progress_queue.get(), timeout=1.0)
+                    event = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
                     if event is None:
+                        logger.info("Received completion signal from queue")
                         break  # Task completed
+                    logger.debug(f"Yielding progress event: {event.get('message', 'unknown')}")
                     yield _ndjson(event)
                 except asyncio.TimeoutError:
                     # No event yet, check if task is still running
                     if task.done():
+                        logger.info("Task done, exiting progress loop")
                         break
                     # Yield a heartbeat to keep connection alive
+                    heartbeat_count += 1
+                    if heartbeat_count % 10 == 1:  # Log every 5 seconds (10 * 0.5s)
+                        logger.debug(f"Sending heartbeat #{heartbeat_count}")
                     yield _ndjson({"type": "heartbeat", "ts": _utcnow_iso()})
             
             # Wait for task to complete (should already be done)
