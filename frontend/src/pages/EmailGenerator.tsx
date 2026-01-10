@@ -2237,7 +2237,7 @@ function EmailGeneratorPipeline() {
                   }`}
                 >
                   {cacheStatus?.status === 'completed' ? 'View Cached Results →' : 
-                   cacheStatus?.status === 'in_progress' ? 'Resume Research →' :
+                   cacheStatus?.status === 'in_progress' ? 'View Progress →' :
                    'Find Requirements →'}
                 </button>
               </div>
