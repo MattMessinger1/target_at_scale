@@ -7,11 +7,12 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query, Header, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, delete
 from sqlalchemy import func
 from pydantic import BaseModel
 
 from ...db import get_db, KnowledgeBaseItem
+from ...db.models import ProductBrief
 from ...config import get_settings
 
 settings = get_settings()
@@ -642,6 +643,60 @@ async def rebuild_product_briefs(
     await upsert_product_brief(db, product_key, merged, state_code=state, source="merged")
 
     return {"message": "Rebuilt product brief", "product_key": product_key, "state": state}
+
+
+@router.post("/briefs/rebuild-all")
+async def rebuild_all_product_briefs(
+    x_admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Clear and rebuild ALL product briefs using GPT-5.2 Pro with xhigh reasoning.
+
+    This regenerates briefs for all 7 products, optimized for email generation.
+    Protected by X-Admin-Token header matching ADMIN_TOKEN env var.
+    
+    Products rebuilt:
+    - CARE Coaching
+    - WebbAlign
+    - WIDA MODEL Online
+    - WIDA Professional Learning
+    - CALL
+    - The Discussion Project
+    - WIDA SIS
+    """
+    _require_admin_token(x_admin_token)
+
+    from ...research.product_briefs import (
+        DISPLAY_TO_KEY,
+        build_brief_from_kb,
+        upsert_product_brief,
+        normalize_product_key,
+    )
+
+    # Clear all existing cached briefs
+    await db.execute(delete(ProductBrief))
+    await db.commit()
+
+    # Rebuild for each product (general brief, no state-specific)
+    results = []
+    errors = []
+    
+    for display_name in DISPLAY_TO_KEY.keys():
+        try:
+            brief = await build_brief_from_kb(db, display_name)
+            product_key = normalize_product_key(display_name)
+            await upsert_product_brief(db, product_key, brief, state_code=None, source="rebuild_pro_xhigh")
+            results.append({"product": display_name, "product_key": product_key, "status": "rebuilt"})
+        except Exception as e:
+            errors.append({"product": display_name, "error": str(e)})
+
+    return {
+        "message": f"Rebuilt {len(results)} product briefs using GPT-5.2 Pro + xhigh",
+        "rebuilt": len(results),
+        "errors": len(errors),
+        "products": results,
+        "failed": errors,
+    }
 
 
 @router.post("/ingest-documents")
