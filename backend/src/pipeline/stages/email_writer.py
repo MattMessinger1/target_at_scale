@@ -720,6 +720,7 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
         ],
         temperature=0.5,  # Higher for more natural writing synthesis
         max_completion_tokens=1200,  # GPT-5.2 uses max_completion_tokens instead of max_tokens
+        reasoning={"effort": "xhigh"},  # Maximum reasoning depth for better product-grant connections
     )
     raw = (resp.choices[0].message.content or "").strip()
 
