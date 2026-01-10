@@ -301,6 +301,9 @@ async def clear_deep_research_cache(
 ) -> int:
     """Clear deep research cache entries.
     
+    Also marks any in_progress entries as "cancelled" first, so running
+    tasks will stop gracefully on their next poll.
+    
     Args:
         db: Database session
         state_code: Optional - clear only for this state
@@ -309,8 +312,24 @@ async def clear_deep_research_cache(
     Returns:
         Number of entries deleted
     """
-    from sqlalchemy import delete
+    from sqlalchemy import delete, update
     
+    # First, mark any in_progress entries as cancelled
+    # This signals running tasks to stop on their next poll
+    cancel_query = (
+        update(DeepResearchCache)
+        .where(DeepResearchCache.status == "in_progress")
+    )
+    if state_code:
+        cancel_query = cancel_query.where(DeepResearchCache.state_code == state_code)
+    if product_key:
+        cancel_query = cancel_query.where(DeepResearchCache.product_key == product_key)
+    cancel_query = cancel_query.values(status="cancelled")
+    cancel_result = await db.execute(cancel_query)
+    if cancel_result.rowcount > 0:
+        logger.info(f"Cancelled {cancel_result.rowcount} in-progress research tasks")
+    
+    # Then delete all matching entries
     query = delete(DeepResearchCache)
     
     if state_code:
@@ -581,6 +600,17 @@ Remember: Return ONLY a valid JSON object, no other text."""
                     f"Deep Research in progress ({elapsed_min}m {elapsed_sec}s)... Status: {response.status}",
                     progress_pct
                 )
+            
+            # Check if task was cancelled (user clicked Re-search)
+            try:
+                await db.refresh(cache_entry)
+                if cache_entry.status == "cancelled":
+                    logger.info(f"Research cancelled for {state_code}/{product_key}")
+                    return {"funding_items": [], "compliance_items": [], "_cancelled": True}
+            except Exception:
+                # Cache entry was deleted - stop polling
+                logger.info(f"Cache entry deleted, stopping research for {state_code}/{product_key}")
+                return {"funding_items": [], "compliance_items": [], "_cancelled": True}
             
             # Wait before polling again
             await asyncio.sleep(poll_interval)
