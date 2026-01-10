@@ -2,7 +2,7 @@
 
 Outputs:
 - subject_line
-- email_body (plain text; exactly 3 bullets; each bullet ≤ 10 words)
+- email_body (plain text; 2-3 bullets; each bullet ≤ 10 words)
 - claims_map covering: hook, bullets, and any funding/compliance/outcome claims
 
 The deterministic validator enforces the hard gates.
@@ -351,48 +351,52 @@ def _replace_or_insert_bullet_block(email_body: str, bullets: List[str]) -> str:
 
 
 def _ensure_exact_bullets(email_body: str, *, evidence_pack: EvidencePack) -> str:
-    """Ensure exactly 3 bullet lines, each ≤ 10 words, using deterministic fallbacks."""
+    """Ensure 2-3 bullet lines, each ≤ 10 words. Don't pad to 3 if only 2 are valuable."""
     body = (email_body or "").strip()
     if not body:
         return ""
 
     bullets = extract_bullets(body)
-    if len(bullets) == 3 and all(word_count(b) <= 10 for b in bullets):
+    
+    # Accept 2-3 bullets if they're all within word limit
+    if 2 <= len(bullets) <= 3 and all(word_count(b) <= 10 for b in bullets):
         return body
 
     # Common failure mode: one bullet line with inline " - " separators
     if len(bullets) == 1:
         inline = bullets[0] or ""
         parts = [p.strip() for p in re.split(r"\s[-–—]\s", inline) if p and p.strip()]
-        if len(parts) == 3:
+        if 2 <= len(parts) <= 3:
             return _replace_or_insert_bullet_block(body, [_truncate_to_word_limit(p, max_words=10) for p in parts])
 
-    # Deterministic fallback: use EvidencePack micro-offers (already artifact-shaped).
+    # If we have 4+ bullets, trim to best 3
+    if len(bullets) > 3:
+        # Truncate each and keep first 3
+        trimmed = [_truncate_to_word_limit(b, max_words=10) for b in bullets[:3]]
+        return _replace_or_insert_bullet_block(body, trimmed)
+
+    # If we have 0-1 bullets, use fallback from EvidencePack micro-offers
     fallback = [o.offer for o in (evidence_pack.micro_offer_candidates or []) if o and o.offer]
     picked: List[str] = []
     for off in fallback:
         t = _truncate_to_word_limit(off, max_words=10)
         if t and t not in picked:
             picked.append(t)
-        if len(picked) == 3:
+        if len(picked) == 2:  # Only need 2, not 3
             break
 
-    # Final fallback: safe artifacts
-    defaults = [
-        "evidence checklist for documentation",
-        "1-page budget narrative draft",
-        "allowable-use checklist",
-    ]
-    for d in defaults:
-        if len(picked) == 3:
-            break
-        t = _truncate_to_word_limit(d, max_words=10)
-        if t and t not in picked:
-            picked.append(t)
-
-    # Guarantee length
-    while len(picked) < 3:
-        picked.append("evidence checklist")
+    # Final fallback: safe artifacts (only if we have less than 2)
+    if len(picked) < 2:
+        defaults = [
+            "implementation plan with coaching schedules",
+            "progress monitoring documentation",
+        ]
+        for d in defaults:
+            if len(picked) >= 2:
+                break
+            t = _truncate_to_word_limit(d, max_words=10)
+            if t and t not in picked:
+                picked.append(t)
 
     return _replace_or_insert_bullet_block(body, picked[:3])
 
@@ -551,7 +555,7 @@ async def write_email_variant(
     if prior_email_body:
         prior_block = "\nPRIOR EMAIL (minimally edit):\n" + prior_email_body.strip()
 
-    prompt = f"""Write a K–12 outreach email as WCEPS.\n\nConstraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain text only.\n- Do NOT include any URLs in the email body EXCEPT the Calendly link: {CALENDLY_URL_RAW}.\n- Exactly 3 bullets, each bullet ≤ 10 words.\n- Bullets must be DELIVERABLES/ARTIFACTS (e.g., checklist, template, draft, agenda, evidence pack) not vague benefits.\n- Each bullet should reuse 1–3 distinctive words from the cited KB excerpt (to keep it grounded).\n- Include at least ONE Product offering phrase verbatim (see list below). Ideally, use it as a bullet.\n- CTA must be a simple 15-minute meeting ask with this Calendly link: {CALENDLY_URL_RAW}\n- Do NOT offer to \"send\" documents, templates, checklists, or resources.\n- Keep it conversational: e.g., \"Would you have 15 minutes to discuss? Here's my calendar: {CALENDLY_URL_RAW}\"\n- If a secondary hook is provided, you MUST use it later in the email.\n\nSubject line constraints (critical):\n- Subject MUST include the trigger FAMILY for the selected hook_type:\n  - deadline: a date or FY token\n  - monitoring: monitoring/CAP/corrective-action language\n  - budget_coding: a 3–4 digit budget/function code\n  - allowable_use/funding_guidance: allowable/eligible/LEA/districts language\n- Subject must NOT be generic (avoid: \"Quick question\", \"Following up\", \"Checking in\", \"Touching base\").\n\nOpener constraints (critical):\n- The FIRST paragraph must include a specific trigger token that appears in the trigger excerpt from the selected hook source.\n  Suggested trigger token: {trigger_token or '(choose one from trigger excerpt)'}\n- Paraphrase the hook in natural language. Do NOT quote the source verbatim. Do NOT paste URLs.\n- Address the email to a PERSON, not a title. Use \"Dear [Name],\" as a placeholder.\n- Do NOT address by title alone (e.g., \"Dear Title III Coordinator\" is WRONG).\n- The recipient's position/role should inform the CONTENT, not the greeting.\n- Keep the greeting in the SAME paragraph as the opener (no standalone greeting line).\n\nEnding constraints (critical):\n- The LAST paragraph must be the CTA.\n- Do NOT add a separate sign-off paragraph after the CTA.\n- If you include a sign-off, include it within the CTA paragraph (same paragraph).\n\nHook context (do not paste any URLs):\n- hook_type: {hook.hook_type}\n- trigger_excerpt: {hook.trigger_excerpt}\n- eligibility_excerpt: {hook.eligibility_excerpt or 'null'}\n{secondary_block}\n\nAudience: {audience}\nProduct: {product}\nState: {state_full} ({state_code})\nMode: {mode_text}\n{district_block}\n\nEvidence (KB chunks you may cite by id):\n{_format_evidence_chunks(evidence_pack)}\n\nProduct offerings/modules (copy at least ONE phrase verbatim):\n{_format_product_offerings(evidence_pack)}\n\nClaims-map rules:\n- claims_map must cover:\n  - the opener hook claim (paraphrase)\n  - each deliverable bullet (3 entries)\n  - any funding/compliance/outcome claims you make\n  - if a secondary hook is provided, a SECOND hook claim\n- For hook claim(s): claim_text should match the relevant paragraph (paraphrase is OK). The server will attach the correct hook URL.\n  IMPORTANT: Do NOT output placeholder strings like \"hook.link\" in urls.\n- For each bullet claim: claim_text should match the bullet text (no bullet marker), and include kb_chunk_ids from EvidencePack (choose the most relevant chunk id). Use urls=[].\n- Connector/polite text can be omitted from claims_map.\n\nAvoid:\n- Generic bullets like \"Personalized coaching\" or \"Improve outcomes\" (not deliverables).\n- Placeholder signatures like \"[Your Name]\".\n\n{repair_block}\n{prior_block}\n\n{EMAIL_JSON_SPEC}\n\nReturn JSON now."""
+    prompt = f"""Write a K–12 outreach email as WCEPS.\n\nConstraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain text only.\n- Do NOT include any URLs in the email body EXCEPT the Calendly link: {CALENDLY_URL_RAW}.\n- 2-3 bullets, each ≤ 10 words. Use 2 if that's all that adds value - don't pad with fluff.\n- Bullets must be specific DELIVERABLES or OUTCOMES (e.g., implementation plan, coaching schedules, progress monitoring).\n- NEVER use the product name itself as a bullet (e.g., "CARE Coaching Professional Learning Program" is WRONG - it's redundant).\n- Each bullet should reuse 1–3 distinctive words from the cited KB excerpt (to keep it grounded).\n- Include at least ONE Product offering phrase verbatim (see list below). Use it in body text, NOT as a bullet.\n- CTA must be a simple 15-minute meeting ask with this Calendly link: {CALENDLY_URL_RAW}\n- Do NOT offer to \"send\" documents, templates, checklists, or resources.\n- Keep it conversational: e.g., \"Would you have 15 minutes to discuss? Here's my calendar: {CALENDLY_URL_RAW}\"\n- If a secondary hook is provided, you MUST use it later in the email.\n\nSubject line constraints (critical):\n- Subject MUST include the trigger FAMILY for the selected hook_type:\n  - deadline: a date or FY token\n  - monitoring: monitoring/CAP/corrective-action language\n  - budget_coding: a 3–4 digit budget/function code\n  - allowable_use/funding_guidance: allowable/eligible/LEA/districts language\n- Subject must NOT be generic (avoid: \"Quick question\", \"Following up\", \"Checking in\", \"Touching base\").\n- Do NOT use specific past years (2024, 2025) in subject - use \"Current\" or \"FY26\" if referencing time.\n- Do NOT narrow to specific districts in subject - keep it broadly appealing to all districts in the state.\n- Bad: \"Eligible Illinois Districts: 2024 Funds\" (stale year, too narrow)\n- Good: \"Illinois Newcomer Funding Opportunity\" (current, broad appeal)\n\nOpener constraints (critical):\n- The FIRST paragraph must include a specific trigger token that appears in the trigger excerpt from the selected hook source.\n  Suggested trigger token: {trigger_token or '(choose one from trigger excerpt)'}\n- Paraphrase the hook in natural language. Do NOT quote the source verbatim. Do NOT paste URLs.\n- Address the email to a PERSON, not a title. Use \"Dear [Name],\" as a placeholder.\n- Do NOT address by title alone (e.g., \"Dear Title III Coordinator\" is WRONG).\n- The recipient's position/role should inform the CONTENT, not the greeting.\n- Keep the greeting in the SAME paragraph as the opener (no standalone greeting line).\n\nEnding constraints (critical):\n- The LAST paragraph must be the CTA.\n- Do NOT add a separate sign-off paragraph after the CTA.\n- If you include a sign-off, include it within the CTA paragraph (same paragraph).\n\nHook context (do not paste any URLs):\n- hook_type: {hook.hook_type}\n- trigger_excerpt: {hook.trigger_excerpt}\n- eligibility_excerpt: {hook.eligibility_excerpt or 'null'}\n{secondary_block}\n\nAudience: {audience}\nProduct: {product}\nState: {state_full} ({state_code})\nMode: {mode_text}\n{district_block}\n\nEvidence (KB chunks you may cite by id):\n{_format_evidence_chunks(evidence_pack)}\n\nProduct offerings/modules (copy at least ONE phrase verbatim):\n{_format_product_offerings(evidence_pack)}\n\nClaims-map rules:\n- claims_map must cover:\n  - the opener hook claim (paraphrase)\n  - each deliverable bullet (2-3 entries, one per bullet)\n  - any funding/compliance/outcome claims you make\n  - if a secondary hook is provided, a SECOND hook claim\n- For hook claim(s): claim_text should match the relevant paragraph (paraphrase is OK). The server will attach the correct hook URL.\n  IMPORTANT: Do NOT output placeholder strings like \"hook.link\" in urls.\n- For each bullet claim: claim_text should match the bullet text (no bullet marker), and include kb_chunk_ids from EvidencePack (choose the most relevant chunk id). Use urls=[].\n- Connector/polite text can be omitted from claims_map.\n\nAvoid:\n- Generic bullets like \"Personalized coaching\" or \"Improve outcomes\" (not deliverables).\n- Placeholder signatures like \"[Your Name]\".\n\n{repair_block}\n{prior_block}\n\n{EMAIL_JSON_SPEC}\n\nReturn JSON now."""
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     resp = await client.chat.completions.create(

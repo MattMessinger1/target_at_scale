@@ -2,7 +2,7 @@
 
 Hard-gates:
 - Word count sanity bounds (recommended 110–150; allow variation)
-- exactly 3 bullets; each bullet ≤ 10 words
+- 2-3 bullets; each bullet ≤ 10 words
 - CTA with 15-minute Calendly meeting ask (required)
 - email body must not contain URLs (sources live in claims_map/UI)
 - opener includes a trigger token AND is sourced from the selected hook (via trigger_excerpt overlap)
@@ -487,12 +487,12 @@ def validate_email_draft(
             )
         )
 
-    # Bullets
-    if len(bullets) != 3:
+    # Bullets - require 2-3 bullets
+    if not (2 <= len(bullets) <= 3):
         failures.append(
             ValidationFailure(
                 code="bullet_count_invalid",
-                message=f"Must have exactly 3 bullets (got {len(bullets)}).",
+                message=f"Must have 2-3 bullets (got {len(bullets)}).",
                 details={"bullet_count": len(bullets), "bullets": bullets},
             )
         )
@@ -586,7 +586,7 @@ def validate_email_draft(
             )
 
     bullet_claims = _claims_map_find(claims_map, kind="deliverable_bullet")
-    if len(bullets) == 3:
+    if 2 <= len(bullets) <= 3:
         # Require one claim per bullet text (whitespace-normalized)
         normalized_claims = {normalize_ws(c.claim_text) for c in bullet_claims}
         for b in bullets:

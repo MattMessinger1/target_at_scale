@@ -63,9 +63,10 @@ def failures_to_instructions(failures: Sequence[ValidationFailure]) -> List[str]
         )
     if "bullet_count_invalid" in code_set or "bullet_too_long" in code_set:
         instructions.append(
-            "Include exactly 3 bullets; each bullet must be ≤ 10 words. "
+            "Include 2-3 bullets; each bullet must be ≤ 10 words. Use 2 if that's all that adds value. "
             "Formatting: each bullet must be on its own line and start with '- '. "
-            "Do NOT combine multiple bullets into a single line using ' - ' separators."
+            "Do NOT combine multiple bullets into a single line using ' - ' separators. "
+            "NEVER use the product name itself as a bullet - that's redundant."
         )
     if "missing_micro_offer_cta" in code_set:
         instructions.append("LAST paragraph must be the CTA and must include a micro-offer phrase (e.g., 'I can send…', 'Would it help if I sent…', 'Want a 1-page…'). Do not add a separate sign-off paragraph after the CTA.")
