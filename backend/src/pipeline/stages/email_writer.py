@@ -89,6 +89,40 @@ Key outcomes we support:
 - Data-driven coaching cycles targeting EL achievement
 
 Would 15 minutes work to discuss how we might support your improvement plan? Here's my calendar: calendly.com/wceps
+
+## Example 3: Texas School Improvement Funds (Longer format)
+
+SUBJECT: Texas School Improvement Funds: From Compliance to Real Impact
+
+EMAIL:
+Dear [Name], As an approved vendor in your region, we can partner whenever you are ready to utilize state school improvement funds to strengthen ESL-aligned instruction and support students in your school.
+
+Our professional learning is designed to reinforce English Language Proficiency Standards while giving teachers practical, classroom-ready language strategies they can use immediately. Our needs assessment tool supports monitoring and ongoing progress towards your goals.
+
+We can tailor our session topics to your school or district needs, whether educators are new to ESL or looking for a meaningful refresher:
+- ELP Standards understanding with practical application
+- Content standards-aligned instructional practices for Emergent Bilinguals
+- Learning walk tools with follow-up to measure impact
+
+Please use this link to schedule a meeting: calendly.com/wceps - I'd be happy to help plan a pathway that fits your goals.
+
+Warmly
+
+## Example 4: Texas School Improvement - Concise Version
+
+SUBJECT: Increase the Impact of Your Texas School Improvement Funding
+
+EMAIL:
+Dear [Name], Partner with WCEPS to use your state school improvement funds to strengthen ESL-aligned instruction and support students in your school. As an approved vendor in your region, we can help you include our CARE coaching and needs assessment in your PD plans to address practical, classroom-ready language strategies teachers can use immediately.
+
+Our site-based professional development includes:
+- Understanding and applying ELP Standards
+- Building teacher and leader capacity to serve ELs
+- Learning walk tools with follow-up to measure impact
+
+Use this link to schedule a meeting to discuss your options: calendly.com/wceps
+
+Warmly
 """
 
 
