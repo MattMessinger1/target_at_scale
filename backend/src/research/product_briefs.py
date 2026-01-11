@@ -432,14 +432,18 @@ KB MATERIAL:
 
 JSON:"""
 
-    # Use GPT-5.2 Pro with Responses API for reasoning (medium effort for faster briefs)
-    full_prompt = f"Return only valid JSON. No markdown.\n\n{prompt}"
-    response = await openai_client.responses.create(
-        model=settings.openai_pro_model,  # gpt-5.2-pro
-        input=full_prompt,
-        reasoning={"effort": "medium"},  # Medium reasoning - faster than xhigh, still good quality
+    # Use regular GPT-5.2 with Chat Completions API (fast, good for structured extraction)
+    response = await openai_client.chat.completions.create(
+        model=settings.openai_model,  # gpt-5.2
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "system", "content": "Return only valid JSON. No markdown."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0,
+        max_completion_tokens=3500,
     )
-    text = _extract_response_text(response)
+    text = response.choices[0].message.content.strip()
     brief = _parse_json_response(text)
 
     # Fallback: ensure at least one case study entry if we provided any case_study KB items.
