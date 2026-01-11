@@ -2,8 +2,8 @@
 
 Hard-gates:
 - Word count sanity bounds (recommended 110–150; allow variation)
-- 2-3 bullets; each bullet ≤ 10 words
-- CTA with 15-minute Calendly meeting ask (required)
+- exactly 3 bullets; each bullet ≤ 10 words
+- micro-offer CTA (Calendly optional)
 - email body must not contain URLs (sources live in claims_map/UI)
 - opener includes a trigger token AND is sourced from the selected hook (via trigger_excerpt overlap)
 - if any claim_kind=funding: eligibility excerpt required (LEA/district eligibility), source-backed
@@ -15,7 +15,6 @@ from __future__ import annotations
 import re
 from typing import Iterable, List, Optional, Sequence, Set, Tuple
 
-from ...config import get_settings
 from ..schemas import (
     ClaimsMapEntry,
     EvidencePack,
@@ -24,8 +23,6 @@ from ..schemas import (
     ValidationResult,
     WebHook,
 )
-
-settings = get_settings()
 
 
 MONTHS = (
@@ -54,19 +51,6 @@ MICRO_OFFER_PATTERNS: Tuple[re.Pattern[str], ...] = (
     re.compile(r"\bHappy to send\b", re.I),
     re.compile(r"\bI can draft\b", re.I),
 )
-
-_FIFTEEN_MIN_RE = re.compile(r"\b15\s*(?:min|mins|minute|minutes)\b", re.I)
-
-
-def _normalize_calendly_url(url: str) -> str:
-    s = (url or "").strip()
-    s = re.sub(r"\s+", "", s)
-    s = s.rstrip("/").strip()
-    return s or "calendly.com/wceps"
-
-
-CALENDLY_URL_RAW = _normalize_calendly_url(getattr(settings, "calendly_url", "") or "")
-CALENDLY_URL_NO_SCHEME = re.sub(r"^https?://", "", CALENDLY_URL_RAW, flags=re.I).rstrip("/")
 
 SUBJECT_DATE_OR_FY_RE = re.compile(
     r"(\bFY\s?\d{2}\b|\b\d{1,2}/\d{1,2}/\d{2,4}\b|\b(?:by\s+)?(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}\b)",
@@ -132,39 +116,6 @@ def extract_bullets(email_body: str) -> List[str]:
                 bullets.append(s[len(prefix) :].strip())
                 break
     return bullets
-
-
-def _product_offerings(evidence_pack: EvidencePack, *, max_items: int = 12) -> List[str]:
-    """Extract normalized ProductBrief offering phrases (if present)."""
-    brief = evidence_pack.supplemental_brief if isinstance(evidence_pack.supplemental_brief, dict) else None
-    if not isinstance(brief, dict):
-        return []
-    raw = brief.get("offerings")
-    if not isinstance(raw, list):
-        return []
-    cleaned: List[str] = []
-    for x in raw:
-        if not isinstance(x, str):
-            continue
-        s = normalize_ws(x)
-        if not s:
-            continue
-        cleaned.append(s)
-    # Stable dedupe; keep compact
-    return list(dict.fromkeys(cleaned))[:max_items]
-
-
-def _has_offering_phrase(email_body: str, evidence_pack: EvidencePack) -> bool:
-    """True if email contains at least one offering phrase (case-insensitive)."""
-    offerings = _product_offerings(evidence_pack)
-    if not offerings:
-        # If no offering phrases exist, do not block generation.
-        return True
-    hay = normalize_ws(email_body).lower()
-    for o in offerings:
-        if normalize_ws(o).lower() in hay:
-            return True
-    return False
 
 
 def _find_trigger_candidates(text: str) -> List[str]:
@@ -353,20 +304,6 @@ def _has_micro_offer(cta_paragraph: str) -> bool:
     return False
 
 
-def _has_calendly_link(cta_paragraph: str) -> bool:
-    if not cta_paragraph:
-        return False
-    t = normalize_ws(cta_paragraph).lower()
-    for u in [CALENDLY_URL_RAW, CALENDLY_URL_NO_SCHEME]:
-        if u and u.lower() in t:
-            return True
-    return False
-
-
-def _has_15_min_meeting_ask(cta_paragraph: str) -> bool:
-    return bool(_FIFTEEN_MIN_RE.search(cta_paragraph or ""))
-
-
 def _subject_has_trigger_family(subject_line: str, *, hook: WebHook) -> bool:
     """Hard-gate subject lines to prevent generic output.
 
@@ -445,7 +382,6 @@ def validate_email_draft(
     subject_line: str,
     email_body: str,
     selected_hook: SelectedHook,
-    secondary_hook: Optional[SelectedHook] = None,
     claims_map: Sequence[ClaimsMapEntry],
     evidence_pack: EvidencePack,
     treasure_hooks: Sequence[WebHook],
@@ -487,12 +423,12 @@ def validate_email_draft(
             )
         )
 
-    # Bullets - require 2-3 bullets
-    if not (2 <= len(bullets) <= 3):
+    # Bullets
+    if len(bullets) != 3:
         failures.append(
             ValidationFailure(
                 code="bullet_count_invalid",
-                message=f"Must have 2-3 bullets (got {len(bullets)}).",
+                message=f"Must have exactly 3 bullets (got {len(bullets)}).",
                 details={"bullet_count": len(bullets), "bullets": bullets},
             )
         )
@@ -506,31 +442,13 @@ def validate_email_draft(
                 )
             )
 
-    # CTA Calendly meeting ask (in last paragraph)
+    # CTA micro-offer (in last paragraph)
     cta = last_paragraph(email_body)
-    if not _has_15_min_meeting_ask(cta):
+    if not _has_micro_offer(cta):
         failures.append(
             ValidationFailure(
-                code="missing_15_min_meeting_ask",
-                message="CTA must ask for a 15-minute meeting.",
-            )
-        )
-    if not _has_calendly_link(cta):
-        failures.append(
-            ValidationFailure(
-                code="missing_calendly_link",
-                message="CTA must include the Calendly scheduling link.",
-                details={"calendly_url": CALENDLY_URL_RAW},
-            )
-        )
-
-    # Product specificity: require at least one ProductBrief offering phrase when available.
-    if not _has_offering_phrase(email_body, evidence_pack):
-        failures.append(
-            ValidationFailure(
-                code="missing_product_offering_phrase",
-                message="Email must include at least one product offering phrase verbatim (from ProductBrief.offerings).",
-                details={"offerings": _product_offerings(evidence_pack)[:8]},
+                code="missing_micro_offer_cta",
+                message="CTA must include a micro-offer (e.g., 'I can send…', 'Would it help if I sent…', 'Want a 1-page…').",
             )
         )
 
@@ -538,24 +456,12 @@ def validate_email_draft(
     opener = first_paragraph(email_body)
     hook_link = selected_hook.hook.link
 
-    # Email body must not print URLs; exception: configured Calendly URL in CTA.
-    url_hits = re.findall(r"https?://\S+|\bwww\.\S+", email_body or "", flags=re.I)
-    bad_urls: List[str] = []
-    allowed = {CALENDLY_URL_RAW.lower(), CALENDLY_URL_NO_SCHEME.lower()}
-    for u in url_hits:
-        # Trim common trailing punctuation.
-        cleaned = u.strip().rstrip(").,;:!?")
-        c = cleaned.lower()
-        # Allow calendly in either scheme/no-scheme form.
-        if any(a and a in c for a in allowed):
-            continue
-        bad_urls.append(cleaned)
-    if bad_urls:
+    # Email body must not print URLs; sources are shown in the UI/claims_map instead.
+    if re.search(r"https?://|www\.", email_body or "", flags=re.I):
         failures.append(
             ValidationFailure(
                 code="email_contains_url",
-                message="Email body must not contain URLs (except the Calendly scheduling link).",
-                details={"bad_urls": bad_urls, "allowed_calendly": CALENDLY_URL_RAW},
+                message="Email body must not contain URLs. Keep sources in claims_map/UI only.",
             )
         )
 
@@ -586,7 +492,7 @@ def validate_email_draft(
             )
 
     bullet_claims = _claims_map_find(claims_map, kind="deliverable_bullet")
-    if 2 <= len(bullets) <= 3:
+    if len(bullets) == 3:
         # Require one claim per bullet text (whitespace-normalized)
         normalized_claims = {normalize_ws(c.claim_text) for c in bullet_claims}
         for b in bullets:
@@ -656,48 +562,6 @@ def validate_email_draft(
                 message="Trigger must appear in first paragraph and be sourced from the same URL as the hook (date/FY/monitoring/CAP/budget code/allocation/grant period).",
             )
         )
-
-    # Secondary hook gate (if present): must appear in a *later* paragraph with a sourced trigger + cited URL.
-    if secondary_hook and secondary_hook.hook and secondary_hook.hook.link:
-        secondary_link = secondary_hook.hook.link
-        paras = split_paragraphs(email_body)
-        later_paras = paras[1:] if len(paras) > 1 else []
-        secondary_trigger_ok = any(
-            _trigger_is_sourced_from_hook(paragraph=p, hook_trigger_excerpt=secondary_hook.hook.trigger_excerpt)
-            for p in later_paras
-        )
-        if not secondary_trigger_ok:
-            failures.append(
-                ValidationFailure(
-                    code="missing_or_unsourced_secondary_trigger",
-                    message="Secondary hook trigger must appear in a later paragraph and be sourced from the secondary hook URL (use an exact token from secondary trigger_excerpt).",
-                    details={"secondary_link": secondary_link},
-                )
-            )
-
-        secondary_claim_ok = False
-        opener_norm = normalize_ws(opener).lower()
-        body_norm = normalize_ws(email_body).lower()
-        for c in hook_claims:
-            if secondary_link not in (c.urls or []):
-                continue
-            ct = normalize_ws(c.claim_text).lower()
-            if not ct:
-                continue
-            # Ensure this claim maps to a non-opener paragraph mention.
-            if ct in opener_norm:
-                continue
-            if ct in body_norm:
-                secondary_claim_ok = True
-                break
-        if not secondary_claim_ok:
-            failures.append(
-                ValidationFailure(
-                    code="claims_map_missing_secondary_hook",
-                    message="claims_map must include a SECOND hook claim citing the secondary hook URL and matching the paragraph where it is mentioned.",
-                    details={"secondary_link": secondary_link},
-                )
-            )
 
     # Eligibility gate: for each funding claim, require a URL citation whose hook eligibility excerpt is explicit LEA/district eligibility
     funding_claims = _claims_map_find(claims_map, kind="funding")

@@ -72,22 +72,24 @@ class TestPipelineValidator(unittest.TestCase):
     def test_valid_email_passes(self):
         evidence, hook, selected = self._base_objects()
 
-        subject_line = "March 31 FY26 EL plan updates"
+        subject_line = "FY26 EL plan updates: due by March 31"
+        opener = "FY26 EL plan updates are due by March 31."
         email_body = "\n\n".join(
             [
-                "By March 31, FY26 EL plan updates are due — so districts are locking in documentation now.",
+                # No URLs printed; paraphrase is OK as long as opener contains a sourced trigger token.
+                opener,
                 self._long_context_paragraph(),
                 "- Coaching cycles aligned to priorities",
                 "- Evidence checklist for documentation",
                 "- 1-page budget narrative draft",
-                "Would it help if I sent a 1-page budget narrative draft you can adapt? If it's easier, happy to talk for 15 minutes: calendly.com/wceps",
+                "Would it help if I sent a 1-page budget narrative draft you can adapt? Where should I route it?",
             ]
         )
 
         claims = [
             ClaimsMapEntry(
                 claim_kind="hook",
-                claim_text="By March 31, FY26 EL plan updates are due — so districts are locking in documentation now.",
+                claim_text=opener,
                 kb_chunk_ids=[],
                 urls=[hook.link],
             ),
@@ -124,24 +126,20 @@ class TestPipelineValidator(unittest.TestCase):
 
     def test_missing_micro_offer_fails(self):
         evidence, hook, selected = self._base_objects()
-        subject_line = "March 31 FY26 EL plan updates"
+        subject_line = "FY26 update: March 31 deadline"
+        opener = "FY26 updates must be submitted by March 31."
         email_body = "\n\n".join(
             [
-                "By March 31, FY26 EL plan updates are due — quick heads up for planning.",
+                opener,
                 self._long_context_paragraph(),
                 "- Coaching cycles aligned to priorities",
                 "- Evidence checklist for documentation",
                 "- Budget narrative draft",
-                "If it's easier, happy to talk for 15 minutes: calendly.com/wceps",
+                "Thanks for your time.",
             ]
         )
         claims = [
-            ClaimsMapEntry(
-                claim_kind="hook",
-                claim_text="By March 31, FY26 EL plan updates are due — quick heads up for planning.",
-                urls=[hook.link],
-                kb_chunk_ids=[],
-            ),
+            ClaimsMapEntry(claim_kind="hook", claim_text=opener, urls=[hook.link], kb_chunk_ids=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Coaching cycles aligned to priorities", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Evidence checklist for documentation", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Budget narrative draft", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
@@ -157,26 +155,22 @@ class TestPipelineValidator(unittest.TestCase):
         self.assertFalse(result.passed)
         self.assertIn("missing_micro_offer_cta", [f.code for f in result.failures])
 
-    def test_missing_trigger_in_opener_fails(self):
+    def test_email_must_not_print_urls(self):
         evidence, hook, selected = self._base_objects()
-        subject_line = "March 31 FY26 EL plan updates"
+        subject_line = "FY26 EL plan updates: March 31"
+        opener = f"FY26 EL plan updates are due soon. ({hook.link})"
         email_body = "\n\n".join(
             [
-                "EL plan updates are coming up, and documentation adds up quickly.",  # missing date/FY token
+                opener,  # URL printed -> fail
                 self._long_context_paragraph(),
                 "- Coaching cycles aligned to priorities",
                 "- Evidence checklist for documentation",
                 "- 1-page budget narrative draft",
-                "Would it help if I sent a 1-page budget narrative draft? If it's easier, happy to talk for 15 minutes: calendly.com/wceps",
+                "Would it help if I sent a 1-page budget narrative draft?",
             ]
         )
         claims = [
-            ClaimsMapEntry(
-                claim_kind="hook",
-                claim_text="EL plan updates are coming up, and documentation adds up quickly.",
-                urls=[hook.link],
-                kb_chunk_ids=[],
-            ),
+            ClaimsMapEntry(claim_kind="hook", claim_text=opener, urls=[hook.link], kb_chunk_ids=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Coaching cycles aligned to priorities", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Evidence checklist for documentation", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="1-page budget narrative draft", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
@@ -190,28 +184,24 @@ class TestPipelineValidator(unittest.TestCase):
             treasure_hooks=[hook],
         )
         self.assertFalse(result.passed)
-        self.assertIn("missing_or_unsourced_trigger", [f.code for f in result.failures])
+        self.assertIn("email_contains_url", [f.code for f in result.failures])
 
     def test_bullet_word_limit_enforced(self):
         evidence, hook, selected = self._base_objects()
-        subject_line = "March 31 FY26 EL plan updates"
+        subject_line = "FY26 EL updates due March 31"
+        opener = "FY26 updates must be submitted by March 31."
         email_body = "\n\n".join(
             [
-                "By March 31, FY26 EL plan updates are due — quick heads up for planning.",
+                opener,
                 self._long_context_paragraph(),
                 "- This bullet has definitely more than ten words total right now",
                 "- Evidence checklist for documentation",
                 "- 1-page budget narrative draft",
-                "Would it help if I sent a 1-page budget narrative draft? If it's easier, happy to talk for 15 minutes: calendly.com/wceps",
+                "Would it help if I sent a 1-page budget narrative draft?",
             ]
         )
         claims = [
-            ClaimsMapEntry(
-                claim_kind="hook",
-                claim_text="By March 31, FY26 EL plan updates are due — quick heads up for planning.",
-                urls=[hook.link],
-                kb_chunk_ids=[],
-            ),
+            ClaimsMapEntry(claim_kind="hook", claim_text=opener, urls=[hook.link], kb_chunk_ids=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="This bullet has definitely more than ten words total right now", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Evidence checklist for documentation", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="1-page budget narrative draft", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
@@ -229,25 +219,21 @@ class TestPipelineValidator(unittest.TestCase):
 
     def test_funding_requires_eligibility_excerpt(self):
         evidence, hook, selected = self._base_objects()
-        subject_line = "March 31 FY26 EL plan updates"
         # funding claim cites the hook URL, but hook eligibility_excerpt is None -> fail
+        subject_line = "FY26 updates due March 31"
+        opener = "FY26 updates must be submitted by March 31."
         email_body = "\n\n".join(
             [
-                "By March 31, FY26 EL plan updates are due — quick heads up for planning.",
+                opener,
                 self._long_context_paragraph(),
                 "- Coaching cycles aligned to priorities",
                 "- Evidence checklist for documentation",
                 "- 1-page budget narrative draft",
-                "Would it help if I sent a 1-page budget narrative draft? If it's easier, happy to talk for 15 minutes: calendly.com/wceps",
+                "Would it help if I sent a 1-page budget narrative draft?",
             ]
         )
         claims = [
-            ClaimsMapEntry(
-                claim_kind="hook",
-                claim_text="By March 31, FY26 EL plan updates are due — quick heads up for planning.",
-                urls=[hook.link],
-                kb_chunk_ids=[],
-            ),
+            ClaimsMapEntry(claim_kind="hook", claim_text=opener, urls=[hook.link], kb_chunk_ids=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Coaching cycles aligned to priorities", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Evidence checklist for documentation", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
             ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="1-page budget narrative draft", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
@@ -263,100 +249,6 @@ class TestPipelineValidator(unittest.TestCase):
         )
         self.assertFalse(result.passed)
         self.assertIn("funding_missing_eligibility_excerpt", [f.code for f in result.failures])
-
-    def test_offering_phrase_required_when_present(self):
-        evidence, hook, selected = self._base_objects()
-        # Turn on offering enforcement via supplemental_brief
-        evidence.supplemental_brief = {
-            "offerings": ["Job-embedded coaching cycles aligned to district priorities"]
-        }
-        subject_line = "March 31 FY26 EL plan updates"
-        email_body = "\n\n".join(
-            [
-                "By March 31, FY26 EL plan updates are due — quick heads up for planning.",
-                self._long_context_paragraph(),
-                "- Coaching cycles aligned to priorities",
-                "- Evidence checklist for documentation",
-                "- 1-page budget narrative draft",
-                "Would it help if I sent a 1-page budget narrative draft? If it's easier, happy to talk for 15 minutes: calendly.com/wceps",
-            ]
-        )
-        claims = [
-            ClaimsMapEntry(
-                claim_kind="hook",
-                claim_text="By March 31, FY26 EL plan updates are due — quick heads up for planning.",
-                urls=[hook.link],
-                kb_chunk_ids=[],
-            ),
-            ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Coaching cycles aligned to priorities", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
-            ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Evidence checklist for documentation", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
-            ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="1-page budget narrative draft", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
-        ]
-        result = validate_email_draft(
-            subject_line=subject_line,
-            email_body=email_body,
-            selected_hook=selected,
-            claims_map=claims,
-            evidence_pack=evidence,
-            treasure_hooks=[hook],
-        )
-        self.assertFalse(result.passed)
-        self.assertIn("missing_product_offering_phrase", [f.code for f in result.failures])
-
-    def test_secondary_hook_required_when_provided(self):
-        evidence, hook, selected = self._base_objects()
-
-        secondary_hook = WebHook(
-            hook_type="monitoring",
-            quote="Districts may be selected for monitoring this spring.",
-            link="https://example.com/monitoring",
-            trigger_excerpt="The state will conduct monitoring this spring.",
-            eligibility_excerpt=None,
-            why_relevant="Monitoring language creates impetus to tighten documentation and routines.",
-            confidence="high",
-            source_quality_reason="State monitoring page",
-        )
-        secondary_selected = SelectedHook(hook=secondary_hook, rank=2, reasons=["human_selected_secondary"])
-
-        subject_line = "March 31 FY26 EL plan updates"
-        email_body = "\n\n".join(
-            [
-                "By March 31, FY26 EL plan updates are due — quick heads up for planning.",
-                "Separately, districts may be selected for monitoring this spring, so artifacts matter.",
-                self._long_context_paragraph(),
-                "- Coaching cycles aligned to priorities",
-                "- Evidence checklist for documentation",
-                "- 1-page budget narrative draft",
-                "Would it help if I sent a 1-page budget narrative draft? If it's easier, happy to talk for 15 minutes: calendly.com/wceps",
-            ]
-        )
-        claims = [
-            ClaimsMapEntry(
-                claim_kind="hook",
-                claim_text="By March 31, FY26 EL plan updates are due — quick heads up for planning.",
-                urls=[hook.link],
-                kb_chunk_ids=[],
-            ),
-            ClaimsMapEntry(
-                claim_kind="hook",
-                claim_text="Separately, districts may be selected for monitoring this spring, so artifacts matter.",
-                urls=[secondary_hook.link],
-                kb_chunk_ids=[],
-            ),
-            ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Coaching cycles aligned to priorities", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
-            ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="Evidence checklist for documentation", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
-            ClaimsMapEntry(claim_kind="deliverable_bullet", claim_text="1-page budget narrative draft", kb_chunk_ids=["kb-1_chunk_0"], urls=[]),
-        ]
-        result = validate_email_draft(
-            subject_line=subject_line,
-            email_body=email_body,
-            selected_hook=selected,
-            secondary_hook=secondary_selected,
-            claims_map=claims,
-            evidence_pack=evidence,
-            treasure_hooks=[hook, secondary_hook],
-        )
-        self.assertTrue(result.passed, msg=[f.code for f in result.failures])
 
 
 if __name__ == "__main__":

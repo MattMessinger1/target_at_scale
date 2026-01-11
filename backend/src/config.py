@@ -9,15 +9,10 @@ class Settings(BaseSettings):
     # API Keys
     openai_api_key: str = ""
     # OpenAI model for parsing + email generation (override via OPENAI_MODEL)
-    openai_model: str = "gpt-5.2"
-    # Pro model for email generation with extended reasoning (uses Responses API)
-    openai_pro_model: str = "gpt-5.2-pro"
+    openai_model: str = "gpt-4o"
     firecrawl_api_key: str = ""
     perplexity_api_key: str = ""
     admin_token: str = ""
-
-    # Outreach CTA
-    calendly_url: str = "calendly.com/wceps"
     
     # Database
     database_url: str = "sqlite+aiosqlite:///./wceps.db"

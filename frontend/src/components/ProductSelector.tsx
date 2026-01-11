@@ -16,23 +16,23 @@ const PRODUCT_INFO: Record<string, { description: string; icon: string }> = {
     icon: '📚',
   },
   'WebbAlign': {
-    description: 'Depth of Knowledge alignment and assessment tools',
+    description: 'Assessment and curriculum alignment tools',
     icon: '📊',
   },
   'CALL': {
-    description: 'School-wide leadership assessment for distributed leadership practices',
-    icon: '📋',
+    description: 'Academic language assessment and intervention',
+    icon: '💬',
   },
   'The Discussion Project': {
     description: 'Academic discourse and discussion-based learning',
     icon: '🗣️',
   },
   'WIDA MODEL Online': {
-    description: 'Interim English language proficiency assessment',
+    description: 'English language proficiency assessment',
     icon: '📝',
   },
   'WIDA SIS': {
-    description: 'Student information system for EL program management',
+    description: 'Student information systems for EL programs',
     icon: '💻',
   },
 }

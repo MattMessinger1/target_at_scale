@@ -64,31 +64,6 @@ PRODUCT_PATTERNS = {
         r"building\s*community",
         r"parent\s*engagement",
     ],
-    # CALL - Comprehensive Assessment of Leadership for Learning
-    # Note: patterns must be specific to avoid matching "call to action" etc.
-    "call": [
-        r"comprehensive\s*assessment\s*(of|for)\s*leadership",
-        r"\bcall\b\s*\(comprehensive",
-        r"leadership\s*for\s*learning",
-        r"leadershipforlearning",
-        r"call\s*survey",
-        r"call\s*tool",
-    ],
-    "discussion_project": [
-        r"discussion\s*project",
-        r"academic\s*discourse",
-        r"discussion[- ]based\s*learning",
-    ],
-    "wida_sis": [
-        r"wida\s*sis",
-        r"student\s*information\s*system.*ell",
-        r"ell.*student\s*information",
-    ],
-    "wida_professional_learning": [
-        r"wida\s*professional\s*learning",
-        r"wida\s*licensed\s*offerings",
-        r"planning\s*with\s*purpose",
-    ],
 }
 
 # State detection patterns

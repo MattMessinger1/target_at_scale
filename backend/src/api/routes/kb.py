@@ -1,31 +1,22 @@
 """Knowledge Base API routes."""
-import asyncio
 import io
 import json
-import logging
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Header, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, delete
+from sqlalchemy import select, or_
 from sqlalchemy import func
 from pydantic import BaseModel
 
 from ...db import get_db, KnowledgeBaseItem
-from ...db.models import ProductBrief
 from ...config import get_settings
 
 settings = get_settings()
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# In-memory storage for background rebuild task status
-# Key: task_id, Value: status dict
-_REBUILD_TASKS: Dict[str, Dict[str, Any]] = {}
 
 
 class KBItemResponse(BaseModel):
@@ -651,120 +642,6 @@ async def rebuild_product_briefs(
     await upsert_product_brief(db, product_key, merged, state_code=state, source="merged")
 
     return {"message": "Rebuilt product brief", "product_key": product_key, "state": state}
-
-
-async def _run_rebuild_task(task_id: str):
-    """Background task to rebuild all product briefs."""
-    # Initialize task status FIRST before any imports that might fail
-    _REBUILD_TASKS[task_id] = {
-        "status": "initializing",
-        "started_at": datetime.utcnow().isoformat(),
-        "completed": 0,
-        "total": 7,
-        "products": [],
-        "errors": [],
-    }
-    
-    try:
-        from ...db.database import AsyncSessionLocal
-        from ...research.product_briefs import (
-            DISPLAY_TO_KEY,
-            build_brief_from_kb,
-            upsert_product_brief,
-            normalize_product_key,
-        )
-        
-        products_list = list(DISPLAY_TO_KEY.keys())
-        _REBUILD_TASKS[task_id]["total"] = len(products_list)
-        _REBUILD_TASKS[task_id]["status"] = "running"
-        async with AsyncSessionLocal() as db:
-            # Clear all existing cached briefs
-            await db.execute(delete(ProductBrief))
-            await db.commit()
-            logger.info(f"[Task {task_id}] Cleared existing briefs, starting rebuild...")
-            
-            for display_name in products_list:
-                try:
-                    logger.info(f"[Task {task_id}] Building brief for {display_name}...")
-                    brief = await build_brief_from_kb(db, display_name)
-                    product_key = normalize_product_key(display_name)
-                    await upsert_product_brief(db, product_key, brief, state_code=None, source="rebuild_pro_xhigh")
-                    
-                    _REBUILD_TASKS[task_id]["completed"] += 1
-                    _REBUILD_TASKS[task_id]["products"].append({
-                        "product": display_name,
-                        "product_key": product_key,
-                        "status": "done"
-                    })
-                    logger.info(f"[Task {task_id}] Completed {display_name} ({_REBUILD_TASKS[task_id]['completed']}/{len(products_list)})")
-                    
-                except Exception as e:
-                    logger.error(f"[Task {task_id}] Error building {display_name}: {e}")
-                    _REBUILD_TASKS[task_id]["errors"].append({
-                        "product": display_name,
-                        "error": str(e)
-                    })
-            
-            _REBUILD_TASKS[task_id]["status"] = "completed"
-            _REBUILD_TASKS[task_id]["finished_at"] = datetime.utcnow().isoformat()
-            logger.info(f"[Task {task_id}] Rebuild completed: {_REBUILD_TASKS[task_id]['completed']}/{len(products_list)} products")
-            
-    except Exception as e:
-        logger.error(f"[Task {task_id}] Task failed: {e}")
-        _REBUILD_TASKS[task_id]["status"] = "failed"
-        _REBUILD_TASKS[task_id]["error"] = str(e)
-        _REBUILD_TASKS[task_id]["finished_at"] = datetime.utcnow().isoformat()
-
-
-@router.post("/briefs/rebuild-all")
-async def rebuild_all_product_briefs(
-    x_admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
-):
-    """Start background task to rebuild ALL product briefs using GPT-5.2 Pro with xhigh reasoning.
-
-    Returns immediately with a task_id. Poll /briefs/rebuild-status?task_id=... for progress.
-    Protected by X-Admin-Token header matching ADMIN_TOKEN env var.
-    
-    Products rebuilt:
-    - CARE Coaching
-    - WebbAlign
-    - WIDA MODEL Online
-    - WIDA Professional Learning
-    - CALL
-    - The Discussion Project
-    - WIDA SIS
-    """
-    _require_admin_token(x_admin_token)
-    
-    task_id = str(uuid4())
-    
-    # Start background task
-    asyncio.create_task(_run_rebuild_task(task_id))
-    
-    return {
-        "task_id": task_id,
-        "status": "started",
-        "message": f"Rebuild started. Poll /api/kb/briefs/rebuild-status?task_id={task_id} for progress.",
-    }
-
-
-@router.get("/briefs/rebuild-status")
-async def get_rebuild_status(
-    task_id: str = Query(..., description="Task ID from rebuild-all response"),
-):
-    """Get status of a product briefs rebuild task.
-    
-    Returns:
-    - status: "running", "completed", or "failed"
-    - completed: number of products rebuilt so far
-    - total: total number of products
-    - products: list of completed products with status
-    - errors: list of any errors encountered
-    """
-    if task_id not in _REBUILD_TASKS:
-        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
-    
-    return _REBUILD_TASKS[task_id]
 
 
 @router.post("/ingest-documents")

@@ -10,7 +10,6 @@ from .models import (
     KnowledgeBaseItem,
     ProductBrief,
     ExtractedSnippet,
-    DeepResearchCache,
 )
 
 __all__ = [
@@ -26,5 +25,4 @@ __all__ = [
     "KnowledgeBaseItem",
     "ProductBrief",
     "ExtractedSnippet",
-    "DeepResearchCache",
 ]
