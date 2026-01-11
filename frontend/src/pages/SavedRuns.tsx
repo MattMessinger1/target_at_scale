@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, SavedRunSummary, SavedRunFull, BatchJobSummary, BatchJobDetail, GroupedRunsResponse } from '@/lib/api'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { api, SavedRunSummary } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/use-toast'
@@ -11,11 +10,9 @@ import {
   Trash2,
   ChevronRight,
   ChevronDown,
-  FileText,
   Mail,
   Clock,
   Loader2,
-  AlertCircle,
   CheckCircle2,
   XCircle,
 } from 'lucide-react'
@@ -31,7 +28,6 @@ export default function SavedRuns() {
   const [viewMode, setViewMode] = useState<ViewMode>('grouped')
   const [expandedProducts, setExpandedProducts] = useState<Record<string, boolean>>({})
   const [expandedStates, setExpandedStates] = useState<Record<string, boolean>>({})
-  const [selectedRun, setSelectedRun] = useState<SavedRunFull | null>(null)
   
   // Fetch grouped runs
   const { data: groupedRuns, isLoading: groupedLoading } = useQuery({

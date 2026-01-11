@@ -2731,7 +2731,7 @@ function EmailGeneratorPipeline() {
                     if (!selectedProducts[0] || batchStates.length === 0) return
                     setStartingBatch(true)
                     try {
-                      const job = await api.batch.create({
+                      await api.batch.create({
                         name: `${selectedProducts[0]} - ${batchStates.length} states`,
                         product: selectedProducts[0],
                         states: batchStates,
