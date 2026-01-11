@@ -11,6 +11,7 @@
 import { useState } from 'react'
 import { useEffect } from 'react'
 import { useMutation } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { 
   api, 
   FundingItem, 
@@ -649,6 +650,12 @@ function EmailGeneratorV1() {
             </div>
             
             <div className="flex items-center gap-3">
+              <Link
+                to="/saved-runs"
+                className="px-3 py-2 rounded-md bg-slate-800/60 text-slate-200 border border-slate-700 hover:bg-slate-800 transition-colors text-sm"
+              >
+                Saved Runs
+              </Link>
               <button
                 onClick={() => openModelEmailUploader()}
                 className="px-3 py-2 rounded-md bg-slate-800/60 text-slate-200 border border-slate-700 hover:bg-slate-800 transition-colors text-sm"
@@ -1276,6 +1283,11 @@ function EmailGeneratorPipeline() {
   const [loadingSavedRuns, setLoadingSavedRuns] = useState(false)
   const [savingRun, setSavingRun] = useState(false)
   const [currentSavedRunId, setCurrentSavedRunId] = useState<number | null>(null)
+  
+  // Batch processing state
+  const [showBatchModal, setShowBatchModal] = useState(false)
+  const [batchStates, setBatchStates] = useState<Array<{ code: string; name: string }>>([])
+  const [startingBatch, setStartingBatch] = useState(false)
 
   useEffect(() => {
     if (selectedHookLinks.length === 1) {
@@ -1493,6 +1505,44 @@ function EmailGeneratorPipeline() {
     } catch (err) {
       toast({
         title: 'Error saving run',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingRun(false)
+    }
+  }
+
+  // Save research results BEFORE email generation (allows revisiting later)
+  const saveResearchRun = async (name?: string) => {
+    if (!prep) return
+    setSavingRun(true)
+    try {
+      const product = selectedProducts[0] || ''
+      const state = selectedStates[0]
+      const defaultName = `${product} - ${state?.name || state?.code || 'Research'}`
+      
+      const saved = await api.savedRuns.saveResearch({
+        name: name || defaultName,
+        product,
+        state_code: state?.code || '',
+        state_full: state?.name || undefined,
+        audiences: selectedAudiences.length ? selectedAudiences : ['Title III Coordinators', 'ELL/Multilingual Directors', 'Curriculum Directors'],
+        district_name: districtName.trim() || undefined,
+        evidence_pack: prep.evidence_pack,
+        hooks: prep.treasure_hooks || [],
+        filtered_requirements: prep.filtered_requirements || [],
+        district_research: prep.district_research || null,
+      })
+      toast({
+        title: 'Research saved',
+        description: `Saved as "${saved.name || defaultName}". View it in Saved Runs.`,
+      })
+      // Refresh the saved runs list
+      loadSavedRuns()
+    } catch (err) {
+      toast({
+        title: 'Error saving research',
         description: err instanceof Error ? err.message : 'Unknown error',
         variant: 'destructive',
       })
@@ -2562,6 +2612,158 @@ function EmailGeneratorPipeline() {
           </div>
         )}
 
+        {/* Batch Research Modal */}
+        {showBatchModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-2xl max-h-[80vh] overflow-hidden">
+              <div className="p-4 border-b border-slate-700 flex items-center justify-between">
+                <h2 className="text-lg font-medium text-slate-200">Batch Research</h2>
+                <button
+                  onClick={() => setShowBatchModal(false)}
+                  className="p-1 text-slate-400 hover:text-slate-200"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="p-4 overflow-y-auto max-h-[60vh]">
+                <p className="text-sm text-slate-400 mb-4">
+                  Run research across multiple states simultaneously. Results will be saved to your Saved Runs.
+                </p>
+                
+                {/* Product Summary */}
+                <div className="mb-4 p-3 bg-slate-900/50 rounded-lg border border-slate-700">
+                  <div className="text-xs text-slate-500 mb-1">Product</div>
+                  <div className="text-sm text-slate-200">{selectedProducts[0] || 'No product selected'}</div>
+                </div>
+                
+                {/* State Selection */}
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-slate-300">States to research</label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          // Add all WIDA states
+                          const widaStates = [
+                            { code: 'AL', name: 'Alabama' }, { code: 'CO', name: 'Colorado' },
+                            { code: 'DC', name: 'District of Columbia' }, { code: 'DE', name: 'Delaware' },
+                            { code: 'FL', name: 'Florida' }, { code: 'GA', name: 'Georgia' },
+                            { code: 'HI', name: 'Hawaii' }, { code: 'ID', name: 'Idaho' },
+                            { code: 'IL', name: 'Illinois' }, { code: 'IN', name: 'Indiana' },
+                            { code: 'KY', name: 'Kentucky' }, { code: 'ME', name: 'Maine' },
+                            { code: 'MD', name: 'Maryland' }, { code: 'MA', name: 'Massachusetts' },
+                            { code: 'MI', name: 'Michigan' }, { code: 'MN', name: 'Minnesota' },
+                            { code: 'MO', name: 'Missouri' }, { code: 'MT', name: 'Montana' },
+                            { code: 'NV', name: 'Nevada' }, { code: 'NH', name: 'New Hampshire' },
+                            { code: 'NJ', name: 'New Jersey' }, { code: 'NM', name: 'New Mexico' },
+                            { code: 'NC', name: 'North Carolina' }, { code: 'ND', name: 'North Dakota' },
+                            { code: 'OH', name: 'Ohio' }, { code: 'OK', name: 'Oklahoma' },
+                            { code: 'PA', name: 'Pennsylvania' }, { code: 'RI', name: 'Rhode Island' },
+                            { code: 'SC', name: 'South Carolina' }, { code: 'SD', name: 'South Dakota' },
+                            { code: 'TN', name: 'Tennessee' }, { code: 'UT', name: 'Utah' },
+                            { code: 'VT', name: 'Vermont' }, { code: 'VA', name: 'Virginia' },
+                            { code: 'WI', name: 'Wisconsin' }, { code: 'WY', name: 'Wyoming' },
+                            { code: 'VI', name: 'US Virgin Islands' },
+                          ]
+                          setBatchStates(widaStates)
+                        }}
+                        className="text-xs px-2 py-1 rounded bg-emerald-800/50 text-emerald-300 hover:bg-emerald-700/50"
+                      >
+                        All WIDA States
+                      </button>
+                      <button
+                        onClick={() => setBatchStates([])}
+                        className="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 p-3 bg-slate-900/30 rounded-lg border border-slate-700 min-h-[60px]">
+                    {batchStates.length === 0 ? (
+                      <span className="text-sm text-slate-500">No states selected. Click "All WIDA States" or add from your current selection.</span>
+                    ) : (
+                      batchStates.map(s => (
+                        <span
+                          key={s.code}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-slate-700 rounded text-xs text-slate-200"
+                        >
+                          {s.code}
+                          <button
+                            onClick={() => setBatchStates(prev => prev.filter(x => x.code !== s.code))}
+                            className="text-slate-400 hover:text-red-400"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))
+                    )}
+                  </div>
+                  <div className="mt-2 text-xs text-slate-500">
+                    {batchStates.length} states selected
+                  </div>
+                </div>
+                
+                {/* Estimated time/cost */}
+                <div className="mb-4 p-3 bg-amber-900/20 rounded-lg border border-amber-700/30">
+                  <div className="text-sm text-amber-300 font-medium mb-1">Estimated Time & Cost</div>
+                  <div className="text-xs text-amber-200/70">
+                    ~{Math.ceil(batchStates.length / 3) * 15} - {Math.ceil(batchStates.length / 3) * 30} minutes
+                    (3 states in parallel, 5-10 min each)
+                  </div>
+                  <div className="text-xs text-amber-200/70 mt-1">
+                    ~${(batchStates.length * 1.5).toFixed(2)} in API costs ({batchStates.length} states × ~$1.50/state)
+                  </div>
+                </div>
+              </div>
+              
+              <div className="p-4 border-t border-slate-700 flex justify-end gap-3">
+                <button
+                  onClick={() => setShowBatchModal(false)}
+                  className="px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!selectedProducts[0] || batchStates.length === 0) return
+                    setStartingBatch(true)
+                    try {
+                      const job = await api.batch.create({
+                        name: `${selectedProducts[0]} - ${batchStates.length} states`,
+                        product: selectedProducts[0],
+                        states: batchStates,
+                        audiences: selectedAudiences,
+                        include_district_research: false,
+                      })
+                      toast({
+                        title: 'Batch job started!',
+                        description: `Processing ${batchStates.length} states. View progress in Saved Runs.`,
+                      })
+                      setShowBatchModal(false)
+                      setBatchStates([])
+                    } catch (err) {
+                      toast({
+                        title: 'Failed to start batch job',
+                        description: err instanceof Error ? err.message : 'Unknown error',
+                        variant: 'destructive',
+                      })
+                    } finally {
+                      setStartingBatch(false)
+                    }
+                  }}
+                  disabled={!selectedProducts[0] || batchStates.length === 0 || startingBatch}
+                  className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {startingBatch ? 'Starting...' : `Start Batch (${batchStates.length} states)`}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {renderProgressBar()}
 
         {/* Step 1: Choose Product & Audience */}
@@ -2684,29 +2886,39 @@ function EmailGeneratorPipeline() {
                 </div>
               )}
 
-              <div className="pt-4 flex justify-end gap-3">
-                {cacheStatus?.status === 'completed' && (
-                  <button
-                    onClick={handleReSearch}
-                    disabled={!canPrep}
-                    className="px-4 py-2 rounded-lg font-medium text-slate-300 border border-slate-600 hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Re-search (Fresh)
-                  </button>
-                )}
+              <div className="pt-4 flex justify-between items-center">
                 <button
-                  onClick={handlePrep}
-                  disabled={!canPrep}
-                  className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-                    !canPrep
-                      ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                  }`}
+                  onClick={() => setShowBatchModal(true)}
+                  disabled={!selectedProducts.length}
+                  className="px-4 py-2 rounded-lg font-medium text-amber-300 border border-amber-600 hover:bg-amber-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Run research across multiple states at once"
                 >
-                  {cacheStatus?.status === 'completed' ? 'View Cached Results →' : 
-                   cacheStatus?.status === 'in_progress' ? 'View Progress →' :
-                   'Find Requirements →'}
+                  🚀 Batch Research
                 </button>
+                <div className="flex gap-3">
+                  {cacheStatus?.status === 'completed' && (
+                    <button
+                      onClick={handleReSearch}
+                      disabled={!canPrep}
+                      className="px-4 py-2 rounded-lg font-medium text-slate-300 border border-slate-600 hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Re-search (Fresh)
+                    </button>
+                  )}
+                  <button
+                    onClick={handlePrep}
+                    disabled={!canPrep}
+                    className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                      !canPrep
+                        ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                    }`}
+                  >
+                    {cacheStatus?.status === 'completed' ? 'View Cached Results →' : 
+                     cacheStatus?.status === 'in_progress' ? 'View Progress →' :
+                     'Find Requirements →'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -3154,6 +3366,14 @@ function EmailGeneratorPipeline() {
                 ← Back
               </button>
               <div className="flex gap-3">
+                <button
+                  onClick={() => saveResearchRun()}
+                  disabled={savingRun || !prep}
+                  className="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-600 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Save research for later email generation"
+                >
+                  {savingRun ? 'Saving...' : '💾 Save Research'}
+                </button>
                 <button
                   onClick={handleReSearch}
                   disabled={prepMutation.isPending}

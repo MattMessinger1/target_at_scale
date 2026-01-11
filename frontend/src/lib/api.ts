@@ -556,6 +556,7 @@ export interface SaveRunRequest {
 
 export interface SavedRunSummary {
   id: number
+  run_type: 'research' | 'email'
   name?: string | null
   product: string
   state_code: string
@@ -563,11 +564,14 @@ export interface SavedRunSummary {
   audiences: string[]
   district_name?: string | null
   created_at: string
+  batch_job_id?: number | null
   subject_preview?: string | null
+  hook_count?: number | null
 }
 
 export interface SavedRunFull {
   id: number
+  run_type: 'research' | 'email'
   name?: string | null
   product: string
   state_code: string
@@ -579,6 +583,72 @@ export interface SavedRunFull {
   primary_hook_link?: string | null
   hook_reason_tags: Record<string, string[]>
   hook_reason_notes: Record<string, string>
+  created_at: string
+  batch_job_id?: number | null
+}
+
+export interface SaveResearchRequest {
+  name?: string
+  product: string
+  state_code: string
+  state_full?: string
+  audiences?: string[]
+  district_name?: string
+  evidence_pack: EvidencePack
+  hooks: WebHook[]
+  filtered_requirements?: FilteredRequirement[]
+  district_research?: DistrictResearchResult | null
+  batch_job_id?: number
+}
+
+export interface GroupedRunsResponse {
+  product: string
+  states: Record<string, SavedRunSummary[]>
+}
+
+export interface BatchJobSummary {
+  id: number
+  name?: string | null
+  product: string
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  total_states: number
+  completed_states: number
+  failed_states: number
+  created_at: string
+  started_at?: string | null
+  completed_at?: string | null
+}
+
+export interface BatchJobDetail {
+  id: number
+  name?: string | null
+  product: string
+  states: Array<{ code: string; name: string }>
+  audiences: string[]
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  total_states: number
+  completed_states: number
+  failed_states: number
+  error_message?: string | null
+  created_at: string
+  started_at?: string | null
+  completed_at?: string | null
+}
+
+export interface CreateBatchJobRequest {
+  name?: string
+  product: string
+  states: Array<{ code: string; name: string }>
+  audiences?: string[]
+  include_district_research?: boolean
+}
+
+export interface BatchRunSummary {
+  id: number
+  state_code: string
+  state_full?: string | null
+  status: 'completed' | 'failed' | 'pending' | 'queued'
+  hook_count?: number | null
   created_at: string
 }
 
@@ -1210,12 +1280,41 @@ export const api = {
   savedRuns: {
     list: (limit = 50, offset = 0) =>
       fetchApi<SavedRunSummary[]>(`/saved-runs?limit=${limit}&offset=${offset}`),
+    listFiltered: (params: { run_type?: string; product?: string; state_code?: string; limit?: number; offset?: number }) => {
+      const searchParams = new URLSearchParams()
+      if (params.run_type) searchParams.set('run_type', params.run_type)
+      if (params.product) searchParams.set('product', params.product)
+      if (params.state_code) searchParams.set('state_code', params.state_code)
+      if (params.limit) searchParams.set('limit', String(params.limit))
+      if (params.offset) searchParams.set('offset', String(params.offset))
+      return fetchApi<SavedRunSummary[]>(`/saved-runs?${searchParams.toString()}`)
+    },
+    listGrouped: (days = 30) =>
+      fetchApi<GroupedRunsResponse[]>(`/saved-runs/grouped?days=${days}`),
     get: (id: number) => fetchApi<SavedRunFull>(`/saved-runs/${id}`),
     save: (data: SaveRunRequest) =>
       fetchApi<SavedRunFull>('/saved-runs', { method: 'POST', body: JSON.stringify(data) }),
+    saveResearch: (data: SaveResearchRequest) =>
+      fetchApi<SavedRunFull>('/saved-runs/research', { method: 'POST', body: JSON.stringify(data) }),
     rename: (id: number, name: string) =>
       fetchApi<SavedRunSummary>(`/saved-runs/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
     delete: (id: number) =>
       fetchApi<{ ok: boolean; deleted_id: number }>(`/saved-runs/${id}`, { method: 'DELETE' }),
+    cleanup: (days = 30) =>
+      fetchApi<{ deleted_count: number; cutoff_date: string }>(`/saved-runs/cleanup?days=${days}`, { method: 'DELETE' }),
+  },
+
+  // Batch processing
+  batch: {
+    list: (limit = 20, offset = 0) =>
+      fetchApi<BatchJobSummary[]>(`/batch?limit=${limit}&offset=${offset}`),
+    get: (jobId: number) =>
+      fetchApi<BatchJobDetail>(`/batch/${jobId}`),
+    getRuns: (jobId: number) =>
+      fetchApi<BatchRunSummary[]>(`/batch/${jobId}/runs`),
+    create: (data: CreateBatchJobRequest) =>
+      fetchApi<BatchJobDetail>('/batch', { method: 'POST', body: JSON.stringify(data) }),
+    cancel: (jobId: number) =>
+      fetchApi<{ ok: boolean; job_id: number; status: string }>(`/batch/${jobId}/cancel`, { method: 'POST' }),
   },
 }
