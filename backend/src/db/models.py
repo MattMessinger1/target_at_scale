@@ -367,7 +367,51 @@ class DeepResearchCache(Base):
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     
-    # Timestamps for cache invalidation (14-day TTL)
+    # Timestamps for cache invalidation (30-day TTL)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class DistrictResearchCache(Base):
+    """Cache for district-level research results (30-day TTL).
+    
+    District research surveys top 30 districts in a state by EL population
+    for incremental funding/compliance opportunities beyond state-level findings.
+    """
+    
+    __tablename__ = "district_research_cache"
+    __table_args__ = (
+        UniqueConstraint("state_code", "product_key", name="uq_district_research_cache_key"),
+    )
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    
+    # Cache key components
+    state_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    product_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    
+    # Districts surveyed (up to 30)
+    districts_surveyed: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    
+    # Results: list of district hooks (each tagged with district_name)
+    results_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    
+    # Filtered items (for transparency display)
+    filtered_items_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    
+    # OpenAI task tracking (for resumability)
+    openai_response_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    model_used: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    
+    # Status: pending, in_progress, completed, failed, cancelled
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # Timing
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    
+    # Timestamps for cache invalidation (30-day TTL)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

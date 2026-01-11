@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Cache TTL in days
-CACHE_TTL_DAYS = 14
+CACHE_TTL_DAYS = 30
 
 
 # Deep Research prompt template

@@ -22,6 +22,7 @@ import {
   EvidencePack,
   WebHook,
   FilteredRequirement,
+  DistrictResearchResult,
   PipelineRequest,
   PipelineRunStreamRequest,
   PipelineRunResponse,
@@ -1136,6 +1137,7 @@ const STAGE_LABELS: Record<string, string> = {
   'evidence_pack': 'Gathering evidence from knowledge base',
   'treasure_hunter': 'Running Deep Research',
   'hook_gate': 'Filtering requirements',
+  'district_research': 'Surveying districts for opportunities',
   'hook_selector': 'Selecting best hooks',
   'email_writer': 'Writing email',
   'validator': 'Validating email',
@@ -1227,6 +1229,12 @@ function EmailGeneratorPipeline() {
 
   const [districtName, setDistrictName] = useState('')
   const [districtUrl, setDistrictUrl] = useState('')
+  
+  // District research option
+  const [includeDistrictResearch, setIncludeDistrictResearch] = useState(false)
+  const [districtResearchStatus, setDistrictResearchStatus] = useState<'idle' | 'running' | 'complete'>('idle')
+  const [districtResearchProgress, setDistrictResearchProgress] = useState(0)
+  const [districtResearchMessage, setDistrictResearchMessage] = useState('')
 
   // Cache status for the current state+product selection
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null)
@@ -1238,7 +1246,7 @@ function EmailGeneratorPipeline() {
   const [traceEvents, setTraceEvents] = useState<PipelineStreamEvent[]>([])
   const [researchStartTime, setResearchStartTime] = useState<Date | null>(null)
   const [emailProgress, setEmailProgress] = useState<{ progress: number; message: string } | null>(null)
-  const [prep, setPrep] = useState<{ evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; warnings: string[] } | null>(null)
+  const [prep, setPrep] = useState<{ evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; district_research?: DistrictResearchResult | null; warnings: string[] } | null>(null)
   const [blockedFilteredRequirements, setBlockedFilteredRequirements] = useState<FilteredRequirement[]>([])
   // Use hook_id for reliable selection (handles multiple hooks with same URL)
   const [selectedHookKeys, setSelectedHookKeys] = useState<string[]>([])  // hook_id or link fallback
@@ -1457,21 +1465,27 @@ function EmailGeneratorPipeline() {
   }
 
   const prepMutation = useMutation<
-    { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; warnings: string[] },
+    { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; district_research?: any; warnings: string[] },
     Error & { filteredRequirements?: FilteredRequirement[] },
     void
   >({
     mutationFn: () => {
-      const req: PipelineRequest = {
+      const req: PipelineRequest & { include_district_research?: boolean } = {
         product: selectedProducts[0] || '',
         state: selectedStates[0]?.code || '',
         state_full: selectedStates[0]?.name || undefined,
         audiences: selectedAudiences.length ? selectedAudiences : undefined,
         district_name: districtName.trim() || undefined,
         district_url: districtUrl.trim() || undefined,
+        include_district_research: includeDistrictResearch,
       }
       return api.generate.pipelinePrepStream(req, (evt) => {
         setTraceEvents((prev) => [...prev, evt])
+        // Track district research progress
+        if (evt.stage === 'district_research' && evt.type === 'progress') {
+          setDistrictResearchProgress(typeof evt.percent === 'number' ? evt.percent : 0)
+          setDistrictResearchMessage(typeof evt.message === 'string' ? evt.message : 'Researching districts...')
+        }
       })
     },
     onSuccess: (data) => {
@@ -2451,6 +2465,24 @@ function EmailGeneratorPipeline() {
                 </div>
               </div>
 
+              {/* District Research Toggle */}
+              <div className="flex items-center gap-3 p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+                <input 
+                  type="checkbox" 
+                  id="district-research"
+                  checked={includeDistrictResearch}
+                  onChange={(e) => setIncludeDistrictResearch(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-600 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-900"
+                />
+                <label htmlFor="district-research" className="flex-1 cursor-pointer">
+                  <span className="text-sm font-medium text-slate-200">Include District Research</span>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Survey top 30 districts by EL population for incremental opportunities 
+                    (adds ~10-20 min, runs automatically after state research)
+                  </p>
+                </label>
+              </div>
+
               {/* Cache status notification */}
               {cacheStatus && cacheStatus.status !== 'not_found' && cacheStatus.status !== 'loading' && (
                 <div className={`p-4 rounded-lg border ${
@@ -2571,7 +2603,7 @@ function EmailGeneratorPipeline() {
                     This thorough research typically takes <span className="font-medium">5-30 minutes</span>. Feel free to leave this page and come back - we'll save your results.
                   </div>
                   <div className="mt-2 text-sm text-emerald-200/70">
-                    Your results will be saved for <span className="font-medium">14 days</span>. Future searches for {selectedStates[0]?.name || 'this state'} + {selectedProducts[0] || 'this product'} will return instantly until the cache expires.
+                    Your results will be saved for <span className="font-medium">30 days</span>. Future searches for {selectedStates[0]?.name || 'this state'} + {selectedProducts[0] || 'this product'} will return instantly until the cache expires.
                   </div>
                 </div>
               </div>
@@ -2737,6 +2769,180 @@ function EmailGeneratorPipeline() {
             {!tagsOk && selectedHookLinks.length > 0 && (
               <div className="mt-4 p-3 rounded border border-amber-800 bg-amber-900/20 text-amber-300 text-sm">
                 Add at least one reason tag for each selected requirement to continue.
+              </div>
+            )}
+
+            {/* District Research Section */}
+            {prep && (
+              <div className="mt-8 pt-6 border-t border-slate-700">
+                {/* District Research Progress */}
+                {districtResearchStatus === 'running' && (
+                  <div className="mb-6 p-4 bg-slate-800/50 rounded-lg border border-amber-700/50">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="animate-spin h-5 w-5 border-2 border-amber-500 border-t-transparent rounded-full" />
+                      <span className="text-sm font-medium text-amber-400">District Research in Progress</span>
+                    </div>
+                    
+                    {/* Progress bar */}
+                    <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-amber-500 transition-all duration-500"
+                        style={{ width: `${districtResearchProgress}%` }}
+                      />
+                    </div>
+                    
+                    {/* Status text */}
+                    <div className="mt-2 flex justify-between text-xs text-slate-400">
+                      <span>{districtResearchMessage || 'Researching districts...'}</span>
+                      <span>{Math.round(districtResearchProgress)}%</span>
+                    </div>
+                  </div>
+                )}
+                
+                {/* District Results Section */}
+                {prep.district_research && (
+                  <div className="mb-6">
+                    <h3 className="text-lg font-semibold text-amber-400 mb-2 flex items-center gap-2">
+                      🏫 District-Level Opportunities
+                      <span className="text-sm font-normal text-slate-500">
+                        ({prep.district_research.districts_surveyed?.length || 0} districts surveyed)
+                      </span>
+                    </h3>
+                    
+                    {/* Passed Hooks - Grouped by District */}
+                    {prep.district_research.passed_hooks && prep.district_research.passed_hooks.length > 0 ? (
+                      <div className="space-y-4">
+                        {(() => {
+                          // Group hooks by district
+                          const byDistrict: Record<string, typeof prep.district_research.passed_hooks> = {}
+                          for (const hook of prep.district_research.passed_hooks || []) {
+                            const district = hook.district_name || 'Unknown District'
+                            if (!byDistrict[district]) byDistrict[district] = []
+                            byDistrict[district].push(hook)
+                          }
+                          return Object.entries(byDistrict).map(([district, hooks]) => (
+                            <div key={district} className="p-4 bg-slate-800/50 rounded-lg border border-amber-700/30">
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className="font-medium text-amber-400">{district}</h4>
+                                <button
+                                  onClick={() => {
+                                    // TODO: Generate email for this district
+                                    toast({
+                                      title: 'Coming soon',
+                                      description: `Generate email for ${district} will be available soon.`,
+                                    })
+                                  }}
+                                  className="px-3 py-1.5 text-sm bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors"
+                                >
+                                  Generate Email →
+                                </button>
+                              </div>
+                              <div className="space-y-2">
+                                {hooks.map((hook, i) => (
+                                  <div key={i} className="text-sm">
+                                    <span className="text-slate-300">{hook.quote}</span>
+                                    {hook.why_district_specific && (
+                                      <p className="text-xs text-slate-500 mt-1">
+                                        Why district-specific: {hook.why_district_specific}
+                                      </p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))
+                        })()}
+                      </div>
+                    ) : (
+                      <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700">
+                        <p className="text-sm text-slate-400">
+                          ✓ District research completed. No incremental opportunities found beyond state-level findings.
+                        </p>
+                        {prep.district_research.districts_surveyed && prep.district_research.districts_surveyed.length > 0 && (
+                          <p className="text-xs text-slate-500 mt-1">
+                            Surveyed: {prep.district_research.districts_surveyed.slice(0, 10).join(', ')}
+                            {prep.district_research.districts_surveyed.length > 10 && ` +${prep.district_research.districts_surveyed.length - 10} more`}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Filtered Items - Expandable for Transparency */}
+                    {prep.district_research.filtered_hooks && prep.district_research.filtered_hooks.length > 0 && (
+                      <details className="mt-4">
+                        <summary className="text-sm text-slate-500 cursor-pointer hover:text-slate-400">
+                          View {prep.district_research.filtered_hooks.length} filtered district items
+                        </summary>
+                        <div className="mt-2 space-y-2 pl-4 border-l-2 border-slate-700">
+                          {prep.district_research.filtered_hooks.map((item, i) => (
+                            <div key={i} className="text-xs text-slate-500">
+                              <span className="font-medium">{item.hook.quote?.slice(0, 80)}...</span>
+                              <span className="text-slate-600 ml-2">— {item.filter_detail}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                )}
+                
+                {/* Run District Research Button (on-demand) */}
+                {!prep.district_research && !includeDistrictResearch && districtResearchStatus === 'idle' && (
+                  <div className="p-4 bg-amber-900/20 rounded-lg border border-amber-700/50">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-sm font-medium text-amber-400">Want more opportunities?</h4>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Survey top 30 districts for additional funding & compliance hooks
+                        </p>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          setDistrictResearchStatus('running')
+                          setDistrictResearchProgress(0)
+                          setDistrictResearchMessage('Starting district research...')
+                          try {
+                            const result: DistrictResearchResult = await api.generate.districtResearchStream(
+                              {
+                                product: selectedProducts[0] || '',
+                                state: selectedStates[0]?.code || '',
+                                state_full: selectedStates[0]?.name,
+                                state_hooks: (prep.treasure_hooks || []).map(h => ({
+                                  hook_id: h.hook_id || undefined,
+                                  link: h.link,
+                                  quote: h.quote,
+                                  title: h.quote?.slice(0, 100),
+                                })),
+                              },
+                              (evt) => {
+                                if (evt.stage === 'district_research' && evt.type === 'progress') {
+                                  setDistrictResearchProgress((evt.percent as number) || 0)
+                                  setDistrictResearchMessage((evt.message as string) || 'Researching...')
+                                }
+                              }
+                            )
+                            setPrep(prev => prev ? { ...prev, district_research: result } : null)
+                            setDistrictResearchStatus('complete')
+                            toast({
+                              title: 'District research complete',
+                              description: `Found ${result.passed_hooks?.length || 0} district-level opportunities.`,
+                            })
+                          } catch (err) {
+                            toast({
+                              title: 'District research failed',
+                              description: err instanceof Error ? err.message : 'Unknown error',
+                              variant: 'destructive',
+                            })
+                            setDistrictResearchStatus('idle')
+                          }
+                        }}
+                        className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium rounded-lg transition-colors"
+                      >
+                        Run District Research
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

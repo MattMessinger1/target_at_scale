@@ -40,13 +40,23 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 try:
-    from ...pipeline.schemas import EvidencePack, FilteredRequirement, PipelineRequest, PipelineRunResponse, WebHook
+    from ...pipeline.schemas import (
+        EvidencePack,
+        FilteredRequirement,
+        FilteredDistrictHook,
+        DistrictResearchResult,
+        PipelineRequest,
+        PipelineRunResponse,
+        WebHook,
+    )
 except Exception:
     PipelineRequest = None  # type: ignore
     PipelineRunResponse = None  # type: ignore
     EvidencePack = None  # type: ignore
     WebHook = None  # type: ignore
     FilteredRequirement = None  # type: ignore
+    FilteredDistrictHook = None  # type: ignore
+    DistrictResearchResult = None  # type: ignore
 
 
 # Email style guides by audience
@@ -199,8 +209,20 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         evidence_pack: EvidencePack
         treasure_hooks: List[WebHook]
         filtered_requirements: List[FilteredRequirement] = []
+        district_research: Optional[DistrictResearchResult] = None
         warnings: List[str] = []
 
+    class PipelinePrepRequest(PipelineRequest):
+        """Request for prep stream with optional district research."""
+        
+        model_config = ConfigDict(extra="forbid")
+        
+        # Optional: include district-level research after state research
+        include_district_research: bool = Field(
+            default=False,
+            description="If true, run district-level research after state research completes."
+        )
+    
     class PipelineRunStreamRequest(PipelineRequest):
         """V3-compatible run request (allows optional human-selected hooks)."""
 
@@ -209,6 +231,9 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         # Optional: reuse prep outputs to avoid re-running RAG/Perplexity.
         evidence_pack: Optional[EvidencePack] = None
         treasure_hooks: Optional[List[WebHook]] = None
+        
+        # Optional: district research results from prep
+        district_research: Optional[DistrictResearchResult] = None
 
         # Optional: human-selected hook URLs (1–2) + which is primary (opener).
         # Deprecated: Use selected_hook_ids/primary_hook_id for reliable selection
@@ -218,6 +243,12 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         # Preferred: unique hook IDs for reliable selection (handles multiple hooks with same URL)
         selected_hook_ids: Optional[List[str]] = Field(default=None, min_length=1, max_length=2)
         primary_hook_id: Optional[str] = None
+        
+        # Optional: include district-level research
+        include_district_research: bool = Field(
+            default=False,
+            description="If true and district_research not provided, run district-level research."
+        )
 
     # ---------------------------------------------------------------------------
     # Polling-based email generation (avoids long-running HTTP connections)
@@ -606,14 +637,19 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
 
     @router.post("/pipeline/prep/stream")
     async def generate_email_pipeline_prep_stream(
-        request: PipelineRequest,
+        request: PipelinePrepRequest,
         db: AsyncSession = Depends(get_db),
     ):
-        """Stream the shared pipeline prep: EvidencePack + TreasureHunter + HookGate."""
+        """Stream the shared pipeline prep: EvidencePack + TreasureHunter + HookGate.
+        
+        If include_district_research=true, also runs district-level research after state research.
+        """
 
         from ...pipeline.hook_gate import gate_treasure_hooks
         from ...pipeline.stages.evidence_pack import build_product_evidence_pack
         from ...pipeline.stages.treasure_hunter import run_treasure_hunter
+        from ...research.district_research import run_district_deep_research
+        from ...research.product_briefs import normalize_product_key
 
         # Best-effort: derive state_full if omitted (keep request shape stable)
         if not request.state_full:
@@ -813,10 +849,169 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     f"Relevance gate filtered requirements: kept={report.kept}/{report.total} dropped={report.dropped_by_reason}"
                 )
 
+            # Stage 3 (optional): District Research
+            district_research_result = None
+            if request.include_district_research:
+                yield _ndjson({"type": "stage_start", "ts": _utcnow_iso(), "stage": "district_research"})
+                t3 = time.perf_counter()
+                
+                # Set up progress queue for district research
+                district_progress_queue: asyncio.Queue = asyncio.Queue()
+                district_result_holder: List[Any] = [None]
+                district_error_holder: List[Optional[Exception]] = [None]
+                
+                def district_progress_callback(message: str, percent: float):
+                    """Callback for district research progress."""
+                    try:
+                        event = {
+                            "type": "progress",
+                            "ts": _utcnow_iso(),
+                            "stage": "district_research",
+                            "message": message,
+                            "percent": percent,
+                        }
+                        district_progress_queue.put_nowait(event)
+                    except Exception as e:
+                        logger.warning(f"Failed to queue district progress: {e}")
+                
+                async def run_district_research_task():
+                    """Run district research in background."""
+                    try:
+                        # Get product context for district research
+                        from ...research.product_briefs import get_product_brief
+                        product_brief = await get_product_brief(db, product, state_code=state_code)
+                        product_context = json.dumps(product_brief, default=str)[:3000]
+                        
+                        # Convert gated hooks to dict format for de-duplication
+                        state_hooks_dict = [
+                            {
+                                "hook_id": h.hook_id,
+                                "hook_type": h.hook_type,
+                                "quote": h.quote,
+                                "link": h.link,
+                                "trigger_excerpt": h.trigger_excerpt,
+                                "title": h.quote[:100] if h.quote else "",
+                            }
+                            for h in gated
+                        ]
+                        
+                        district_result_holder[0] = await run_district_deep_research(
+                            db=db,
+                            state_code=state_code,
+                            state_full=state_full,
+                            product_key=normalize_product_key(product),
+                            product_context=product_context,
+                            state_hooks=state_hooks_dict,
+                            on_progress=district_progress_callback,
+                        )
+                    except Exception as e:
+                        logger.error(f"District research error: {e}")
+                        district_error_holder[0] = e
+                    finally:
+                        await district_progress_queue.put(None)
+                
+                # Start district research task
+                district_task = asyncio.create_task(run_district_research_task())
+                
+                # Yield progress events
+                while True:
+                    try:
+                        event = await asyncio.wait_for(district_progress_queue.get(), timeout=0.5)
+                        if event is None:
+                            break
+                        yield _ndjson(event)
+                    except asyncio.TimeoutError:
+                        if district_task.done():
+                            break
+                        yield _ndjson({"type": "heartbeat", "ts": _utcnow_iso()})
+                
+                await district_task
+                
+                ms3 = int((time.perf_counter() - t3) * 1000)
+                
+                if district_error_holder[0]:
+                    # District research failed - log but don't block
+                    warnings.append(f"District research failed: {str(district_error_holder[0])}")
+                    yield _ndjson({
+                        "type": "stage_end",
+                        "ts": _utcnow_iso(),
+                        "stage": "district_research",
+                        "ms": ms3,
+                        "status": "failed",
+                        "error": str(district_error_holder[0]),
+                    })
+                else:
+                    # Convert to DistrictResearchResult
+                    district_data = district_result_holder[0] or {}
+                    
+                    # Convert passed_hooks to WebHook models
+                    passed_webhooks = []
+                    for h in district_data.get("passed_hooks", []):
+                        try:
+                            passed_webhooks.append(WebHook(
+                                hook_id=h.get("hook_id"),
+                                hook_type=h.get("hook_type", "district_specific"),
+                                quote=h.get("quote", ""),
+                                link=h.get("link", ""),
+                                trigger_excerpt=h.get("trigger_excerpt", ""),
+                                eligibility_excerpt=h.get("eligibility_excerpt"),
+                                why_relevant=h.get("why_relevant", ""),
+                                confidence=h.get("confidence", "medium"),
+                                source_quality_reason=h.get("source_quality_reason"),
+                                source_level="district",
+                                district_name=h.get("district_name"),
+                                why_district_specific=h.get("why_district_specific"),
+                            ))
+                        except Exception as e:
+                            logger.warning(f"Failed to convert district hook: {e}")
+                    
+                    # Convert filtered_hooks to FilteredDistrictHook models
+                    filtered_district_hooks = []
+                    for fh in district_data.get("filtered_hooks", []):
+                        try:
+                            hook_data = fh.get("hook", {})
+                            filtered_district_hooks.append(FilteredDistrictHook(
+                                hook=WebHook(
+                                    hook_id=hook_data.get("hook_id"),
+                                    hook_type=hook_data.get("hook_type", "district_specific"),
+                                    quote=hook_data.get("quote", ""),
+                                    link=hook_data.get("link", ""),
+                                    trigger_excerpt=hook_data.get("trigger_excerpt", ""),
+                                    eligibility_excerpt=hook_data.get("eligibility_excerpt"),
+                                    why_relevant=hook_data.get("why_relevant", ""),
+                                    confidence=hook_data.get("confidence", "medium"),
+                                    source_level="district",
+                                    district_name=hook_data.get("district_name"),
+                                ),
+                                filter_reason=fh.get("filter_reason", "unknown"),
+                                filter_detail=fh.get("filter_detail", ""),
+                            ))
+                        except Exception as e:
+                            logger.warning(f"Failed to convert filtered hook: {e}")
+                    
+                    district_research_result = DistrictResearchResult(
+                        districts_surveyed=district_data.get("districts_surveyed", []),
+                        passed_hooks=passed_webhooks,
+                        filtered_hooks=filtered_district_hooks,
+                        status=district_data.get("status", "completed"),
+                        research_summary=district_data.get("research_summary"),
+                    )
+                    
+                    yield _ndjson({
+                        "type": "stage_end",
+                        "ts": _utcnow_iso(),
+                        "stage": "district_research",
+                        "ms": ms3,
+                        "districts_surveyed": len(district_research_result.districts_surveyed),
+                        "hooks_found": len(district_research_result.passed_hooks),
+                        "hooks_filtered": len(district_research_result.filtered_hooks),
+                    })
+
             payload = PipelinePrepResponse(
                 evidence_pack=evidence_pack,
                 treasure_hooks=gated,
                 filtered_requirements=filtered_requirements_models,
+                district_research=district_research_result,
                 warnings=warnings,
             )
             yield _ndjson({"type": "prep_ready", "ts": _utcnow_iso(), "payload": _dump_model(payload)})
@@ -1282,6 +1477,177 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             yield _ndjson({"type": "run_ready", "ts": _utcnow_iso(), "payload": _dump_model(result)})
             yield _ndjson({"type": "done", "ts": _utcnow_iso(), "ok": True, "ms": ms_total})
 
+        return StreamingResponse(event_stream(), media_type="application/x-ndjson")
+
+    class DistrictResearchRequest(BaseModel):
+        """Request for on-demand district research."""
+        model_config = ConfigDict(extra="forbid")
+        
+        product: str
+        state: str
+        state_full: Optional[str] = None
+        state_hooks: List[Dict[str, Any]] = Field(
+            default_factory=list,
+            description="State-level hooks for de-duplication."
+        )
+
+    @router.post("/pipeline/district-research/stream")
+    async def run_district_research_stream(
+        request: DistrictResearchRequest,
+        db: AsyncSession = Depends(get_db),
+    ):
+        """Run district-level research on-demand (after state research).
+        
+        Use this when the user didn't enable district research initially
+        but wants to run it later on existing state results.
+        """
+        from ...research.district_research import run_district_deep_research
+        from ...research.product_briefs import normalize_product_key, get_product_brief
+
+        # Best-effort: derive state_full if omitted
+        state_full = request.state_full
+        if not state_full:
+            try:
+                from .research import STATE_NAMES
+                if request.state and request.state.strip().upper() in STATE_NAMES:
+                    state_full = STATE_NAMES[request.state.strip().upper()]
+            except Exception:
+                pass
+        
+        state_code = request.state.strip().upper()
+        state_full = state_full or state_code
+        product = request.product.strip()
+
+        async def event_stream():
+            yield _ndjson({"type": "start", "ts": _utcnow_iso(), "stage": "district_research"})
+            
+            t0 = time.perf_counter()
+            progress_queue: asyncio.Queue = asyncio.Queue()
+            result_holder: List[Any] = [None]
+            error_holder: List[Optional[Exception]] = [None]
+            
+            def progress_callback(message: str, percent: float):
+                try:
+                    event = {
+                        "type": "progress",
+                        "ts": _utcnow_iso(),
+                        "stage": "district_research",
+                        "message": message,
+                        "percent": percent,
+                    }
+                    progress_queue.put_nowait(event)
+                except Exception as e:
+                    logger.warning(f"Failed to queue progress: {e}")
+            
+            async def run_research():
+                try:
+                    # Get product context
+                    product_brief = await get_product_brief(db, product, state_code=state_code)
+                    product_context = json.dumps(product_brief, default=str)[:3000]
+                    
+                    result_holder[0] = await run_district_deep_research(
+                        db=db,
+                        state_code=state_code,
+                        state_full=state_full,
+                        product_key=normalize_product_key(product),
+                        product_context=product_context,
+                        state_hooks=request.state_hooks,
+                        on_progress=progress_callback,
+                    )
+                except Exception as e:
+                    logger.error(f"District research error: {e}")
+                    error_holder[0] = e
+                finally:
+                    await progress_queue.put(None)
+            
+            task = asyncio.create_task(run_research())
+            
+            # Yield progress events
+            while True:
+                try:
+                    event = await asyncio.wait_for(progress_queue.get(), timeout=0.5)
+                    if event is None:
+                        break
+                    yield _ndjson(event)
+                except asyncio.TimeoutError:
+                    if task.done():
+                        break
+                    yield _ndjson({"type": "heartbeat", "ts": _utcnow_iso()})
+            
+            await task
+            ms = int((time.perf_counter() - t0) * 1000)
+            
+            if error_holder[0]:
+                yield _ndjson({
+                    "type": "error",
+                    "ts": _utcnow_iso(),
+                    "stage": "district_research",
+                    "error": str(error_holder[0]),
+                })
+                yield _ndjson({"type": "done", "ts": _utcnow_iso(), "ok": False, "ms": ms})
+                return
+            
+            # Build DistrictResearchResult
+            district_data = result_holder[0] or {}
+            
+            passed_webhooks = []
+            for h in district_data.get("passed_hooks", []):
+                try:
+                    passed_webhooks.append(WebHook(
+                        hook_id=h.get("hook_id"),
+                        hook_type=h.get("hook_type", "district_specific"),
+                        quote=h.get("quote", ""),
+                        link=h.get("link", ""),
+                        trigger_excerpt=h.get("trigger_excerpt", ""),
+                        eligibility_excerpt=h.get("eligibility_excerpt"),
+                        why_relevant=h.get("why_relevant", ""),
+                        confidence=h.get("confidence", "medium"),
+                        source_quality_reason=h.get("source_quality_reason"),
+                        source_level="district",
+                        district_name=h.get("district_name"),
+                        why_district_specific=h.get("why_district_specific"),
+                    ))
+                except Exception as e:
+                    logger.warning(f"Failed to convert district hook: {e}")
+            
+            filtered_hooks = []
+            for fh in district_data.get("filtered_hooks", []):
+                try:
+                    hook_data = fh.get("hook", {})
+                    filtered_hooks.append(FilteredDistrictHook(
+                        hook=WebHook(
+                            hook_id=hook_data.get("hook_id"),
+                            hook_type=hook_data.get("hook_type", "district_specific"),
+                            quote=hook_data.get("quote", ""),
+                            link=hook_data.get("link", ""),
+                            trigger_excerpt=hook_data.get("trigger_excerpt", ""),
+                            eligibility_excerpt=hook_data.get("eligibility_excerpt"),
+                            why_relevant=hook_data.get("why_relevant", ""),
+                            confidence=hook_data.get("confidence", "medium"),
+                            source_level="district",
+                            district_name=hook_data.get("district_name"),
+                        ),
+                        filter_reason=fh.get("filter_reason", "unknown"),
+                        filter_detail=fh.get("filter_detail", ""),
+                    ))
+                except Exception as e:
+                    logger.warning(f"Failed to convert filtered hook: {e}")
+            
+            result = DistrictResearchResult(
+                districts_surveyed=district_data.get("districts_surveyed", []),
+                passed_hooks=passed_webhooks,
+                filtered_hooks=filtered_hooks,
+                status=district_data.get("status", "completed"),
+                research_summary=district_data.get("research_summary"),
+            )
+            
+            yield _ndjson({
+                "type": "district_research_ready",
+                "ts": _utcnow_iso(),
+                "payload": _dump_model(result),
+            })
+            yield _ndjson({"type": "done", "ts": _utcnow_iso(), "ok": True, "ms": ms})
+        
         return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
     @router.delete("/pipeline/cache")

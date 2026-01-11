@@ -317,11 +317,13 @@ export interface PipelineRequest {
   audiences?: string[] | null
   district_name?: string | null
   district_url?: string | null
+  include_district_research?: boolean
 }
 
 export interface PipelineRunStreamRequest extends PipelineRequest {
   evidence_pack?: EvidencePack | null
   treasure_hooks?: WebHook[] | null
+  district_research?: DistrictResearchResult | null
   selected_hook_links?: string[] | null   // Deprecated: use selected_hook_ids
   primary_hook_link?: string | null       // Deprecated: use primary_hook_id
   selected_hook_ids?: string[] | null     // Preferred: unique hook IDs for reliable selection
@@ -356,6 +358,8 @@ export interface EvidencePack {
   supplemental_brief?: Record<string, unknown> | null
 }
 
+export type SourceLevel = 'state' | 'district'
+
 export interface WebHook {
   hook_id?: string | null  // Unique identifier for reliable selection (hash of content)
   hook_type: HookType
@@ -366,6 +370,10 @@ export interface WebHook {
   why_relevant: string
   confidence: HookConfidence
   source_quality_reason?: string | null
+  // District-level fields
+  source_level?: SourceLevel
+  district_name?: string | null
+  why_district_specific?: string | null
 }
 
 export interface SelectedHook {
@@ -378,6 +386,20 @@ export interface FilteredRequirement {
   hook: WebHook
   reason: string
   reason_label: string
+}
+
+export interface FilteredDistrictHook {
+  hook: WebHook
+  filter_reason: string
+  filter_detail: string
+}
+
+export interface DistrictResearchResult {
+  districts_surveyed: string[]
+  passed_hooks: WebHook[]
+  filtered_hooks: FilteredDistrictHook[]
+  status: string
+  research_summary?: string | null
 }
 
 export interface EmailDraft {
@@ -447,6 +469,7 @@ export interface PipelineRunResponse {
   request: PipelineRequest
   evidence_pack: EvidencePack
   treasure_hooks: WebHook[]
+  district_research?: DistrictResearchResult | null
   variants: AudienceVariantResult[]
   trace: PipelineTrace
   warnings: string[]
@@ -938,7 +961,7 @@ export const api = {
       }>(`/generate/pipeline/cancel?${params.toString()}`, { method: 'POST' })
     },
     pipelinePrepStream: async (data: PipelineRequest, onEvent: (evt: PipelineStreamEvent) => void) => {
-      let payload: { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; warnings: string[] } | null = null
+      let payload: { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; district_research?: DistrictResearchResult | null; warnings: string[] } | null = null
       let blockedMsg: string | null = null
       let blockedFiltered: FilteredRequirement[] = []
       await fetchNdjson('/generate/pipeline/prep/stream', data, (evt) => {
@@ -959,6 +982,26 @@ export const api = {
         throw err
       }
       if (!payload) throw new Error('No prep payload returned')
+      return payload
+    },
+    // On-demand district research (after state research)
+    districtResearchStream: async (
+      data: { product: string; state: string; state_full?: string; state_hooks: Array<{ hook_id?: string; link: string; quote: string; title?: string }> },
+      onEvent: (evt: PipelineStreamEvent) => void
+    ) => {
+      let payload: DistrictResearchResult | null = null
+      let errorMsg: string | null = null
+      await fetchNdjson('/generate/pipeline/district-research/stream', data, (evt) => {
+        onEvent(evt)
+        if (evt.type === 'error') {
+          errorMsg = typeof evt.error === 'string' ? evt.error : 'District research failed'
+        }
+        if (evt.type === 'district_research_ready') {
+          payload = evt.payload as DistrictResearchResult
+        }
+      })
+      if (errorMsg) throw new Error(errorMsg)
+      if (!payload) throw new Error('No district research payload returned')
       return payload
     },
     pipelineRunStream: async (data: PipelineRunStreamRequest, onEvent: (evt: PipelineStreamEvent) => void) => {
