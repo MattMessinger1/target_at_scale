@@ -7,7 +7,7 @@ Product briefs (stored/overrides) may be included only as supplemental context.
 from __future__ import annotations
 
 import re
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +28,44 @@ def _excerpt(text: str, max_len: int = 320) -> str:
     if len(s) <= max_len:
         return s
     return s[: max_len - 1] + "…"
+
+
+def _brief_offerings(supplemental_brief: Optional[dict]) -> List[str]:
+    """Extract a compact list of ProductBrief offerings (if present)."""
+    if not isinstance(supplemental_brief, dict):
+        return []
+    raw = supplemental_brief.get("offerings")
+    if not isinstance(raw, list):
+        return []
+    out: List[str] = []
+    for x in raw:
+        if not isinstance(x, str):
+            continue
+        s = re.sub(r"\s+", " ", x).strip()
+        if not s:
+            continue
+        out.append(s)
+    # Stable dedupe
+    return list(dict.fromkeys(out))[:10]
+
+
+def _micro_offers_from_offerings(offerings: Sequence[str]) -> List[str]:
+    """Create product-specific micro-offer artifact phrases from offerings."""
+    offers: List[str] = []
+    text = " ".join(offerings).lower()
+
+    # Prefer artifacts that map to common WCEPS outreach deliverables.
+    if "coaching cycle" in text or "coaching cycles" in text:
+        offers.append("1-page coaching cycle agenda aligned to district priorities")
+    if "plc" in text or "coaching routine" in text or "coaching routines" in text:
+        offers.append("PLC facilitation agenda + coaching routine template")
+    if "implementation planning" in text or "improvement plan" in text:
+        offers.append("implementation plan addendum template for improvement plans")
+    if "artifact" in text or "documentation" in text or "evidence" in text:
+        offers.append("evidence checklist to document PD completion")
+
+    # Dedupe while preserving order
+    return list(dict.fromkeys([o for o in offers if o and o.strip()]))
 
 
 async def build_product_evidence_pack(
@@ -139,11 +177,20 @@ async def build_product_evidence_pack(
     # Micro-offer candidates (heuristic: map to top evidence chunk)
     micro_offers: List[MicroOfferCandidate] = []
     top_cite = citations[0:1]
-    for offer in [
-        "1-page budget narrative draft",
-        "evidence checklist for documentation",
-        "allowable-use checklist",
-    ]:
+    brief_offerings = _brief_offerings(supplemental_brief)
+    # Put product-specific artifacts first (improves deterministic fallback choices).
+    offer_phrases: List[str] = []
+    offer_phrases.extend(_micro_offers_from_offerings(brief_offerings))
+    # Keep a few general-purpose artifacts as fallbacks.
+    offer_phrases.extend(
+        [
+            "1-page budget narrative draft",
+            "evidence checklist for documentation",
+            "allowable-use checklist",
+        ]
+    )
+
+    for offer in list(dict.fromkeys([o for o in offer_phrases if o and o.strip()]))[:8]:
         micro_offers.append(
             MicroOfferCandidate(
                 offer=offer,

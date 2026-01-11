@@ -19,7 +19,7 @@ settings = get_settings()
 
 # Import routes with error handling
 try:
-    from .routes import districts, content, kb, emails, snippets, research, generate
+    from .routes import districts, content, kb, emails, snippets, research, generate, feedback
     logger.info("All routes imported successfully")
 except Exception as e:
     logger.error(f"Failed to import routes: {e}")
@@ -83,6 +83,7 @@ app.include_router(kb.router, prefix="/api/kb", tags=["Knowledge Base"])
 app.include_router(emails.router, prefix="/api/emails", tags=["Emails"])
 app.include_router(research.router, prefix="/api/research", tags=["Research"])
 app.include_router(generate.router, prefix="/api/generate", tags=["Email Generation"])
+app.include_router(feedback.router, prefix="/api/feedback", tags=["Feedback"])
 
 
 @app.get("/")

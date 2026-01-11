@@ -15,7 +15,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
-from urllib.parse import urlparse
 
 from .schemas import EvidencePack, WebHook
 
@@ -265,32 +264,9 @@ def _has_deliverable_tie_in(h: WebHook, *, evidence_pack: Optional[EvidencePack]
     return False
 
 
-# ---------------------------------------------------------------------------
-# Disallowed source check
-# ---------------------------------------------------------------------------
-
-def _is_disallowed_source(url: str) -> bool:
-    """Exclude obviously self-referential marketing pages from hook sources."""
-    u = (url or "").strip()
-    if not u:
-        return False  # Empty URLs caught by missing_link check
-    try:
-        host = urlparse(u).netloc.lower()
-    except Exception:
-        return False
-    # Never use our own sites as "external" compliance/funding hooks.
-    if "wceps" in host:
-        return True
-    # Exclude internal/dev environments that occasionally appear in KB content.
-    if "tenforward" in host or "pathways.dev" in host:
-        return True
-    return False
-
-
 # Human-readable labels for rejection reasons
 REASON_LABELS: Dict[str, str] = {
     "missing_link": "No source URL provided",
-    "disallowed_source": "Source is from our own marketing site (not external)",
     "low_confidence": "Source quality too uncertain",
     "table_stakes_title_i_iii": "Generic Title I/III (not school improvement specific)",
     "missing_impetus_now_trigger": "No deadline/FY/monitoring language found",
@@ -325,11 +301,6 @@ def gate_treasure_hooks(
         if not h or not (h.link and str(h.link).strip()):
             if h:
                 _filter(h, "missing_link")
-            continue
-
-        # Disallowed sources (our own marketing sites, internal dev)
-        if _is_disallowed_source(h.link):
-            _filter(h, "disallowed_source")
             continue
 
         # Confidence: drop low-confidence hooks (too risky for outreach).

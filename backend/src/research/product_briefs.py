@@ -34,7 +34,7 @@ DISPLAY_TO_KEY: Dict[str, str] = {
     "CARE Coaching": "care_coaching",
     "WebbAlign": "webbalign",
     "WIDA MODEL Online": "wida_model",
-    "WIDA Professional Learning": "wida_model",  # best available KB key currently
+    "WIDA Professional Learning": "wida_professional_learning",
     "CALL": "call",
     "The Discussion Project": "discussion_project",
     "WIDA SIS": "wida_sis",
@@ -82,7 +82,7 @@ def load_override_brief(product_key: str, state_code: Optional[str] = None) -> D
 
 
 def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    """Deep merge dicts where override wins."""
+    """Deep merge dicts where override wins (legacy - use merge_yaml_primary for new code)."""
     out: Dict[str, Any] = dict(base or {})
     for k, v in (override or {}).items():
         if isinstance(v, dict) and isinstance(out.get(k), dict):
@@ -90,6 +90,174 @@ def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]
         else:
             out[k] = v
     return out
+
+
+# Fields where we want additive merge (YAML + RAG, no duplicates)
+_ADDITIVE_LIST_FIELDS = {
+    "offerings",
+    "who_its_for",
+    "problems_solved",
+    "safe_claims",
+    "compliance_hooks",
+    "state_fit_notes",
+    "avoid_phrases",
+}
+
+# Fields containing complex objects that need special handling
+_COMPLEX_LIST_FIELDS = {
+    "case_studies",
+    "testimonials",
+}
+
+
+def _normalize_for_dedup(s: str) -> str:
+    """Normalize a string for deduplication comparison."""
+    return s.lower().strip().rstrip(".")
+
+
+def _dedupe_string_list(yaml_items: List[str], rag_items: List[str]) -> List[Dict[str, Any]]:
+    """Combine YAML and RAG string lists, marking RAG items with source.
+    
+    Returns list of dicts with 'value' and optional '_source' keys.
+    YAML items come first (no _source marker = verified).
+    RAG items are appended if not duplicates, marked with _source: 'kb_auto'.
+    """
+    result: List[Dict[str, Any]] = []
+    seen_normalized: set = set()
+    
+    # Add YAML items first (verified, no source marker needed)
+    for item in yaml_items:
+        norm = _normalize_for_dedup(item)
+        if norm not in seen_normalized:
+            result.append({"value": item})
+            seen_normalized.add(norm)
+    
+    # Add RAG items that aren't duplicates, with source marker
+    for item in rag_items:
+        norm = _normalize_for_dedup(item)
+        if norm not in seen_normalized:
+            result.append({"value": item, "_source": "kb_auto"})
+            seen_normalized.add(norm)
+    
+    return result
+
+
+def _flatten_to_strings(items: List[Any]) -> List[str]:
+    """Flatten a list that may contain strings or dicts with 'value' key."""
+    result = []
+    for item in items:
+        if isinstance(item, str):
+            result.append(item)
+        elif isinstance(item, dict) and "value" in item:
+            result.append(item["value"])
+    return result
+
+
+def merge_yaml_primary(
+    rag_brief: Dict[str, Any],
+    yaml_override: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Merge briefs with YAML as primary, RAG as supplemental.
+    
+    Strategy:
+    - For string fields: YAML wins if present, else RAG
+    - For simple list fields: YAML items first, then RAG items (deduplicated, marked with _source)
+    - For complex list fields (case_studies, testimonials): YAML first, RAG appended with marker
+    - For nested dicts (implementation): deep merge with YAML winning
+    
+    This ensures nothing from RAG is lost, but YAML content is authoritative.
+    """
+    if not yaml_override:
+        return rag_brief
+    if not rag_brief:
+        return yaml_override
+    
+    merged: Dict[str, Any] = {}
+    all_keys = set(rag_brief.keys()) | set(yaml_override.keys())
+    
+    for key in all_keys:
+        yaml_val = yaml_override.get(key)
+        rag_val = rag_brief.get(key)
+        
+        # Skip metadata
+        if key.startswith("_"):
+            merged[key] = yaml_val if yaml_val is not None else rag_val
+            continue
+        
+        # Additive list fields: combine with deduplication
+        if key in _ADDITIVE_LIST_FIELDS:
+            yaml_list = yaml_val if isinstance(yaml_val, list) else []
+            rag_list = rag_val if isinstance(rag_val, list) else []
+            # Flatten in case either already has dict format
+            yaml_strings = _flatten_to_strings(yaml_list)
+            rag_strings = _flatten_to_strings(rag_list)
+            merged[key] = _dedupe_string_list(yaml_strings, rag_strings)
+            continue
+        
+        # Complex list fields: append RAG items with source marker
+        if key in _COMPLEX_LIST_FIELDS:
+            yaml_list = yaml_val if isinstance(yaml_val, list) else []
+            rag_list = rag_val if isinstance(rag_val, list) else []
+            result = list(yaml_list)  # YAML items first (verified)
+            for item in rag_list:
+                if isinstance(item, dict):
+                    item_copy = dict(item)
+                    item_copy["_source"] = "kb_auto"
+                    result.append(item_copy)
+            merged[key] = result
+            continue
+        
+        # Nested dicts (like implementation): deep merge, YAML wins
+        if isinstance(yaml_val, dict) and isinstance(rag_val, dict):
+            merged[key] = deep_merge(rag_val, yaml_val)
+            continue
+        
+        # Scalar fields: YAML wins if present
+        if yaml_val is not None:
+            merged[key] = yaml_val
+        else:
+            merged[key] = rag_val
+    
+    return merged
+
+
+def brief_to_research_context(brief: Dict[str, Any]) -> str:
+    """Convert a merged brief to a compact string for research prompts.
+    
+    Extracts the essential product information in a format suitable for
+    injecting into Perplexity/Deep Research queries.
+    """
+    parts = []
+    
+    # Elevator pitch
+    if brief.get("elevator_pitch"):
+        parts.append(f"Product: {brief['elevator_pitch']}")
+    
+    # Key offerings (flatten if needed)
+    offerings = brief.get("offerings", [])
+    if offerings:
+        offering_strs = _flatten_to_strings(offerings)[:5]  # Top 5
+        parts.append(f"Key offerings: {'; '.join(offering_strs)}")
+    
+    # Problems solved (flatten if needed)
+    problems = brief.get("problems_solved", [])
+    if problems:
+        problem_strs = _flatten_to_strings(problems)[:5]  # Top 5
+        parts.append(f"Problems addressed: {'; '.join(problem_strs)}")
+    
+    # Compliance hooks (flatten if needed)
+    hooks = brief.get("compliance_hooks", [])
+    if hooks:
+        hook_strs = _flatten_to_strings(hooks)
+        parts.append(f"Compliance situations we help with: {'; '.join(hook_strs)}")
+    
+    # Safe claims
+    claims = brief.get("safe_claims", [])
+    if claims:
+        claim_strs = _flatten_to_strings(claims)[:3]  # Top 3
+        parts.append(f"Verified claims: {'; '.join(claim_strs)}")
+    
+    return "\n".join(parts)
 
 
 def _parse_json_response(text: str) -> Dict[str, Any]:
@@ -259,7 +427,7 @@ JSON:"""
             {"role": "user", "content": prompt},
         ],
         temperature=0,
-        max_tokens=3500,
+        max_completion_tokens=3500,  # GPT-5.2 uses max_completion_tokens
     )
     text = response.choices[0].message.content.strip()
     brief = _parse_json_response(text)
@@ -371,7 +539,8 @@ async def get_product_brief(
         await upsert_product_brief(db, product_key, built, state_code=state_code, source="on_demand")
 
     override = load_override_brief(product_key, state_code=state_code)
-    merged = deep_merge(auto_brief, override) if override else auto_brief
+    # Use YAML-primary merge: YAML is authoritative, RAG supplements with source tracking
+    merged = merge_yaml_primary(auto_brief, override) if override else auto_brief
 
     # Ensure briefs consistently include at least one case-study style proof point when available,
     # even for previously-stored briefs that were generated before we added the fallback behavior.
