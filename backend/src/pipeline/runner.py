@@ -15,7 +15,7 @@ import logging
 import time
 from datetime import datetime, timezone
 from uuid import uuid4
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -75,6 +75,7 @@ async def _run_variant(
     treasure_hooks,
     district_name: Optional[str],
     district_url: Optional[str],
+    on_progress: Optional[Callable[[str, float], None]] = None,
 ) -> AudienceVariantResult:
     logger.info(
         "Pipeline: Starting email generation for %s/%s (audience=%s)",
@@ -100,6 +101,7 @@ async def _run_variant(
         district_url=district_url,
         repair_instructions=None,
         prior_email_body=None,
+        on_progress=on_progress,
     )
     variant_trace.stage_ms["email_writer_0"] = int((time.perf_counter() - t0) * 1000)
 
@@ -138,6 +140,7 @@ async def _run_variant(
             district_url=district_url,
             repair_instructions=instructions,
             prior_email_body=prev_email,
+            on_progress=on_progress,
         )
         variant_trace.stage_ms[f"email_writer_{it}"] = int((time.perf_counter() - t1) * 1000)
 

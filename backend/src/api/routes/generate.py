@@ -672,51 +672,123 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     }
                 )
 
-            # Generate variants
+            # Generate variants with progress streaming
             yield _ndjson({"type": "stage_start", "ts": _utcnow_iso(), "stage": "write_validate_repair"})
             variants = []
             t4 = time.perf_counter()
+            
+            # Set up progress queue for keepalive events during email generation
+            import asyncio
+            email_progress_queue: asyncio.Queue = asyncio.Queue()
+            
+            def email_progress_callback(message: str, percent: float):
+                """Callback that puts email generation progress events into the queue."""
+                try:
+                    event = {
+                        "type": "progress",
+                        "ts": _utcnow_iso(),
+                        "stage": "write_validate_repair",
+                        "message": message,
+                        "percent": percent,
+                    }
+                    email_progress_queue.put_nowait(event)
+                except Exception as e:
+                    logger.warning(f"Failed to queue email progress event: {e}")
+            
+            async def generate_single_variant(aud: str, sel_hook, sec_hook=None):
+                """Generate a single variant and return it."""
+                return await _run_variant(
+                    product=product,
+                    state_code=state_code,
+                    state_full=state_full,
+                    audience=aud,
+                    evidence_pack=evidence_pack,
+                    selected_hook=sel_hook,
+                    secondary_hook=sec_hook,
+                    treasure_hooks=treasure_hooks,
+                    district_name=request.district_name,
+                    district_url=request.district_url,
+                    on_progress=email_progress_callback,
+                )
+            
+            # Process each audience with progress streaming
             if use_forced:
-                for aud in audiences:
+                for aud_idx, aud in enumerate(audiences):
                     if not primary:
                         raise RuntimeError("Primary hook selection failed")
-                    variants.append(
-                        await _run_variant(
-                            product=product,
-                            state_code=state_code,
-                            state_full=state_full,
-                            audience=aud,
-                            evidence_pack=evidence_pack,
-                            selected_hook=primary,
-                            secondary_hook=secondary,
-                            treasure_hooks=treasure_hooks,
-                            district_name=request.district_name,
-                            district_url=request.district_url,
-                        )
-                    )
+                    
+                    # Run variant generation in background task
+                    variant_result = [None]
+                    variant_error = [None]
+                    
+                    async def run_variant_task():
+                        try:
+                            variant_result[0] = await generate_single_variant(aud, primary, secondary)
+                        except Exception as e:
+                            variant_error[0] = e
+                        finally:
+                            await email_progress_queue.put(None)  # Signal completion
+                    
+                    task = asyncio.create_task(run_variant_task())
+                    
+                    # Yield progress events while task runs
+                    while True:
+                        try:
+                            event = await asyncio.wait_for(email_progress_queue.get(), timeout=0.5)
+                            if event is None:
+                                break  # Task completed
+                            yield _ndjson(event)
+                        except asyncio.TimeoutError:
+                            if task.done():
+                                break
+                            # Send heartbeat to keep connection alive
+                            yield _ndjson({"type": "heartbeat", "ts": _utcnow_iso()})
+                    
+                    await task
+                    if variant_error[0]:
+                        raise variant_error[0]
+                    variants.append(variant_result[0])
             else:
                 # per-audience selected hooks
                 selected = select_primary_hooks(hooks=list(treasure_hooks), audiences=audiences)
-                for aud in audiences:
+                for aud_idx, aud in enumerate(audiences):
                     sel = selected.get(aud)
                     if not sel and treasure_hooks:
                         sel = select_primary_hooks(hooks=list(treasure_hooks), audiences=[aud]).get(aud)
                     if not sel:
                         raise RuntimeError("No hooks available to generate an email (TreasureHunter returned none).")
-                    variants.append(
-                        await _run_variant(
-                            product=product,
-                            state_code=state_code,
-                            state_full=state_full,
-                            audience=aud,
-                            evidence_pack=evidence_pack,
-                            selected_hook=sel,
-                            secondary_hook=None,
-                            treasure_hooks=treasure_hooks,
-                            district_name=request.district_name,
-                            district_url=request.district_url,
-                        )
-                    )
+                    
+                    # Run variant generation in background task
+                    variant_result = [None]
+                    variant_error = [None]
+                    
+                    async def run_variant_task():
+                        try:
+                            variant_result[0] = await generate_single_variant(aud, sel, None)
+                        except Exception as e:
+                            variant_error[0] = e
+                        finally:
+                            await email_progress_queue.put(None)  # Signal completion
+                    
+                    task = asyncio.create_task(run_variant_task())
+                    
+                    # Yield progress events while task runs
+                    while True:
+                        try:
+                            event = await asyncio.wait_for(email_progress_queue.get(), timeout=0.5)
+                            if event is None:
+                                break  # Task completed
+                            yield _ndjson(event)
+                        except asyncio.TimeoutError:
+                            if task.done():
+                                break
+                            # Send heartbeat to keep connection alive
+                            yield _ndjson({"type": "heartbeat", "ts": _utcnow_iso()})
+                    
+                    await task
+                    if variant_error[0]:
+                        raise variant_error[0]
+                    variants.append(variant_result[0])
             stage_ms["write_validate_repair"] = int((time.perf_counter() - t4) * 1000)
             yield _ndjson(
                 {

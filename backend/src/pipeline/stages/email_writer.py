@@ -15,7 +15,7 @@ import json
 import logging
 import re
 import time
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 from openai import AsyncOpenAI
 
@@ -665,6 +665,7 @@ async def write_email_variant(
     district_url: Optional[str],
     repair_instructions: Optional[List[str]] = None,
     prior_email_body: Optional[str] = None,
+    on_progress: Optional[Callable[[str, float], None]] = None,
 ) -> Tuple[EmailDraft, List[ClaimsMapEntry]]:
     """Write or minimally repair an email variant."""
     if not settings.openai_api_key:
@@ -719,7 +720,7 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
     
     # Log before API call
     logger.info(
-        "EmailWriter: Starting GPT-5.2-Pro xhigh call for %s/%s (audience=%s, prompt_len=%d)",
+        "EmailWriter: Starting GPT-5.2-Pro high call for %s/%s (audience=%s, prompt_len=%d)",
         state_code, product, audience, len(full_prompt)
     )
     start_time = time.perf_counter()
@@ -730,7 +731,7 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
         resp = await client.responses.create(
             model=settings.openai_pro_model,  # gpt-5.2-pro
             input=full_prompt,
-            reasoning={"effort": "xhigh"},  # Maximum reasoning depth
+            reasoning={"effort": "high"},  # High reasoning depth (faster than xhigh)
             background=True,  # Non-blocking, returns task ID for polling
         )
         
@@ -751,6 +752,8 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
                     "EmailWriter: Task completed in %.1fs for %s/%s (audience=%s)",
                     elapsed, state_code, product, audience
                 )
+                if on_progress:
+                    on_progress(f"Email generation complete ({int(elapsed)}s)", 100.0)
                 break
             
             # Check for failure
@@ -763,9 +766,14 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
                 )
                 raise RuntimeError(f"Email generation {resp.status}: {error_obj}")
             
+            # Send progress callback every poll to keep frontend alive
+            elapsed = time.perf_counter() - start_time
+            progress_pct = min(95.0, 10.0 + (poll_count / max_polls) * 85.0)  # 10-95% during polling
+            if on_progress:
+                on_progress(f"Generating email... {int(elapsed)}s elapsed", progress_pct)
+            
             # Log progress every 60s (every 4 polls)
             if poll_count > 0 and poll_count % 4 == 0:
-                elapsed = time.perf_counter() - start_time
                 logger.info(
                     "EmailWriter: Polling... %.0fs elapsed, status=%s for %s/%s (audience=%s)",
                     elapsed, resp.status, state_code, product, audience
