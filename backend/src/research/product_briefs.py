@@ -432,12 +432,12 @@ KB MATERIAL:
 
 JSON:"""
 
-    # Use GPT-5.2 Pro with Responses API for extended reasoning
+    # Use GPT-5.2 Pro with Responses API for reasoning (medium effort for faster briefs)
     full_prompt = f"Return only valid JSON. No markdown.\n\n{prompt}"
     response = await openai_client.responses.create(
         model=settings.openai_pro_model,  # gpt-5.2-pro
         input=full_prompt,
-        reasoning={"effort": "xhigh"},  # Maximum reasoning depth for better brief extraction
+        reasoning={"effort": "medium"},  # Medium reasoning - faster than xhigh, still good quality
     )
     text = _extract_response_text(response)
     brief = _parse_json_response(text)
