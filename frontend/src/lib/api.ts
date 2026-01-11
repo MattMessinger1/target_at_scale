@@ -1075,6 +1075,121 @@ export const api = {
 
       throw new Error('Email generation timed out after 30 minutes. Please try again with fewer audiences.')
     },
+    // Polling-based research prep (more robust than streaming)
+    pipelinePrepStart: (data: PipelineRequest) =>
+      fetchApi<{
+        task_id: string
+        status: string
+        phase: 'state' | 'district'
+        message: string
+        existing: boolean
+      }>('/generate/pipeline/prep/start', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    pipelinePrepStatus: (taskId: string) =>
+      fetchApi<{
+        task_id: string
+        status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled'
+        phase: 'state' | 'district'
+        progress: number
+        message: string
+        started_at?: string
+        completed_at?: string
+        state_code?: string
+        product_key?: string
+        product_display_name?: string
+        include_district_research?: boolean
+        result?: {
+          evidence_pack: EvidencePack
+          treasure_hooks: WebHook[]
+          filtered_requirements: FilteredRequirement[]
+          district_research?: DistrictResearchResult | null
+          warnings: string[]
+        }
+        error?: string
+      }>(`/generate/pipeline/prep/status?task_id=${encodeURIComponent(taskId)}`),
+    pipelinePrepCancel: (taskId: string) =>
+      fetchApi<{ task_id: string; cancelled: boolean; reason?: string }>(
+        `/generate/pipeline/prep/cancel?task_id=${encodeURIComponent(taskId)}`,
+        { method: 'POST' }
+      ),
+    pipelinePrepActive: () =>
+      fetchApi<{
+        task_id: string | null
+        status?: string
+        phase?: 'state' | 'district'
+        progress?: number
+        message?: string
+        state_code?: string
+        product_key?: string
+        product_display_name?: string
+        include_district_research?: boolean
+      }>('/generate/pipeline/prep/active'),
+    // Polling wrapper that handles the full research prep flow
+    pipelinePrepPolling: async (
+      data: PipelineRequest,
+      onProgress: (phase: 'state' | 'district', progress: number, message: string) => void,
+      pollInterval = 3000,
+      maxPolls = 1200, // ~60 minutes max (state + district research)
+    ): Promise<{
+      evidence_pack: EvidencePack
+      treasure_hooks: WebHook[]
+      filtered_requirements: FilteredRequirement[]
+      district_research?: DistrictResearchResult | null
+      warnings: string[]
+    }> => {
+      // Start the task
+      const startResult = await fetchApi<{
+        task_id: string
+        status: string
+        phase: 'state' | 'district'
+        message: string
+        existing: boolean
+      }>('/generate/pipeline/prep/start', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      })
+      const taskId = startResult.task_id
+      onProgress(startResult.phase || 'state', 0, startResult.existing ? 'Reconnecting to research...' : 'Research started...')
+
+      // Poll for completion
+      for (let i = 0; i < maxPolls; i++) {
+        await new Promise((resolve) => setTimeout(resolve, pollInterval))
+        
+        const status = await fetchApi<{
+          task_id: string
+          status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled'
+          phase: 'state' | 'district'
+          progress: number
+          message: string
+          result?: {
+            evidence_pack: EvidencePack
+            treasure_hooks: WebHook[]
+            filtered_requirements: FilteredRequirement[]
+            district_research?: DistrictResearchResult | null
+            warnings: string[]
+          }
+          error?: string
+        }>(`/generate/pipeline/prep/status?task_id=${encodeURIComponent(taskId)}`)
+
+        onProgress(status.phase || 'state', status.progress, status.message)
+
+        if (status.status === 'completed' && status.result) {
+          return status.result
+        }
+
+        if (status.status === 'failed') {
+          throw new Error(status.error || 'Research failed')
+        }
+
+        if (status.status === 'cancelled') {
+          throw new Error('Research was cancelled')
+        }
+      }
+
+      throw new Error('Research timed out after 60 minutes. Please try again.')
+    },
     batch: (requests: GenerateEmailRequest[]) =>
       fetchApi<{ emails: GenerateEmailResponse[]; count: number }>('/generate/batch', {
         method: 'POST',

@@ -416,6 +416,56 @@ class DistrictResearchCache(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class ResearchTask(Base):
+    """Track research tasks for polling-based progress.
+    
+    This enables robust research that survives browser tab sleep,
+    network hiccups, and page refreshes.
+    """
+    __tablename__ = "research_tasks"
+    
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)  # UUID
+    
+    # Request context
+    state_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    product_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    product_display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    state_full: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    audiences: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    include_district_research: Mapped[bool] = mapped_column(Boolean, default=False)
+    district_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    district_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    
+    # Phase: 'state' or 'district'
+    phase: Mapped[str] = mapped_column(String(20), default='state')
+    
+    # Status: queued, in_progress, completed, failed, cancelled
+    status: Mapped[str] = mapped_column(String(20), default='queued')
+    
+    # Progress (0-100)
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # Human-readable status message
+    message: Mapped[str] = mapped_column(Text, default='')
+    
+    # Results stored as JSON (when completed)
+    evidence_pack_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    treasure_hooks_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    filtered_requirements_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    district_research_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    warnings_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    
+    # Error details (when failed)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # Timestamps
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    
+    # Cleanup: auto-delete old tasks after 1 hour
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
 class SavedEmailRun(Base):
     """Saved email generation runs for later retrieval."""
     __tablename__ = "saved_email_runs"

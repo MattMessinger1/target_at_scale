@@ -1235,6 +1235,12 @@ function EmailGeneratorPipeline() {
   const [districtResearchStatus, setDistrictResearchStatus] = useState<'idle' | 'running' | 'complete'>('idle')
   const [districtResearchProgress, setDistrictResearchProgress] = useState(0)
   const [districtResearchMessage, setDistrictResearchMessage] = useState('')
+  
+  // Polling-based research state (robust against browser sleep/network issues)
+  const [researchPhase, setResearchPhase] = useState<'idle' | 'state' | 'district'>('idle')
+  const [researchTaskId, setResearchTaskId] = useState<string | null>(null)
+  const [researchProgress, setResearchProgress] = useState(0)
+  const [researchMessage, setResearchMessage] = useState('')
 
   // Cache status for the current state+product selection
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null)
@@ -1321,6 +1327,104 @@ function EmailGeneratorPipeline() {
         setCacheStatus(null)
       })
   }, [selectedStates, selectedProducts, wizardStep])
+
+  // On page load: check for any active research and resume if found
+  useEffect(() => {
+    let cancelled = false
+    
+    const checkActiveResearch = async () => {
+      try {
+        const active = await api.generate.pipelinePrepActive()
+        if (cancelled || !active.task_id) return
+        
+        // Found active research - resume polling
+        setResearchTaskId(active.task_id)
+        setResearchPhase(active.phase || 'state')
+        setResearchProgress(active.progress || 0)
+        setResearchMessage(active.message || 'Resuming research...')
+        setWizardStep(2)
+        
+        // Set selection to match active research
+        if (active.product_display_name) {
+          setSelectedProducts([active.product_display_name])
+        }
+        if (active.state_code) {
+          setSelectedStates([{ code: active.state_code, name: active.state_code }])
+        }
+        if (active.include_district_research) {
+          setIncludeDistrictResearch(true)
+        }
+        
+        toast({
+          title: 'Research in progress',
+          description: `Reconnected to active research for ${active.product_display_name || 'your product'} / ${active.state_code || 'your state'}`,
+        })
+        
+        // Resume polling
+        const pollForCompletion = async () => {
+          while (!cancelled) {
+            await new Promise(resolve => setTimeout(resolve, 3000))
+            if (cancelled) break
+            
+            try {
+              const status = await api.generate.pipelinePrepStatus(active.task_id!)
+              if (cancelled) break
+              
+              setResearchPhase(status.phase || 'state')
+              setResearchProgress(status.progress)
+              setResearchMessage(status.message)
+              
+              if (status.phase === 'district') {
+                setDistrictResearchStatus('running')
+                setDistrictResearchProgress(status.progress)
+                setDistrictResearchMessage(status.message)
+              }
+              
+              if (status.status === 'completed' && status.result) {
+                setResearchPhase('idle')
+                setResearchTaskId(null)
+                setDistrictResearchStatus(status.result.district_research ? 'complete' : 'idle')
+                setPrep(status.result)
+                setWizardStep(3)
+                toast({ title: 'Research complete!' })
+                break
+              }
+              
+              if (status.status === 'failed') {
+                setResearchPhase('idle')
+                setResearchTaskId(null)
+                setWizardStep(1)
+                toast({ 
+                  title: 'Research failed', 
+                  description: status.error,
+                  variant: 'destructive' 
+                })
+                break
+              }
+              
+              if (status.status === 'cancelled') {
+                setResearchPhase('idle')
+                setResearchTaskId(null)
+                setWizardStep(1)
+                toast({ title: 'Research was cancelled' })
+                break
+              }
+            } catch (e) {
+              console.warn('Failed to poll research status:', e)
+            }
+          }
+        }
+        
+        pollForCompletion()
+      } catch (e) {
+        console.warn('Failed to check for active research:', e)
+      }
+    }
+    
+    checkActiveResearch()
+    
+    return () => { cancelled = true }
+  }, []) // Only run once on mount
 
   const toggleReasonTag = (link: string, tag: string) => {
     setHookReasonTags((prev) => {
@@ -1465,11 +1569,11 @@ function EmailGeneratorPipeline() {
   }
 
   const prepMutation = useMutation<
-    { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; district_research?: any; warnings: string[] },
+    { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; district_research?: DistrictResearchResult | null; warnings: string[] },
     Error & { filteredRequirements?: FilteredRequirement[] },
     void
   >({
-    mutationFn: () => {
+    mutationFn: async () => {
       const req: PipelineRequest & { include_district_research?: boolean } = {
         product: selectedProducts[0] || '',
         state: selectedStates[0]?.code || '',
@@ -1479,16 +1583,36 @@ function EmailGeneratorPipeline() {
         district_url: districtUrl.trim() || undefined,
         include_district_research: includeDistrictResearch,
       }
-      return api.generate.pipelinePrepStream(req, (evt) => {
-        setTraceEvents((prev) => [...prev, evt])
-        // Track district research progress
-        if (evt.stage === 'district_research' && evt.type === 'progress') {
-          setDistrictResearchProgress(typeof evt.percent === 'number' ? evt.percent : 0)
-          setDistrictResearchMessage(typeof evt.message === 'string' ? evt.message : 'Researching districts...')
+      
+      // Use polling-based research (more robust than streaming)
+      return api.generate.pipelinePrepPolling(req, (phase, progress, message) => {
+        setResearchPhase(phase)
+        setResearchProgress(progress)
+        setResearchMessage(message)
+        
+        // Also update legacy district research state for UI compatibility
+        if (phase === 'district') {
+          setDistrictResearchStatus('running')
+          setDistrictResearchProgress(progress)
+          setDistrictResearchMessage(message)
         }
+        
+        // Add trace event for activity log
+        setTraceEvents((prev) => [...prev, { 
+          type: 'progress', 
+          stage: phase === 'district' ? 'district_research' : 'treasure_hunter',
+          message, 
+          percent: progress 
+        } as PipelineStreamEvent])
       })
     },
     onSuccess: (data) => {
+      setResearchPhase('idle')
+      setResearchTaskId(null)
+      setResearchProgress(0)
+      setResearchMessage('')
+      setDistrictResearchStatus(data.district_research ? 'complete' : 'idle')
+      
       setPrep(data)
       setBlockedFilteredRequirements([])
       setSelectedHookLinks([])
@@ -1503,6 +1627,12 @@ function EmailGeneratorPipeline() {
       setWizardStep(3) // Go to Select step
     },
     onError: (error) => {
+      setResearchPhase('idle')
+      setResearchTaskId(null)
+      setResearchProgress(0)
+      setResearchMessage('')
+      setDistrictResearchStatus('idle')
+      
       // Capture filtered requirements even on blocked/error
       if (error && 'filteredRequirements' in error && error.filteredRequirements) {
         setBlockedFilteredRequirements(error.filteredRequirements)
@@ -2587,33 +2717,102 @@ function EmailGeneratorPipeline() {
           <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
             <h2 className="text-lg font-medium text-slate-200 mb-4">Researching Funding & Compliance Requirements...</h2>
             
-            {/* Deep Research explanation */}
-            <div className="mb-6 p-4 rounded-lg border border-emerald-700/50 bg-emerald-900/20">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-full bg-emerald-600/30 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
+            {/* Phase Indicator Banner - Prominent display of current phase */}
+            <div className={`mb-6 p-4 rounded-lg border ${
+              researchPhase === 'district' 
+                ? 'border-amber-600/50 bg-amber-900/20' 
+                : 'border-emerald-600/50 bg-emerald-900/20'
+            }`}>
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    researchPhase === 'district' 
+                      ? 'bg-amber-600/30' 
+                      : 'bg-emerald-600/30'
+                  }`}>
+                    {researchPhase === 'district' ? (
+                      <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
+                      </svg>
+                    )}
+                  </div>
+                  <div>
+                    <div className={`text-lg font-semibold ${
+                      researchPhase === 'district' ? 'text-amber-300' : 'text-emerald-300'
+                    }`}>
+                      {researchPhase === 'district' 
+                        ? `Phase 2 of 2: District Research` 
+                        : includeDistrictResearch 
+                          ? `Phase 1 of 2: State Research`
+                          : `State Research`
+                      }
+                    </div>
+                    <div className="text-sm text-slate-400">
+                      {selectedProducts[0] || 'Product'} | {selectedStates[0]?.name || 'State'}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <div className="text-sm font-medium text-emerald-300">
-                    Deep Research is analyzing funding and compliance requirements for {selectedStates[0]?.name || 'your state'}.
-                  </div>
-                  <div className="mt-2 text-sm text-emerald-200/80">
-                    This thorough research typically takes <span className="font-medium">5-30 minutes</span>. Feel free to leave this page and come back - we'll save your results.
-                  </div>
-                  <div className="mt-2 text-sm text-emerald-200/70">
-                    Your results will be saved for <span className="font-medium">30 days</span>. Future searches for {selectedStates[0]?.name || 'this state'} + {selectedProducts[0] || 'this product'} will return instantly until the cache expires.
-                  </div>
+                
+                {/* Cancel Button */}
+                <button
+                  onClick={async () => {
+                    if (researchTaskId) {
+                      try {
+                        await api.generate.pipelinePrepCancel(researchTaskId)
+                        setResearchPhase('idle')
+                        setResearchTaskId(null)
+                        setWizardStep(1)
+                        toast({ title: 'Research cancelled' })
+                      } catch (e) {
+                        toast({ 
+                          title: 'Failed to cancel', 
+                          description: e instanceof Error ? e.message : 'Unknown error',
+                          variant: 'destructive' 
+                        })
+                      }
+                    } else {
+                      setWizardStep(1)
+                    }
+                  }}
+                  className="px-3 py-1.5 text-sm text-slate-300 hover:text-white border border-slate-600 hover:border-slate-500 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+              
+              {/* Progress Bar */}
+              <div className="space-y-2">
+                <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                  <div 
+                    className={`h-full transition-all duration-500 ${
+                      researchPhase === 'district' ? 'bg-amber-500' : 'bg-emerald-500'
+                    }`}
+                    style={{ width: `${researchProgress}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-300">{researchMessage || 'Starting research...'}</span>
+                  <span className={`font-medium ${
+                    researchPhase === 'district' ? 'text-amber-400' : 'text-emerald-400'
+                  }`}>{Math.round(researchProgress)}%</span>
                 </div>
               </div>
             </div>
             
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-slate-300">
-                {getLatestTraceStatus(traceEvents) || 'Running Deep Research...'}
-              </span>
+            {/* Additional info */}
+            <div className="mb-6 p-3 rounded-lg border border-slate-700 bg-slate-900/30">
+              <div className="text-sm text-slate-400">
+                {researchPhase === 'district' ? (
+                  <>Surveying top districts in {selectedStates[0]?.name || 'your state'} for additional funding opportunities...</>
+                ) : (
+                  <>This thorough research typically takes <span className="font-medium text-slate-300">5-30 minutes</span>. 
+                  Results are saved for <span className="font-medium text-slate-300">30 days</span>.</>
+                )}
+              </div>
             </div>
             
             {traceEvents.length > 0 && (
