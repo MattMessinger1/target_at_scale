@@ -947,7 +947,7 @@ export const api = {
       data: PipelineRunStreamRequest,
       onProgress: (progress: number, message: string) => void,
       pollInterval = 3000,
-      maxPolls = 200, // ~10 minutes max
+      maxPolls = 600, // ~30 minutes max (3 audiences × 2 repair attempts × ~5 min each)
     ): Promise<PipelineRunResponse> => {
       // Start the task
       const startResult = await fetchApi<{ task_id: string; status: string; message: string }>(
@@ -981,7 +981,7 @@ export const api = {
         }
       }
 
-      throw new Error('Email generation timed out (exceeded maximum polling time)')
+      throw new Error('Email generation timed out after 30 minutes. Please try again with fewer audiences.')
     },
     batch: (requests: GenerateEmailRequest[]) =>
       fetchApi<{ emails: GenerateEmailResponse[]; count: number }>('/generate/batch', {
