@@ -211,8 +211,13 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         treasure_hooks: Optional[List[WebHook]] = None
 
         # Optional: human-selected hook URLs (1–2) + which is primary (opener).
+        # Deprecated: Use selected_hook_ids/primary_hook_id for reliable selection
         selected_hook_links: Optional[List[str]] = Field(default=None, min_length=1, max_length=2)
         primary_hook_link: Optional[str] = None
+        
+        # Preferred: unique hook IDs for reliable selection (handles multiple hooks with same URL)
+        selected_hook_ids: Optional[List[str]] = Field(default=None, min_length=1, max_length=2)
+        primary_hook_id: Optional[str] = None
 
     # ---------------------------------------------------------------------------
     # Polling-based email generation (avoids long-running HTTP connections)
@@ -269,9 +274,14 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 stage_ms: Dict[str, int] = {}
 
                 # Decide whether this is a forced-hook (human selection) run
+                # Prefer hook_ids if provided, fallback to links for backwards compatibility
+                forced_ids = [str(x).strip() for x in (request.selected_hook_ids or []) if str(x).strip()]
+                forced_ids = list(dict.fromkeys(forced_ids))
                 forced_links = [str(x).strip() for x in (request.selected_hook_links or []) if str(x).strip()]
                 forced_links = list(dict.fromkeys(forced_links))
-                use_forced = len(forced_links) > 0
+                
+                use_hook_ids = len(forced_ids) > 0
+                use_forced = use_hook_ids or len(forced_links) > 0
 
                 # Evidence pack / hooks: reuse if provided, else compute
                 evidence_pack = request.evidence_pack
@@ -328,48 +338,98 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 secondary: Optional[SelectedHook] = None
 
                 if use_forced:
-                    if len(forced_links) > 2:
-                        raise RuntimeError("selected_hook_links must contain at most 2 URLs")
-
-                    primary_link = (request.primary_hook_link or "").strip() or forced_links[0]
-                    secondary_link = None
-                    if len(forced_links) == 2:
-                        secondary_link = forced_links[1] if forced_links[0] == primary_link else forced_links[0]
-
                     # IMPORTANT: Search in ORIGINAL hooks from request, not the re-gated list.
                     # The user explicitly selected these hooks - trust their judgment.
                     original_hooks = request.treasure_hooks or []
-                    logger.info(f"Hook selection: primary_link={primary_link}, searching in {len(original_hooks)} original hooks")
                     
-                    def _find_hook(link: str):
-                        for h in original_hooks:
-                            if h.link == link:
-                                return h
-                        return None
+                    if use_hook_ids:
+                        # Preferred: use hook_ids for reliable selection
+                        if len(forced_ids) > 2:
+                            raise RuntimeError("selected_hook_ids must contain at most 2 IDs")
+                        
+                        primary_id = (request.primary_hook_id or "").strip() or forced_ids[0]
+                        secondary_id = None
+                        if len(forced_ids) == 2:
+                            secondary_id = forced_ids[1] if forced_ids[0] == primary_id else forced_ids[0]
+                        
+                        logger.info(f"Hook selection (ID mode): primary_id={primary_id}")
+                        logger.info(f"Hook selection DEBUG: Available {len(original_hooks)} hooks (by ID):")
+                        for idx, h in enumerate(original_hooks):
+                            hook_id = h.hook_id or ""
+                            match_status = "MATCH" if hook_id == primary_id else "no match"
+                            logger.info(f"  Hook {idx}: id={hook_id}, {match_status}, type={h.hook_type}")
+                        
+                        def _find_hook_by_id(hook_id: str):
+                            for h in original_hooks:
+                                if h.hook_id == hook_id:
+                                    return h
+                            return None
+                        
+                        ph = _find_hook_by_id(primary_id)
+                    else:
+                        # Fallback: use links (deprecated, may have collisions)
+                        if len(forced_links) > 2:
+                            raise RuntimeError("selected_hook_links must contain at most 2 URLs")
 
-                    ph = _find_hook(primary_link)
-                    if not ph:
-                        # Fallback: try gated hooks if not found in original
-                        for h in treasure_hooks or []:
-                            if h.link == primary_link:
-                                ph = h
-                                break
-                    if not ph:
-                        raise RuntimeError(f"Primary hook URL not found: {primary_link}")
+                        primary_link = (request.primary_hook_link or "").strip() or forced_links[0]
+                        secondary_link = None
+                        if len(forced_links) == 2:
+                            secondary_link = forced_links[1] if forced_links[0] == primary_link else forced_links[0]
+                        
+                        logger.info(f"Hook selection (LINK mode - deprecated): primary_link={primary_link[:200]}...")
+                        logger.info(f"Hook selection DEBUG: Available {len(original_hooks)} hooks (by link):")
+                        for idx, h in enumerate(original_hooks):
+                            hook_url = h.link or ""
+                            match_status = "MATCH" if hook_url == primary_link else "no match"
+                            logger.info(f"  Hook {idx}: (len={len(hook_url)}) {match_status} - {hook_url[:200]}...")
+                        
+                        def _find_hook(link: str):
+                            for h in original_hooks:
+                                if h.link == link:
+                                    return h
+                            return None
+
+                        ph = _find_hook(primary_link)
                     
-                    logger.info(f"Using primary hook: type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
+                    if not ph:
+                        # Fallback: try gated hooks
+                        for h in treasure_hooks or []:
+                            if use_hook_ids:
+                                if h.hook_id == primary_id:
+                                    ph = h
+                                    break
+                            else:
+                                if h.link == primary_link:
+                                    ph = h
+                                    break
+                    
+                    if not ph:
+                        identifier = primary_id if use_hook_ids else primary_link
+                        raise RuntimeError(f"Primary hook not found: {identifier}")
+                    
+                    logger.info(f"Using primary hook: id={ph.hook_id}, type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
                     primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected"])
 
-                    if secondary_link:
+                    # Handle secondary hook
+                    sh = None
+                    if use_hook_ids and secondary_id:
+                        sh = _find_hook_by_id(secondary_id)
+                        if not sh:
+                            for h in treasure_hooks or []:
+                                if h.hook_id == secondary_id:
+                                    sh = h
+                                    break
+                    elif not use_hook_ids and secondary_link:
                         sh = _find_hook(secondary_link)
                         if not sh:
                             for h in treasure_hooks or []:
                                 if h.link == secondary_link:
                                     sh = h
                                     break
-                        if sh:
-                            logger.info(f"Using secondary hook: type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
-                            secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
+                    
+                    if sh:
+                        logger.info(f"Using secondary hook: id={sh.hook_id}, type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
+                        secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
                 else:
                     selected = select_primary_hooks(hooks=list(treasure_hooks), audiences=audiences)
 
@@ -808,9 +868,14 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             audiences = request.audiences or list(DEFAULT_AUDIENCES)
 
             # Decide whether this is a forced-hook (human selection) run
+            # Prefer hook_ids if provided, fallback to links for backwards compatibility
+            forced_ids = [str(x).strip() for x in (request.selected_hook_ids or []) if str(x).strip()]
+            forced_ids = list(dict.fromkeys(forced_ids))
             forced_links = [str(x).strip() for x in (request.selected_hook_links or []) if str(x).strip()]
             forced_links = list(dict.fromkeys(forced_links))  # stable dedupe
-            use_forced = len(forced_links) > 0
+            
+            use_hook_ids = len(forced_ids) > 0
+            use_forced = use_hook_ids or len(forced_links) > 0
 
             # Evidence pack / hooks: reuse if provided, else compute.
             evidence_pack = request.evidence_pack
@@ -937,57 +1002,111 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             secondary: Optional[SelectedHook] = None
 
             if use_forced:
-                if len(forced_links) > 2:
-                    raise HTTPException(status_code=422, detail="selected_hook_links must contain at most 2 URLs.")
-
-                primary_link = (request.primary_hook_link or "").strip() or forced_links[0]
-                if primary_link not in forced_links:
-                    raise HTTPException(
-                        status_code=422,
-                        detail="primary_hook_link must be one of selected_hook_links.",
-                    )
-
-                secondary_link = None
-                if len(forced_links) == 2:
-                    secondary_link = forced_links[1] if forced_links[0] == primary_link else forced_links[0]
-
                 # IMPORTANT: Search in ORIGINAL hooks from request, not the re-gated list.
                 # The user explicitly selected these hooks - trust their judgment.
                 original_hooks = request.treasure_hooks or []
-                logger.info(f"Hook selection (stream): primary_link={primary_link}, searching in {len(original_hooks)} original hooks")
-
-                def _find_hook(link: str):
-                    for h in original_hooks:
-                        if h.link == link:
-                            return h
-                    return None
-
-                ph = _find_hook(primary_link)
-                if not ph:
-                    # Fallback: try gated hooks if not found in original
-                    for h in treasure_hooks or []:
-                        if h.link == primary_link:
-                            ph = h
-                            break
-                if not ph:
-                    raise HTTPException(status_code=422, detail=f"Primary hook URL not found in treasure_hooks: {primary_link}")
                 
-                logger.info(f"Using primary hook (stream): type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
-                primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected"])
-
-                if secondary_link:
-                    sh = _find_hook(secondary_link)
-                    if not sh:
+                if use_hook_ids:
+                    # Preferred: use hook_ids for reliable selection
+                    if len(forced_ids) > 2:
+                        raise HTTPException(status_code=422, detail="selected_hook_ids must contain at most 2 IDs.")
+                    
+                    primary_id = (request.primary_hook_id or "").strip() or forced_ids[0]
+                    secondary_id = None
+                    if len(forced_ids) == 2:
+                        secondary_id = forced_ids[1] if forced_ids[0] == primary_id else forced_ids[0]
+                    
+                    logger.info(f"Hook selection (stream, ID mode): primary_id={primary_id}")
+                    logger.info(f"Hook selection DEBUG (stream): Available {len(original_hooks)} hooks (by ID):")
+                    for idx, h in enumerate(original_hooks):
+                        hook_id = h.hook_id or ""
+                        match_status = "MATCH" if hook_id == primary_id else "no match"
+                        logger.info(f"  Hook {idx}: id={hook_id}, {match_status}, type={h.hook_type}")
+                    
+                    def _find_hook_by_id(hook_id: str):
+                        for h in original_hooks:
+                            if h.hook_id == hook_id:
+                                return h
+                        return None
+                    
+                    ph = _find_hook_by_id(primary_id)
+                    if not ph:
+                        # Fallback: try gated hooks
                         for h in treasure_hooks or []:
-                            if h.link == secondary_link:
-                                sh = h
+                            if h.hook_id == primary_id:
+                                ph = h
                                 break
-                    if not sh:
+                    if not ph:
+                        raise HTTPException(status_code=422, detail=f"Primary hook ID not found: {primary_id}")
+                    
+                    logger.info(f"Using primary hook (stream): id={ph.hook_id}, type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
+                    primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected"])
+
+                    if secondary_id:
+                        sh = _find_hook_by_id(secondary_id)
+                        if not sh:
+                            for h in treasure_hooks or []:
+                                if h.hook_id == secondary_id:
+                                    sh = h
+                                    break
+                        if sh:
+                            logger.info(f"Using secondary hook (stream): id={sh.hook_id}, type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
+                            secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
+                else:
+                    # Fallback: use links (deprecated, may have collisions with same URL)
+                    if len(forced_links) > 2:
+                        raise HTTPException(status_code=422, detail="selected_hook_links must contain at most 2 URLs.")
+
+                    primary_link = (request.primary_hook_link or "").strip() or forced_links[0]
+                    if primary_link not in forced_links:
                         raise HTTPException(
-                            status_code=422, detail=f"Secondary hook URL not found in treasure_hooks: {secondary_link}"
+                            status_code=422,
+                            detail="primary_hook_link must be one of selected_hook_links.",
                         )
-                    logger.info(f"Using secondary hook (stream): type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
-                    secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
+
+                    secondary_link = None
+                    if len(forced_links) == 2:
+                        secondary_link = forced_links[1] if forced_links[0] == primary_link else forced_links[0]
+
+                    logger.info(f"Hook selection (stream, LINK mode - deprecated): primary_link={primary_link[:200]}...")
+                    logger.info(f"Hook selection DEBUG (stream): Available {len(original_hooks)} hooks (by link):")
+                    for idx, h in enumerate(original_hooks):
+                        hook_url = h.link or ""
+                        match_status = "MATCH" if hook_url == primary_link else "no match"
+                        logger.info(f"  Hook {idx}: (len={len(hook_url)}) {match_status} - {hook_url[:200]}...")
+
+                    def _find_hook(link: str):
+                        for h in original_hooks:
+                            if h.link == link:
+                                return h
+                        return None
+
+                    ph = _find_hook(primary_link)
+                    if not ph:
+                        # Fallback: try gated hooks if not found in original
+                        for h in treasure_hooks or []:
+                            if h.link == primary_link:
+                                ph = h
+                                break
+                    if not ph:
+                        raise HTTPException(status_code=422, detail=f"Primary hook URL not found in treasure_hooks: {primary_link}")
+                    
+                    logger.info(f"Using primary hook (stream): type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
+                    primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected"])
+
+                    if secondary_link:
+                        sh = _find_hook(secondary_link)
+                        if not sh:
+                            for h in treasure_hooks or []:
+                                if h.link == secondary_link:
+                                    sh = h
+                                    break
+                        if not sh:
+                            raise HTTPException(
+                                status_code=422, detail=f"Secondary hook URL not found in treasure_hooks: {secondary_link}"
+                            )
+                        logger.info(f"Using secondary hook (stream): type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
+                        secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
             else:
                 # Legacy behavior: choose one hook per audience deterministically.
                 yield _ndjson({"type": "stage_start", "ts": _utcnow_iso(), "stage": "hook_selector"})

@@ -322,8 +322,10 @@ export interface PipelineRequest {
 export interface PipelineRunStreamRequest extends PipelineRequest {
   evidence_pack?: EvidencePack | null
   treasure_hooks?: WebHook[] | null
-  selected_hook_links?: string[] | null
-  primary_hook_link?: string | null
+  selected_hook_links?: string[] | null   // Deprecated: use selected_hook_ids
+  primary_hook_link?: string | null       // Deprecated: use primary_hook_id
+  selected_hook_ids?: string[] | null     // Preferred: unique hook IDs for reliable selection
+  primary_hook_id?: string | null         // Preferred: unique ID of primary hook
 }
 
 export interface EvidenceChunkCitation {
@@ -355,6 +357,7 @@ export interface EvidencePack {
 }
 
 export interface WebHook {
+  hook_id?: string | null  // Unique identifier for reliable selection (hash of content)
   hook_type: HookType
   quote: string
   link: string

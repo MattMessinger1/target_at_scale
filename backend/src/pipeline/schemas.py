@@ -133,6 +133,10 @@ class WebHook(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    hook_id: Optional[str] = Field(
+        default=None,
+        description="Unique identifier for this hook (hash of content). Used for reliable selection."
+    )
     hook_type: HookType
     quote: str = Field(..., description="Verbatim quote excerpt to include in the opener.")
     link: str = Field(..., description="Single source URL backing the quote (must match opener link).")

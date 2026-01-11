@@ -1240,12 +1240,21 @@ function EmailGeneratorPipeline() {
   const [emailProgress, setEmailProgress] = useState<{ progress: number; message: string } | null>(null)
   const [prep, setPrep] = useState<{ evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; warnings: string[] } | null>(null)
   const [blockedFilteredRequirements, setBlockedFilteredRequirements] = useState<FilteredRequirement[]>([])
-  const [selectedHookLinks, setSelectedHookLinks] = useState<string[]>([])
-  const [primaryHookLink, setPrimaryHookLink] = useState<string | null>(null)
+  // Use hook_id for reliable selection (handles multiple hooks with same URL)
+  const [selectedHookKeys, setSelectedHookKeys] = useState<string[]>([])  // hook_id or link fallback
+  const [primaryHookKey, setPrimaryHookKey] = useState<string | null>(null)  // hook_id or link fallback
+  // Legacy aliases for backwards compatibility
+  const selectedHookLinks = selectedHookKeys  
+  const setSelectedHookLinks = setSelectedHookKeys
+  const primaryHookLink = primaryHookKey
+  const setPrimaryHookLink = setPrimaryHookKey
   const [hookReasonTags, setHookReasonTags] = useState<Record<string, string[]>>({})
   const [hookReasonNotes, setHookReasonNotes] = useState<Record<string, string>>({})
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, ReviewDraft>>({})
   const [showFilteredSection, setShowFilteredSection] = useState(false)
+  
+  // Helper: get unique key for a hook (prefer hook_id, fallback to link)
+  const getHookKey = (h: WebHook): string => h.hook_id || h.link
   
   // Saved runs state
   const [showSavedRuns, setShowSavedRuns] = useState(false)
@@ -1509,8 +1518,15 @@ function EmailGeneratorPipeline() {
         req.treasure_hooks = prep.treasure_hooks
       }
       if (selectedHookLinks.length > 0) {
-        req.selected_hook_links = selectedHookLinks
-        req.primary_hook_link = (primaryHookLink || selectedHookLinks[0] || '').trim() || undefined
+        // Send hook IDs (preferred) for reliable selection
+        req.selected_hook_ids = selectedHookLinks  // selectedHookLinks now contains hook_id or link
+        req.primary_hook_id = (primaryHookLink || selectedHookLinks[0] || '').trim() || undefined
+        // Also send legacy links for backwards compatibility (convert keys back to links if needed)
+        const selectedLinks = prep?.treasure_hooks
+          .filter(h => selectedHookLinks.includes(getHookKey(h)))
+          .map(h => h.link) || selectedHookLinks
+        req.selected_hook_links = selectedLinks
+        req.primary_hook_link = prep?.treasure_hooks.find(h => getHookKey(h) === primaryHookLink)?.link || primaryHookLink || undefined
       }
       // Use polling-based approach to avoid browser connection timeouts
       return api.generate.pipelineRunPolling(req, (progress, message) => {
@@ -1529,18 +1545,18 @@ function EmailGeneratorPipeline() {
       // Training loop: log the explicit human-selected requirements (no implicit rejections).
       try {
         if (prep && selectedHookLinks.length > 0) {
-          const map = new Map((prep.treasure_hooks || []).map((h) => [h.link, h]))
+          const map = new Map((prep.treasure_hooks || []).map((h) => [getHookKey(h), h]))
           const primary = (primaryHookLink || selectedHookLinks[0] || '').trim()
           const decisions: HookDecision[] = []
-          for (const link of selectedHookLinks) {
-            const hook = map.get(link)
+          for (const hookKey of selectedHookLinks) {
+            const hook = map.get(hookKey)
             if (!hook) continue
-            const rank = selectedHookLinks.length === 1 ? 1 : link === primary ? 1 : 2
+            const rank = selectedHookLinks.length === 1 ? 1 : hookKey === primary ? 1 : 2
             decisions.push({
               decision: 'selected',
               rank,
-              reason_tags: hookReasonTags[link] || [],
-              reason_note: (hookReasonNotes[link] || '').trim() || null,
+              reason_tags: hookReasonTags[hookKey] || [],
+              reason_note: (hookReasonNotes[hookKey] || '').trim() || null,
               hook,
             })
           }
@@ -2605,15 +2621,16 @@ function EmailGeneratorPipeline() {
                   <span className="text-xs text-slate-500">Selected: {selectedHookLinks.length}/2</span>
                 </div>
                 {passedRequirements.map((h) => {
-                  const isSelected = selectedHookLinks.includes(h.link)
-                  const isPrimary = primaryHookLink === h.link
+                  const hookKey = getHookKey(h)
+                  const isSelected = selectedHookLinks.includes(hookKey)
+                  const isPrimary = primaryHookLink === hookKey
                   return (
-                    <div key={h.link}>
+                    <div key={hookKey}>
                       {renderRequirementCard(h, {
                         isSelected,
                         isPrimary,
-                        onToggle: () => toggleHook(h.link),
-                        onSetPrimary: () => setPrimaryHookLink(h.link),
+                        onToggle: () => toggleHook(hookKey),
+                        onSetPrimary: () => setPrimaryHookLink(hookKey),
                       })}
                       {/* Reason tags for selected requirements */}
                       {isSelected && (
@@ -2627,17 +2644,17 @@ function EmailGeneratorPipeline() {
                               { tag: 'credible', label: 'Credible source' },
                             ].map((opt) => (
                               <label
-                                key={`${h.link}-${opt.tag}`}
+                                key={`${hookKey}-${opt.tag}`}
                                 className={`flex items-center gap-2 px-2 py-1 rounded border text-xs cursor-pointer ${
-                                  (hookReasonTags[h.link] || []).includes(opt.tag)
+                                  (hookReasonTags[hookKey] || []).includes(opt.tag)
                                     ? 'border-emerald-600 bg-emerald-900/10 text-emerald-200'
                                     : 'border-slate-700 bg-slate-900/10 text-slate-300 hover:bg-slate-900/20'
                                 }`}
                               >
                                 <input
                                   type="checkbox"
-                                  checked={(hookReasonTags[h.link] || []).includes(opt.tag)}
-                                  onChange={() => toggleReasonTag(h.link, opt.tag)}
+                                  checked={(hookReasonTags[hookKey] || []).includes(opt.tag)}
+                                  onChange={() => toggleReasonTag(hookKey, opt.tag)}
                                   className="sr-only"
                                 />
                                 <span>{opt.label}</span>
@@ -2645,8 +2662,8 @@ function EmailGeneratorPipeline() {
                             ))}
                           </div>
                           <textarea
-                            value={hookReasonNotes[h.link] || ''}
-                            onChange={(e) => setHookReasonNotes((prev) => ({ ...prev, [h.link]: e.target.value }))}
+                            value={hookReasonNotes[hookKey] || ''}
+                            onChange={(e) => setHookReasonNotes((prev) => ({ ...prev, [hookKey]: e.target.value }))}
                             placeholder="Optional notes..."
                             className="mt-2 w-full min-h-[60px] px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
                           />
@@ -2695,19 +2712,22 @@ function EmailGeneratorPipeline() {
                 </div>
                 {showFilteredSection && (
                   <div className="mt-4 space-y-4">
-                    {allFilteredRequirements.map((fr, idx) => (
-                      <div key={`filtered-${idx}`}>
-                        {renderRequirementCard(fr.hook, {
-                          isFiltered: true,
-                          filterReason: fr.reason,
-                          filterReasonLabel: fr.reason_label,
-                          isSelected: selectedHookLinks.includes(fr.hook.link),
-                          isPrimary: primaryHookLink === fr.hook.link,
-                          onToggle: () => toggleHook(fr.hook.link),
-                          onSetPrimary: () => setPrimaryHookLink(fr.hook.link),
-                        })}
-                      </div>
-                    ))}
+                    {allFilteredRequirements.map((fr, idx) => {
+                      const hookKey = getHookKey(fr.hook)
+                      return (
+                        <div key={`filtered-${idx}`}>
+                          {renderRequirementCard(fr.hook, {
+                            isFiltered: true,
+                            filterReason: fr.reason,
+                            filterReasonLabel: fr.reason_label,
+                            isSelected: selectedHookLinks.includes(hookKey),
+                            isPrimary: primaryHookLink === hookKey,
+                            onToggle: () => toggleHook(hookKey),
+                            onSetPrimary: () => setPrimaryHookLink(hookKey),
+                          })}
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -2764,7 +2784,7 @@ function EmailGeneratorPipeline() {
                 <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">Using Hook</div>
                 <div className="text-sm text-slate-300">
                   {(() => {
-                    const selectedHook = prep.treasure_hooks.find(h => h.link === primaryHookLink)
+                    const selectedHook = prep.treasure_hooks.find(h => getHookKey(h) === primaryHookLink)
                     if (selectedHook) {
                       return (
                         <div>
@@ -2940,7 +2960,7 @@ function EmailGeneratorPipeline() {
                       </div>
                       <div className="text-sm text-slate-400 space-y-2">
                         {prep.treasure_hooks
-                          .filter(h => selectedHookLinks.includes(h.link))
+                          .filter(h => selectedHookLinks.includes(getHookKey(h)))
                           .map((hook, idx) => (
                             <div key={idx}>
                               {hook.eligibility_excerpt && (
