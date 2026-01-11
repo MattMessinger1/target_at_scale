@@ -655,25 +655,28 @@ async def rebuild_product_briefs(
 
 async def _run_rebuild_task(task_id: str):
     """Background task to rebuild all product briefs."""
-    from ...db.database import AsyncSessionLocal
-    from ...research.product_briefs import (
-        DISPLAY_TO_KEY,
-        build_brief_from_kb,
-        upsert_product_brief,
-        normalize_product_key,
-    )
-    
-    products_list = list(DISPLAY_TO_KEY.keys())
+    # Initialize task status FIRST before any imports that might fail
     _REBUILD_TASKS[task_id] = {
-        "status": "running",
+        "status": "initializing",
         "started_at": datetime.utcnow().isoformat(),
         "completed": 0,
-        "total": len(products_list),
+        "total": 7,
         "products": [],
         "errors": [],
     }
     
     try:
+        from ...db.database import AsyncSessionLocal
+        from ...research.product_briefs import (
+            DISPLAY_TO_KEY,
+            build_brief_from_kb,
+            upsert_product_brief,
+            normalize_product_key,
+        )
+        
+        products_list = list(DISPLAY_TO_KEY.keys())
+        _REBUILD_TASKS[task_id]["total"] = len(products_list)
+        _REBUILD_TASKS[task_id]["status"] = "running"
         async with AsyncSessionLocal() as db:
             # Clear all existing cached briefs
             await db.execute(delete(ProductBrief))
