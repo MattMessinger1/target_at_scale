@@ -27,7 +27,8 @@ import {
   PipelineRunResponse,
   PipelineStreamEvent,
   HookDecision,
-  EmailReviewRequest
+  EmailReviewRequest,
+  SavedRunSummary
 } from '../lib/api'
 import { toast } from '@/components/ui/use-toast'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -1245,6 +1246,13 @@ function EmailGeneratorPipeline() {
   const [hookReasonNotes, setHookReasonNotes] = useState<Record<string, string>>({})
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, ReviewDraft>>({})
   const [showFilteredSection, setShowFilteredSection] = useState(false)
+  
+  // Saved runs state
+  const [showSavedRuns, setShowSavedRuns] = useState(false)
+  const [savedRuns, setSavedRuns] = useState<SavedRunSummary[]>([])
+  const [loadingSavedRuns, setLoadingSavedRuns] = useState(false)
+  const [savingRun, setSavingRun] = useState(false)
+  const [currentSavedRunId, setCurrentSavedRunId] = useState<number | null>(null)
 
   useEffect(() => {
     if (selectedHookLinks.length === 1) {
@@ -1318,6 +1326,125 @@ function EmailGeneratorPipeline() {
       }
       return [...prev, link]
     })
+  }
+
+  // Saved runs functions
+  const loadSavedRuns = async () => {
+    setLoadingSavedRuns(true)
+    try {
+      const runs = await api.savedRuns.list()
+      setSavedRuns(runs)
+    } catch (err) {
+      toast({
+        title: 'Error loading saved runs',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'destructive',
+      })
+    } finally {
+      setLoadingSavedRuns(false)
+    }
+  }
+
+  const saveCurrentRun = async (name?: string) => {
+    if (!result) return
+    setSavingRun(true)
+    try {
+      const saved = await api.savedRuns.save({
+        name: name || undefined,
+        product: selectedProducts[0] || '',
+        state_code: selectedStates[0]?.code || '',
+        state_full: selectedStates[0]?.name || undefined,
+        audiences: selectedAudiences.length ? selectedAudiences : ['Title III Coordinators', 'ELL/Multilingual Directors', 'Curriculum Directors'],
+        district_name: districtName.trim() || undefined,
+        pipeline_response: result,
+        selected_hook_links: selectedHookLinks,
+        primary_hook_link: primaryHookLink || undefined,
+        hook_reason_tags: hookReasonTags,
+        hook_reason_notes: hookReasonNotes,
+      })
+      setCurrentSavedRunId(saved.id)
+      toast({
+        title: 'Run saved',
+        description: name ? `Saved as "${name}"` : 'Run saved successfully',
+      })
+      // Refresh the saved runs list
+      loadSavedRuns()
+    } catch (err) {
+      toast({
+        title: 'Error saving run',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'destructive',
+      })
+    } finally {
+      setSavingRun(false)
+    }
+  }
+
+  const loadSavedRun = async (run: SavedRunSummary) => {
+    try {
+      const full = await api.savedRuns.get(run.id)
+      
+      // Restore all state
+      setSelectedProducts([full.product])
+      setSelectedStates([{ code: full.state_code, name: full.state_full || full.state_code }])
+      setSelectedAudiences(full.audiences)
+      setDistrictName(full.district_name || '')
+      
+      // Restore pipeline result
+      setResult(full.pipeline_response)
+      setActiveAudience(full.pipeline_response.variants?.[0]?.audience || null)
+      
+      // Restore hook selection
+      setSelectedHookLinks(full.selected_hook_links)
+      setPrimaryHookLink(full.primary_hook_link || null)
+      setHookReasonTags(full.hook_reason_tags)
+      setHookReasonNotes(full.hook_reason_notes)
+      
+      // Extract prep data from pipeline response
+      if (full.pipeline_response.evidence_pack && full.pipeline_response.treasure_hooks) {
+        setPrep({
+          evidence_pack: full.pipeline_response.evidence_pack,
+          treasure_hooks: full.pipeline_response.treasure_hooks,
+          filtered_requirements: [],
+          warnings: full.pipeline_response.warnings || [],
+        })
+      }
+      
+      // Go to review step
+      setWizardStep(5)
+      setCurrentSavedRunId(full.id)
+      setShowSavedRuns(false)
+      
+      toast({
+        title: 'Run loaded',
+        description: run.name || `Loaded ${run.product} / ${run.state_code}`,
+      })
+    } catch (err) {
+      toast({
+        title: 'Error loading run',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const deleteSavedRun = async (id: number) => {
+    try {
+      await api.savedRuns.delete(id)
+      setSavedRuns((prev) => prev.filter((r) => r.id !== id))
+      if (currentSavedRunId === id) {
+        setCurrentSavedRunId(null)
+      }
+      toast({
+        title: 'Run deleted',
+      })
+    } catch (err) {
+      toast({
+        title: 'Error deleting run',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'destructive',
+      })
+    }
   }
 
   const prepMutation = useMutation<
@@ -2172,8 +2299,108 @@ function EmailGeneratorPipeline() {
               Find funding/compliance requirements and generate targeted emails.
             </div>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setShowSavedRuns(true)
+                loadSavedRuns()
+              }}
+              className="px-3 py-2 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-slate-200 transition-colors flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              </svg>
+              Saved Runs
+            </button>
+            <ThemeToggle />
+          </div>
         </div>
+
+        {/* Saved Runs Modal */}
+        {showSavedRuns && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-2xl max-h-[80vh] overflow-hidden">
+              <div className="p-4 border-b border-slate-700 flex items-center justify-between">
+                <h2 className="text-lg font-medium text-slate-200">Saved Email Runs</h2>
+                <button
+                  onClick={() => setShowSavedRuns(false)}
+                  className="p-1 text-slate-400 hover:text-slate-200"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="p-4 overflow-y-auto max-h-[60vh]">
+                {loadingSavedRuns ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                    <span className="ml-3 text-slate-400">Loading saved runs...</span>
+                  </div>
+                ) : savedRuns.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400">
+                    No saved runs yet. Generate an email and click "Save Run" to save it.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {savedRuns.map((run) => (
+                      <div 
+                        key={run.id} 
+                        className={`p-4 rounded-lg border transition-colors ${
+                          currentSavedRunId === run.id 
+                            ? 'border-emerald-600 bg-emerald-900/20' 
+                            : 'border-slate-700 bg-slate-900/30 hover:border-slate-600'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-slate-200">
+                              {run.name || `${run.product} / ${run.state_code}`}
+                            </div>
+                            {run.subject_preview && (
+                              <div className="text-sm text-slate-400 mt-1 truncate">
+                                "{run.subject_preview}"
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
+                              <span>{run.product}</span>
+                              <span>•</span>
+                              <span>{run.state_full || run.state_code}</span>
+                              <span>•</span>
+                              <span>{run.audiences.length} audience{run.audiences.length !== 1 ? 's' : ''}</span>
+                              <span>•</span>
+                              <span>{new Date(run.created_at).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => loadSavedRun(run)}
+                              className="px-3 py-1.5 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                            >
+                              Load
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (confirm('Delete this saved run?')) {
+                                  deleteSavedRun(run.id)
+                                }
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-red-400 transition-colors"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {renderProgressBar()}
 
@@ -2531,6 +2758,28 @@ function EmailGeneratorPipeline() {
           <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
             <h2 className="text-lg font-medium text-slate-200 mb-6">Generating Email...</h2>
             
+            {/* Show selected hook being used */}
+            {prep && selectedHookLinks.length > 0 && (
+              <div className="mb-4 p-3 rounded-lg border border-slate-600 bg-slate-800/50">
+                <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">Using Hook</div>
+                <div className="text-sm text-slate-300">
+                  {(() => {
+                    const selectedHook = prep.treasure_hooks.find(h => h.link === primaryHookLink)
+                    if (selectedHook) {
+                      return (
+                        <div>
+                          <span className="text-emerald-400">[{selectedHook.hook_type}]</span>{' '}
+                          {selectedHook.trigger_excerpt?.slice(0, 100)}
+                          {(selectedHook.trigger_excerpt?.length || 0) > 100 ? '...' : ''}
+                        </div>
+                      )
+                    }
+                    return <span className="text-slate-500">Hook not found</span>
+                  })()}
+                </div>
+              </div>
+            )}
+            
             {/* Progress bar */}
             <div className="mb-4">
               <div className="flex justify-between text-sm text-slate-400 mb-2">
@@ -2631,6 +2880,39 @@ function EmailGeneratorPipeline() {
                       className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors"
                     >
                       Export CSV
+                    </button>
+                    <button
+                      onClick={() => {
+                        const name = prompt('Save run as (optional):', '')
+                        saveCurrentRun(name || undefined)
+                      }}
+                      disabled={savingRun}
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                        currentSavedRunId
+                          ? 'bg-emerald-700/30 border border-emerald-600 text-emerald-300'
+                          : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
+                      }`}
+                    >
+                      {savingRun ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                          Saving...
+                        </>
+                      ) : currentSavedRunId ? (
+                        <>
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                          Saved
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                          </svg>
+                          Save Run
+                        </>
+                      )}
                     </button>
                     <button
                       onClick={() => {

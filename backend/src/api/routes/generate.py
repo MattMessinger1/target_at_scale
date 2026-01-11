@@ -336,20 +336,39 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     if len(forced_links) == 2:
                         secondary_link = forced_links[1] if forced_links[0] == primary_link else forced_links[0]
 
+                    # IMPORTANT: Search in ORIGINAL hooks from request, not the re-gated list.
+                    # The user explicitly selected these hooks - trust their judgment.
+                    original_hooks = request.treasure_hooks or []
+                    logger.info(f"Hook selection: primary_link={primary_link}, searching in {len(original_hooks)} original hooks")
+                    
                     def _find_hook(link: str):
-                        for h in treasure_hooks or []:
+                        for h in original_hooks:
                             if h.link == link:
                                 return h
                         return None
 
                     ph = _find_hook(primary_link)
                     if not ph:
+                        # Fallback: try gated hooks if not found in original
+                        for h in treasure_hooks or []:
+                            if h.link == primary_link:
+                                ph = h
+                                break
+                    if not ph:
                         raise RuntimeError(f"Primary hook URL not found: {primary_link}")
+                    
+                    logger.info(f"Using primary hook: type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
                     primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected"])
 
                     if secondary_link:
                         sh = _find_hook(secondary_link)
+                        if not sh:
+                            for h in treasure_hooks or []:
+                                if h.link == secondary_link:
+                                    sh = h
+                                    break
                         if sh:
+                            logger.info(f"Using secondary hook: type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
                             secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
                 else:
                     selected = select_primary_hooks(hooks=list(treasure_hooks), audiences=audiences)
@@ -932,23 +951,42 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 if len(forced_links) == 2:
                     secondary_link = forced_links[1] if forced_links[0] == primary_link else forced_links[0]
 
+                # IMPORTANT: Search in ORIGINAL hooks from request, not the re-gated list.
+                # The user explicitly selected these hooks - trust their judgment.
+                original_hooks = request.treasure_hooks or []
+                logger.info(f"Hook selection (stream): primary_link={primary_link}, searching in {len(original_hooks)} original hooks")
+
                 def _find_hook(link: str):
-                    for h in treasure_hooks or []:
+                    for h in original_hooks:
                         if h.link == link:
                             return h
                     return None
 
                 ph = _find_hook(primary_link)
                 if not ph:
+                    # Fallback: try gated hooks if not found in original
+                    for h in treasure_hooks or []:
+                        if h.link == primary_link:
+                            ph = h
+                            break
+                if not ph:
                     raise HTTPException(status_code=422, detail=f"Primary hook URL not found in treasure_hooks: {primary_link}")
+                
+                logger.info(f"Using primary hook (stream): type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
                 primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected"])
 
                 if secondary_link:
                     sh = _find_hook(secondary_link)
                     if not sh:
+                        for h in treasure_hooks or []:
+                            if h.link == secondary_link:
+                                sh = h
+                                break
+                    if not sh:
                         raise HTTPException(
                             status_code=422, detail=f"Secondary hook URL not found in treasure_hooks: {secondary_link}"
                         )
+                    logger.info(f"Using secondary hook (stream): type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
                     secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
             else:
                 # Legacy behavior: choose one hook per audience deterministically.

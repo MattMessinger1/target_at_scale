@@ -370,3 +370,32 @@ class DeepResearchCache(Base):
     # Timestamps for cache invalidation (14-day TTL)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SavedEmailRun(Base):
+    """Saved email generation runs for later retrieval."""
+    __tablename__ = "saved_email_runs"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    
+    # User-provided name (optional)
+    name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    
+    # Generation context
+    product: Mapped[str] = mapped_column(String(200), nullable=False)
+    state_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    state_full: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    audiences: Mapped[list] = mapped_column(JSON, nullable=False)
+    district_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    
+    # Full pipeline response (variants, evidence_pack, hooks)
+    pipeline_response: Mapped[dict] = mapped_column(JSON, nullable=False)
+    
+    # Selected hooks context
+    selected_hook_links: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    primary_hook_link: Mapped[Optional[str]] = mapped_column(String(800), nullable=True)
+    hook_reason_tags: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    hook_reason_notes: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

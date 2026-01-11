@@ -511,6 +511,52 @@ export interface EmailReviewResponse {
 }
 
 // ----------------------------------------------------------------------------
+// Saved Runs Types
+// ----------------------------------------------------------------------------
+
+export interface SaveRunRequest {
+  name?: string | null
+  product: string
+  state_code: string
+  state_full?: string | null
+  audiences: string[]
+  district_name?: string | null
+  pipeline_response: PipelineRunResponse
+  selected_hook_links: string[]
+  primary_hook_link?: string | null
+  hook_reason_tags: Record<string, string[]>
+  hook_reason_notes: Record<string, string>
+}
+
+export interface SavedRunSummary {
+  id: number
+  name?: string | null
+  product: string
+  state_code: string
+  state_full?: string | null
+  audiences: string[]
+  district_name?: string | null
+  created_at: string
+  subject_preview?: string | null
+}
+
+export interface SavedRunFull {
+  id: number
+  name?: string | null
+  product: string
+  state_code: string
+  state_full?: string | null
+  audiences: string[]
+  district_name?: string | null
+  pipeline_response: PipelineRunResponse
+  selected_hook_links: string[]
+  primary_hook_link?: string | null
+  hook_reason_tags: Record<string, string[]>
+  hook_reason_notes: Record<string, string>
+  created_at: string
+}
+
+// ----------------------------------------------------------------------------
 // NDJSON streaming helpers (V3 trace UI groundwork)
 // ----------------------------------------------------------------------------
 
@@ -998,5 +1044,17 @@ export const api = {
     submitEmailReview: (data: EmailReviewRequest) =>
       fetchApi<EmailReviewResponse>('/feedback/email-reviews', { method: 'POST', body: JSON.stringify(data) }),
     exportEmailReviews: () => fetch(`${API_BASE}/feedback/email-reviews/export`),
+  },
+
+  savedRuns: {
+    list: (limit = 50, offset = 0) =>
+      fetchApi<SavedRunSummary[]>(`/saved-runs?limit=${limit}&offset=${offset}`),
+    get: (id: number) => fetchApi<SavedRunFull>(`/saved-runs/${id}`),
+    save: (data: SaveRunRequest) =>
+      fetchApi<SavedRunFull>('/saved-runs', { method: 'POST', body: JSON.stringify(data) }),
+    rename: (id: number, name: string) =>
+      fetchApi<SavedRunSummary>(`/saved-runs/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+    delete: (id: number) =>
+      fetchApi<{ ok: boolean; deleted_id: number }>(`/saved-runs/${id}`, { method: 'DELETE' }),
   },
 }
