@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from typing import List, Optional, Tuple
 
 from openai import AsyncOpenAI
@@ -714,11 +715,33 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
     
     # Use GPT-5.2 Pro with Responses API for extended reasoning
     full_prompt = f"Return only valid JSON. No markdown.\n\n{prompt}"
-    resp = await client.responses.create(
-        model=settings.openai_pro_model,  # gpt-5.2-pro
-        input=full_prompt,
-        reasoning={"effort": "xhigh"},  # Maximum reasoning depth for better product-grant connections
+    
+    # Log before API call
+    logger.info(
+        "EmailWriter: Starting GPT-5.2-Pro xhigh call for %s/%s (audience=%s, prompt_len=%d)",
+        state_code, product, audience, len(full_prompt)
     )
+    start_time = time.perf_counter()
+    
+    try:
+        resp = await client.responses.create(
+            model=settings.openai_pro_model,  # gpt-5.2-pro
+            input=full_prompt,
+            reasoning={"effort": "xhigh"},  # Maximum reasoning depth for better product-grant connections
+        )
+        elapsed = time.perf_counter() - start_time
+        logger.info(
+            "EmailWriter: OpenAI call completed in %.1fs for %s/%s (audience=%s)",
+            elapsed, state_code, product, audience
+        )
+    except Exception as e:
+        elapsed = time.perf_counter() - start_time
+        logger.error(
+            "EmailWriter: OpenAI call FAILED after %.1fs for %s/%s (audience=%s): %s",
+            elapsed, state_code, product, audience, str(e)
+        )
+        raise
+    
     # Extract output from Responses API format
     raw = ""
     if hasattr(resp, 'output') and resp.output:
@@ -734,7 +757,20 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
     if not raw and hasattr(resp, 'output_text'):
         raw = resp.output_text.strip()
 
-    data = _parse_json_object(raw)
+    logger.info(
+        "EmailWriter: Got response for %s/%s (raw_len=%d)",
+        state_code, product, len(raw) if raw else 0
+    )
+    
+    try:
+        data = _parse_json_object(raw)
+    except Exception as e:
+        logger.error(
+            "EmailWriter: JSON parse FAILED for %s/%s: %s (raw preview: %s)",
+            state_code, product, str(e), (raw[:200] if raw else "(empty)")
+        )
+        raise
+    
     subject_line = str(data.get("subject_line") or "").strip()
     email_body = str(data.get("email_body") or "").strip()
     micro_offer = str(data.get("micro_offer") or "").strip() or None

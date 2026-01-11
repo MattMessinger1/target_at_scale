@@ -11,12 +11,15 @@ This module intentionally keeps stage orchestration explicit and traceable:
 
 from __future__ import annotations
 
+import logging
 import time
 from datetime import datetime, timezone
 from uuid import uuid4
 from typing import List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from .schemas import (
     AudienceVariantResult,
@@ -73,6 +76,12 @@ async def _run_variant(
     district_name: Optional[str],
     district_url: Optional[str],
 ) -> AudienceVariantResult:
+    logger.info(
+        "Pipeline: Starting email generation for %s/%s (audience=%s)",
+        state_code, product, audience
+    )
+    variant_start = time.perf_counter()
+    
     variant_trace = AudienceVariantTrace(audience=audience, attempts=[], stage_ms={})
 
     attempts: List[Tuple] = []
@@ -166,6 +175,12 @@ async def _run_variant(
         raise RuntimeError("Failed to produce any email attempt")
     final_draft, final_claims, final_validation, _ = best
 
+    variant_elapsed = time.perf_counter() - variant_start
+    logger.info(
+        "Pipeline: Completed email for %s/%s (audience=%s) in %.1fs, passed=%s, attempts=%d",
+        state_code, product, audience, variant_elapsed, final_validation.passed, len(attempts)
+    )
+
     return AudienceVariantResult(
         audience=audience,
         selected_hook=selected_hook,
@@ -187,9 +202,15 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
     state_full = (request.state_full or "").strip() or state_code
     audiences = request.audiences or list(DEFAULT_AUDIENCES)
 
+    logger.info(
+        "Pipeline: Starting run_id=%s for %s/%s (audiences=%s)",
+        run_id, state_code, product, audiences
+    )
+
     warnings: List[str] = []
 
     # Stage 1: EvidencePack
+    logger.info("Pipeline: Stage 1 - Building evidence pack")
     t0 = time.perf_counter()
     evidence_pack = await build_product_evidence_pack(
         db=db,
@@ -198,8 +219,14 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
         audiences=audiences,
     )
     trace.stage_ms["evidence_pack"] = int((time.perf_counter() - t0) * 1000)
+    logger.info(
+        "Pipeline: Stage 1 complete - evidence_pack built in %dms (chunks=%d)",
+        trace.stage_ms["evidence_pack"],
+        len(evidence_pack.retrieved_chunks or [])
+    )
 
     # Stage 2: TreasureHunter (shared)
+    logger.info("Pipeline: Stage 2 - Running treasure hunter (Deep Research)")
     t1 = time.perf_counter()
     # A bounded context string for Perplexity (avoid giant prompts).
     # Include (1) a few product "artifact" keywords, (2) micro-offers, and (3) short KB excerpts
@@ -310,6 +337,11 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
         product_context_text=product_context_text,
     )
     trace.stage_ms["treasure_hunter"] = int((time.perf_counter() - t1) * 1000)
+    logger.info(
+        "Pipeline: Stage 2 complete - treasure_hunter in %dms (hooks=%d)",
+        trace.stage_ms["treasure_hunter"],
+        len(treasure_hooks or [])
+    )
 
     if not treasure_hooks:
         warnings.append("No treasure hooks returned (Deep Research returned no results - verify OPENAI_API_KEY is set).")
@@ -330,11 +362,14 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
         treasure_hooks = gated
 
     # Stage 3: HookSelector (deterministic)
+    logger.info("Pipeline: Stage 3 - Selecting hooks for audiences")
     t2 = time.perf_counter()
     selected = select_primary_hooks(hooks=treasure_hooks, audiences=audiences)
     trace.stage_ms["hook_selector"] = int((time.perf_counter() - t2) * 1000)
+    logger.info("Pipeline: Stage 3 complete - hook_selector in %dms", trace.stage_ms["hook_selector"])
 
     # Stage 4–6: Write + validate + repair per audience
+    logger.info("Pipeline: Stage 4-6 - Generating emails for %d audiences", len(audiences))
     variants: List[AudienceVariantResult] = []
 
     for aud in audiences:
@@ -346,8 +381,8 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
         if not sel:
             raise RuntimeError("No hooks available to generate an email (TreasureHunter returned none).")
 
-        variants.append(
-            await _run_variant(
+        try:
+            variant = await _run_variant(
                 product=product,
                 state_code=state_code,
                 state_full=state_full,
@@ -358,8 +393,16 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
                 district_name=request.district_name,
                 district_url=request.district_url,
             )
-        )
+            variants.append(variant)
+        except Exception as e:
+            logger.error(
+                "Pipeline: FAILED to generate email for %s/%s (audience=%s): %s",
+                state_code, product, aud, str(e),
+                exc_info=True
+            )
+            raise
 
+    logger.info("Pipeline: All %d variants generated successfully", len(variants))
     trace.variant_traces = [v.trace for v in variants]
     trace.finished_at = _utcnow()
 
