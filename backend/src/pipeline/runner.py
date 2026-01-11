@@ -44,6 +44,23 @@ DEFAULT_AUDIENCES = [
     "Curriculum Directors",
 ]
 
+# ELL-related audiences that can be merged into a single email
+ELL_AUDIENCES = {"Title III Coordinators", "ELL/Multilingual Directors", "Curriculum Directors"}
+
+
+def _maybe_merge_ell_audiences(audiences: List[str]) -> List[str]:
+    """If 2+ ELL-related audiences selected, merge them into 'ELL Decision Makers'.
+    
+    This prevents generating nearly identical emails for similar roles.
+    """
+    ell_selected = [a for a in audiences if a in ELL_AUDIENCES]
+    non_ell = [a for a in audiences if a not in ELL_AUDIENCES]
+    
+    if len(ell_selected) >= 2:
+        # Merge into single combined audience
+        return ["ELL Decision Makers"] + non_ell
+    return audiences
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -203,7 +220,16 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
     product = (request.product or "").strip()
     state_code = (request.state or "").strip().upper()
     state_full = (request.state_full or "").strip() or state_code
-    audiences = request.audiences or list(DEFAULT_AUDIENCES)
+    raw_audiences = request.audiences or list(DEFAULT_AUDIENCES)
+    
+    # Smart-merge: if 2+ ELL-related audiences selected, generate one combined email
+    audiences = _maybe_merge_ell_audiences(raw_audiences)
+    
+    if audiences != raw_audiences:
+        logger.info(
+            "Pipeline: Merged ELL audiences %s -> %s",
+            raw_audiences, audiences
+        )
 
     logger.info(
         "Pipeline: Starting run_id=%s for %s/%s (audiences=%s)",

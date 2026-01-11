@@ -115,6 +115,9 @@ class EvidencePack(BaseModel):
 
     retrieved_chunks: List[EvidenceChunkCitation] = Field(default_factory=list)
     micro_offer_candidates: List[MicroOfferCandidate] = Field(default_factory=list)
+    
+    # Case studies / testimonials from KB (social proof)
+    case_study_chunks: List[EvidenceChunkCitation] = Field(default_factory=list)
 
     # Optional: supplemental brief content (used only to fill gaps, not primary positioning)
     supplemental_brief: Optional[dict] = None
