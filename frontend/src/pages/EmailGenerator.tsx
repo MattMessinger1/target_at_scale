@@ -1236,6 +1236,7 @@ function EmailGeneratorPipeline() {
   const [copied, setCopied] = useState(false)
   const [traceEvents, setTraceEvents] = useState<PipelineStreamEvent[]>([])
   const [researchStartTime, setResearchStartTime] = useState<Date | null>(null)
+  const [emailProgress, setEmailProgress] = useState<{ progress: number; message: string } | null>(null)
   const [prep, setPrep] = useState<{ evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; warnings: string[] } | null>(null)
   const [blockedFilteredRequirements, setBlockedFilteredRequirements] = useState<FilteredRequirement[]>([])
   const [selectedHookLinks, setSelectedHookLinks] = useState<string[]>([])
@@ -1384,8 +1385,11 @@ function EmailGeneratorPipeline() {
         req.selected_hook_links = selectedHookLinks
         req.primary_hook_link = (primaryHookLink || selectedHookLinks[0] || '').trim() || undefined
       }
-      return api.generate.pipelineRunStream(req, (evt) => {
-        setTraceEvents((prev) => [...prev, evt])
+      // Use polling-based approach to avoid browser connection timeouts
+      return api.generate.pipelineRunPolling(req, (progress, message) => {
+        setEmailProgress({ progress, message })
+        // Also add to trace events for activity log
+        setTraceEvents((prev) => [...prev, { type: 'progress', progress, message } as PipelineStreamEvent])
       })
     },
     onSuccess: (data) => {
@@ -1572,6 +1576,7 @@ function EmailGeneratorPipeline() {
   const handleRun = () => {
     if (!canGenerate) return
     setTraceEvents([])
+    setEmailProgress(null) // Reset progress
     setWizardStep(4) // Go to Generate step
     pipelineMutation.mutate()
   }
@@ -1584,6 +1589,7 @@ function EmailGeneratorPipeline() {
     setSelectedHookLinks([])
     setPrimaryHookLink(null)
     setHookReasonTags({})
+    setEmailProgress(null)
     setHookReasonNotes({})
     setReviewDrafts({})
     setActiveAudience(null)
@@ -2520,16 +2526,36 @@ function EmailGeneratorPipeline() {
           </div>
         )}
 
-        {/* Step 4: Generate Email (loading state) */}
+        {/* Step 4: Generate Email (loading state with polling progress) */}
         {wizardStep === 4 && (
           <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
             <h2 className="text-lg font-medium text-slate-200 mb-6">Generating Email...</h2>
+            
+            {/* Progress bar */}
+            <div className="mb-4">
+              <div className="flex justify-between text-sm text-slate-400 mb-2">
+                <span>{emailProgress?.message || 'Starting...'}</span>
+                <span>{emailProgress?.progress || 0}%</span>
+              </div>
+              <div className="w-full bg-slate-700 rounded-full h-2">
+                <div 
+                  className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
+                  style={{ width: `${emailProgress?.progress || 0}%` }}
+                />
+              </div>
+            </div>
+            
             <div className="flex items-center gap-3 mb-6">
               <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
               <span className="text-slate-300">
-                {getLatestTraceStatus(traceEvents) || 'Creating audience variants...'}
+                {emailProgress?.message || getLatestTraceStatus(traceEvents) || 'Creating audience variants...'}
               </span>
             </div>
+            
+            <p className="text-sm text-slate-500 mb-4">
+              This typically takes 2-4 minutes. The page will automatically update when complete.
+            </p>
+            
             {traceEvents.length > 0 && (
               <div className="p-4 rounded-lg border border-slate-700 bg-slate-900/30 max-h-48 overflow-y-auto">
                 <div className="text-xs text-slate-500 uppercase tracking-wide mb-2">Activity Log</div>

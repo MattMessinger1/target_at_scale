@@ -6,13 +6,20 @@ This endpoint generates personalized sales emails using:
 3. Target audience and state
 """
 from typing import Any, Dict, List, Optional
+import asyncio
 import json
 import logging
 import time
 from datetime import datetime, timezone
+from uuid import uuid4
 import dataclasses
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# In-memory task storage for polling-based email generation
+# ---------------------------------------------------------------------------
+_email_tasks: Dict[str, Dict[str, Any]] = {}
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -206,6 +213,292 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         # Optional: human-selected hook URLs (1–2) + which is primary (opener).
         selected_hook_links: Optional[List[str]] = Field(default=None, min_length=1, max_length=2)
         primary_hook_link: Optional[str] = None
+
+    # ---------------------------------------------------------------------------
+    # Polling-based email generation (avoids long-running HTTP connections)
+    # ---------------------------------------------------------------------------
+
+    @router.post("/pipeline/run/start")
+    async def start_email_pipeline(
+        request: PipelineRunStreamRequest,
+        db: AsyncSession = Depends(get_db),
+    ):
+        """Start email generation as a background task and return task ID.
+        
+        Frontend should poll /pipeline/run/status?task_id=X for progress.
+        """
+        from ...pipeline.hook_gate import gate_treasure_hooks
+        from ...pipeline.runner import DEFAULT_AUDIENCES, _mode, _utcnow, _run_variant
+        from ...pipeline.schemas import PipelineRequest as PipelineRequestModel, PipelineTrace, SelectedHook
+        from ...pipeline.stages.evidence_pack import build_product_evidence_pack
+        from ...pipeline.stages.hook_selector import select_primary_hooks
+        from ...pipeline.stages.treasure_hunter import run_treasure_hunter
+
+        # Best-effort: derive state_full if omitted
+        if not request.state_full:
+            try:
+                from .research import STATE_NAMES
+                if request.state and request.state.strip().upper() in STATE_NAMES:
+                    request.state_full = STATE_NAMES[request.state.strip().upper()]
+            except Exception:
+                pass
+
+        task_id = uuid4().hex
+        
+        # Initialize task state
+        _email_tasks[task_id] = {
+            "status": "queued",
+            "progress": 0,
+            "message": "Starting email generation...",
+            "started_at": _utcnow_iso(),
+            "result": None,
+            "error": None,
+        }
+
+        async def run_email_task():
+            """Background task that runs the email pipeline."""
+            try:
+                _email_tasks[task_id]["status"] = "in_progress"
+                _email_tasks[task_id]["message"] = "Initializing pipeline..."
+                
+                product = (request.product or "").strip()
+                state_code = (request.state or "").strip().upper()
+                state_full = (request.state_full or "").strip() or state_code
+                audiences = request.audiences or list(DEFAULT_AUDIENCES)
+                warnings: List[str] = []
+                stage_ms: Dict[str, int] = {}
+
+                # Decide whether this is a forced-hook (human selection) run
+                forced_links = [str(x).strip() for x in (request.selected_hook_links or []) if str(x).strip()]
+                forced_links = list(dict.fromkeys(forced_links))
+                use_forced = len(forced_links) > 0
+
+                # Evidence pack / hooks: reuse if provided, else compute
+                evidence_pack = request.evidence_pack
+                treasure_hooks = request.treasure_hooks
+
+                if evidence_pack is None or treasure_hooks is None:
+                    _email_tasks[task_id]["message"] = "Building evidence pack..."
+                    _email_tasks[task_id]["progress"] = 5
+                    
+                    t0 = time.perf_counter()
+                    evidence_pack = await build_product_evidence_pack(
+                        db=db,
+                        product_display_name=product,
+                        state_code=state_code,
+                        audiences=audiences,
+                    )
+                    stage_ms["evidence_pack"] = int((time.perf_counter() - t0) * 1000)
+
+                    _email_tasks[task_id]["message"] = "Running treasure hunter..."
+                    _email_tasks[task_id]["progress"] = 10
+                    
+                    t1 = time.perf_counter()
+                    treasure_hooks = await run_treasure_hunter(
+                        db=db,
+                        product=product,
+                        state_code=state_code,
+                        state_full=state_full,
+                        district_name=request.district_name,
+                        district_url=request.district_url,
+                        product_context_text=None,
+                    )
+                    stage_ms["treasure_hunter"] = int((time.perf_counter() - t1) * 1000)
+
+                if not treasure_hooks:
+                    raise RuntimeError("No treasure hooks returned (Deep Research returned no results)")
+
+                # HookGate
+                _email_tasks[task_id]["message"] = "Filtering hooks..."
+                _email_tasks[task_id]["progress"] = 15
+                
+                t2 = time.perf_counter()
+                gated, filtered_reqs, report = gate_treasure_hooks(treasure_hooks, evidence_pack=evidence_pack)
+                stage_ms["hook_gate"] = int((time.perf_counter() - t2) * 1000)
+
+                if report.kept == 0:
+                    raise RuntimeError("No funding/compliance requirements passed the relevance gate")
+                
+                treasure_hooks = gated
+                if report.kept < report.total:
+                    warnings.append(f"Relevance gate filtered: kept={report.kept}/{report.total}")
+
+                # Select hooks
+                primary: Optional[SelectedHook] = None
+                secondary: Optional[SelectedHook] = None
+
+                if use_forced:
+                    if len(forced_links) > 2:
+                        raise RuntimeError("selected_hook_links must contain at most 2 URLs")
+
+                    primary_link = (request.primary_hook_link or "").strip() or forced_links[0]
+                    secondary_link = None
+                    if len(forced_links) == 2:
+                        secondary_link = forced_links[1] if forced_links[0] == primary_link else forced_links[0]
+
+                    def _find_hook(link: str):
+                        for h in treasure_hooks or []:
+                            if h.link == link:
+                                return h
+                        return None
+
+                    ph = _find_hook(primary_link)
+                    if not ph:
+                        raise RuntimeError(f"Primary hook URL not found: {primary_link}")
+                    primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected"])
+
+                    if secondary_link:
+                        sh = _find_hook(secondary_link)
+                        if sh:
+                            secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
+                else:
+                    selected = select_primary_hooks(hooks=list(treasure_hooks), audiences=audiences)
+
+                # Generate variants
+                _email_tasks[task_id]["message"] = "Generating emails..."
+                _email_tasks[task_id]["progress"] = 20
+                
+                variants = []
+                t4 = time.perf_counter()
+                
+                def update_progress(msg: str, pct: float):
+                    """Progress callback for email writer."""
+                    _email_tasks[task_id]["message"] = msg
+                    _email_tasks[task_id]["progress"] = min(95, 20 + int(pct * 0.75))
+                
+                if use_forced:
+                    for aud_idx, aud in enumerate(audiences):
+                        if not primary:
+                            raise RuntimeError("Primary hook selection failed")
+                        _email_tasks[task_id]["message"] = f"Generating email for {aud}..."
+                        _email_tasks[task_id]["progress"] = 20 + int((aud_idx / len(audiences)) * 75)
+                        
+                        variant = await _run_variant(
+                            product=product,
+                            state_code=state_code,
+                            state_full=state_full,
+                            audience=aud,
+                            evidence_pack=evidence_pack,
+                            selected_hook=primary,
+                            secondary_hook=secondary,
+                            treasure_hooks=treasure_hooks,
+                            district_name=request.district_name,
+                            district_url=request.district_url,
+                            on_progress=update_progress,
+                        )
+                        variants.append(variant)
+                else:
+                    selected = select_primary_hooks(hooks=list(treasure_hooks), audiences=audiences)
+                    for aud_idx, aud in enumerate(audiences):
+                        sel = selected.get(aud)
+                        if not sel and treasure_hooks:
+                            sel = select_primary_hooks(hooks=list(treasure_hooks), audiences=[aud]).get(aud)
+                        if not sel:
+                            raise RuntimeError("No hooks available for email generation")
+                        
+                        _email_tasks[task_id]["message"] = f"Generating email for {aud}..."
+                        _email_tasks[task_id]["progress"] = 20 + int((aud_idx / len(audiences)) * 75)
+                        
+                        variant = await _run_variant(
+                            product=product,
+                            state_code=state_code,
+                            state_full=state_full,
+                            audience=aud,
+                            evidence_pack=evidence_pack,
+                            selected_hook=sel,
+                            secondary_hook=None,
+                            treasure_hooks=treasure_hooks,
+                            district_name=request.district_name,
+                            district_url=request.district_url,
+                            on_progress=update_progress,
+                        )
+                        variants.append(variant)
+                
+                stage_ms["write_validate_repair"] = int((time.perf_counter() - t4) * 1000)
+
+                # Build result
+                run_id = task_id
+                started_at = _utcnow()
+                trace = PipelineTrace(
+                    run_id=run_id,
+                    started_at=started_at,
+                    finished_at=_utcnow(),
+                    stage_ms=stage_ms,
+                    variant_traces=[v.trace for v in variants],
+                )
+
+                request_out = PipelineRequestModel(
+                    product=product,
+                    state=state_code,
+                    state_full=state_full,
+                    audiences=audiences,
+                    district_name=request.district_name,
+                    district_url=request.district_url,
+                )
+
+                result = PipelineRunResponse(
+                    run_id=run_id,
+                    mode=_mode(request_out),
+                    request=request_out,
+                    evidence_pack=evidence_pack,
+                    treasure_hooks=list(treasure_hooks),
+                    variants=variants,
+                    trace=trace,
+                    warnings=warnings,
+                )
+
+                _email_tasks[task_id]["status"] = "completed"
+                _email_tasks[task_id]["progress"] = 100
+                _email_tasks[task_id]["message"] = "Email generation complete!"
+                _email_tasks[task_id]["result"] = _dump_model(result)
+                logger.info(f"Email task {task_id} completed successfully")
+
+            except Exception as e:
+                logger.error(f"Email task {task_id} failed: {e}", exc_info=True)
+                _email_tasks[task_id]["status"] = "failed"
+                _email_tasks[task_id]["error"] = str(e)
+                _email_tasks[task_id]["message"] = f"Failed: {str(e)}"
+
+        # Start background task
+        asyncio.create_task(run_email_task())
+        logger.info(f"Started email task {task_id}")
+
+        return {
+            "task_id": task_id,
+            "status": "queued",
+            "message": "Email generation started",
+        }
+
+    @router.get("/pipeline/run/status")
+    async def get_email_pipeline_status(task_id: str):
+        """Get the status of an email generation task.
+        
+        Returns:
+        - status: queued, in_progress, completed, failed
+        - progress: 0-100
+        - message: current status message
+        - result: full PipelineRunResponse when completed
+        - error: error message when failed
+        """
+        if task_id not in _email_tasks:
+            raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+        
+        task = _email_tasks[task_id]
+        response = {
+            "task_id": task_id,
+            "status": task["status"],
+            "progress": task["progress"],
+            "message": task["message"],
+            "started_at": task.get("started_at"),
+        }
+        
+        if task["status"] == "completed" and task["result"]:
+            response["result"] = task["result"]
+        
+        if task["status"] == "failed" and task["error"]:
+            response["error"] = task["error"]
+        
+        return response
 
     @router.post("/", response_model=PipelineRunResponse)
     @router.post("/pipeline", response_model=PipelineRunResponse)

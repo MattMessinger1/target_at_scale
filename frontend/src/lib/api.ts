@@ -926,6 +926,63 @@ export const api = {
       if (!payload) throw new Error('No run payload returned')
       return payload
     },
+    // Polling-based email generation (avoids connection timeouts)
+    pipelineRunStart: (data: PipelineRunStreamRequest) =>
+      fetchApi<{ task_id: string; status: string; message: string }>('/generate/pipeline/run/start', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    pipelineRunStatus: (taskId: string) =>
+      fetchApi<{
+        task_id: string
+        status: 'queued' | 'in_progress' | 'completed' | 'failed'
+        progress: number
+        message: string
+        started_at?: string
+        result?: PipelineRunResponse
+        error?: string
+      }>(`/generate/pipeline/run/status?task_id=${encodeURIComponent(taskId)}`),
+    // Polling wrapper that handles the full flow
+    pipelineRunPolling: async (
+      data: PipelineRunStreamRequest,
+      onProgress: (progress: number, message: string) => void,
+      pollInterval = 3000,
+      maxPolls = 200, // ~10 minutes max
+    ): Promise<PipelineRunResponse> => {
+      // Start the task
+      const startResult = await fetchApi<{ task_id: string; status: string; message: string }>(
+        '/generate/pipeline/run/start',
+        { method: 'POST', body: JSON.stringify(data) }
+      )
+      const taskId = startResult.task_id
+      onProgress(0, 'Email generation started...')
+
+      // Poll for completion
+      for (let i = 0; i < maxPolls; i++) {
+        await new Promise((resolve) => setTimeout(resolve, pollInterval))
+        
+        const status = await fetchApi<{
+          task_id: string
+          status: 'queued' | 'in_progress' | 'completed' | 'failed'
+          progress: number
+          message: string
+          result?: PipelineRunResponse
+          error?: string
+        }>(`/generate/pipeline/run/status?task_id=${encodeURIComponent(taskId)}`)
+
+        onProgress(status.progress, status.message)
+
+        if (status.status === 'completed' && status.result) {
+          return status.result
+        }
+
+        if (status.status === 'failed') {
+          throw new Error(status.error || 'Email generation failed')
+        }
+      }
+
+      throw new Error('Email generation timed out (exceeded maximum polling time)')
+    },
     batch: (requests: GenerateEmailRequest[]) =>
       fetchApi<{ emails: GenerateEmailResponse[]; count: number }>('/generate/batch', {
         method: 'POST',
