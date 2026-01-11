@@ -608,6 +608,7 @@ async def rebuild_product_briefs(
     """Rebuild (offline) a product brief from KB + overrides and store it.
 
     Protected by X-Admin-Token header matching ADMIN_TOKEN env var.
+    Uses enhanced hybrid search (SQL + semantic) for better KB coverage.
     """
     _require_admin_token(x_admin_token)
 
@@ -615,7 +616,7 @@ async def rebuild_product_briefs(
         build_brief_from_kb,
         normalize_product_key,
         load_override_brief,
-        deep_merge,
+        merge_yaml_primary,
         upsert_product_brief,
     )
 
@@ -635,13 +636,63 @@ async def rebuild_product_briefs(
         if existing:
             return {"message": "Brief already exists (use force=true to rebuild)", "product_key": product_key}
 
+    # Build with hybrid search (SQL + semantic)
     auto = await build_brief_from_kb(db, product, state_code=state)
     override = load_override_brief(product_key, state_code=state)
-    merged = deep_merge(auto, override) if override else auto
+    # Use YAML-primary merge (YAML wins, auto supplements)
+    merged = merge_yaml_primary(auto, override) if override else auto
 
-    await upsert_product_brief(db, product_key, merged, state_code=state, source="merged")
+    await upsert_product_brief(db, product_key, merged, state_code=state, source="hybrid_merged")
 
-    return {"message": "Rebuilt product brief", "product_key": product_key, "state": state}
+    return {
+        "message": "Rebuilt product brief with hybrid search",
+        "product_key": product_key,
+        "state": state,
+        "semantic_search_used": auto.get("_meta", {}).get("semantic_search_used", False),
+    }
+
+
+@router.post("/product-briefs/rebuild-all")
+async def rebuild_all_product_briefs(
+    force: bool = Query(default=True, description="If true, rebuild even if briefs exist"),
+    x_admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rebuild ALL product briefs using enhanced hybrid search.
+
+    This uses both SQL and semantic search to maximize KB content discovery,
+    including competitive comparisons, case studies, and differentiators.
+
+    Protected by X-Admin-Token header matching ADMIN_TOKEN env var.
+    """
+    _require_admin_token(x_admin_token)
+
+    from ...research.product_briefs import regenerate_all_briefs
+
+    results = await regenerate_all_briefs(db, force_rebuild=force)
+
+    return {
+        "message": f"Regenerated {len(results['success'])} product briefs",
+        "results": results,
+    }
+
+
+@router.get("/product-briefs/quality-report")
+async def get_brief_quality_report(
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate a quality report for all product briefs.
+
+    Shows field coverage and identifies briefs that may need enhancement.
+    """
+    from ...research.product_briefs import get_brief_quality_report
+
+    report = await get_brief_quality_report(db)
+
+    return {
+        "message": "Brief quality report",
+        "products": report,
+    }
 
 
 @router.post("/ingest-documents")
