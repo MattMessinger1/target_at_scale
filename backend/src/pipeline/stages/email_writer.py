@@ -10,6 +10,7 @@ The deterministic validator enforces the hard gates.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -724,16 +725,66 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
     start_time = time.perf_counter()
     
     try:
+        # Start task in background mode (returns immediately with task ID)
+        # This avoids HTTP timeout issues for long-running xhigh reasoning
         resp = await client.responses.create(
             model=settings.openai_pro_model,  # gpt-5.2-pro
             input=full_prompt,
-            reasoning={"effort": "xhigh"},  # Maximum reasoning depth for better product-grant connections
+            reasoning={"effort": "xhigh"},  # Maximum reasoning depth
+            background=True,  # Non-blocking, returns task ID for polling
         )
-        elapsed = time.perf_counter() - start_time
+        
         logger.info(
-            "EmailWriter: OpenAI call completed in %.1fs for %s/%s (audience=%s)",
-            elapsed, state_code, product, audience
+            "EmailWriter: Task started id=%s, status=%s for %s/%s (audience=%s)",
+            resp.id, resp.status, state_code, product, audience
         )
+        
+        # Poll for completion (xhigh can take 2-5 minutes)
+        poll_interval = 15  # seconds
+        max_polls = 40  # 10 minutes max (40 * 15s = 600s)
+        
+        for poll_count in range(max_polls):
+            # Check if completed
+            if resp.status == "completed":
+                elapsed = time.perf_counter() - start_time
+                logger.info(
+                    "EmailWriter: Task completed in %.1fs for %s/%s (audience=%s)",
+                    elapsed, state_code, product, audience
+                )
+                break
+            
+            # Check for failure
+            if resp.status in ("failed", "cancelled"):
+                elapsed = time.perf_counter() - start_time
+                error_obj = getattr(resp, 'error', None)
+                logger.error(
+                    "EmailWriter: Task %s after %.1fs for %s/%s (audience=%s): %s",
+                    resp.status, elapsed, state_code, product, audience, error_obj
+                )
+                raise RuntimeError(f"Email generation {resp.status}: {error_obj}")
+            
+            # Log progress every 60s (every 4 polls)
+            if poll_count > 0 and poll_count % 4 == 0:
+                elapsed = time.perf_counter() - start_time
+                logger.info(
+                    "EmailWriter: Polling... %.0fs elapsed, status=%s for %s/%s (audience=%s)",
+                    elapsed, resp.status, state_code, product, audience
+                )
+            
+            # Wait before polling again
+            await asyncio.sleep(poll_interval)
+            
+            # Poll for updated status
+            resp = await client.responses.retrieve(resp.id)
+        else:
+            # Loop exhausted without completion
+            elapsed = time.perf_counter() - start_time
+            logger.error(
+                "EmailWriter: Task TIMED OUT after %.1fs for %s/%s (audience=%s)",
+                elapsed, state_code, product, audience
+            )
+            raise RuntimeError(f"Email generation timed out after {max_polls * poll_interval}s")
+        
     except Exception as e:
         elapsed = time.perf_counter() - start_time
         logger.error(
@@ -742,10 +793,10 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
         )
         raise
     
-    # Extract output from Responses API format
-    raw = ""
-    if hasattr(resp, 'output') and resp.output:
-        # Responses API returns output as list of content items
+    # Extract output from Responses API format (background mode uses output_text)
+    raw = resp.output_text or ""
+    if not raw and hasattr(resp, 'output') and resp.output:
+        # Fallback: try extracting from output content items
         for item in resp.output:
             if hasattr(item, 'content') and item.content:
                 for content_item in item.content:
@@ -754,8 +805,6 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
                         break
             if raw:
                 break
-    if not raw and hasattr(resp, 'output_text'):
-        raw = resp.output_text.strip()
 
     logger.info(
         "EmailWriter: Got response for %s/%s (raw_len=%d)",
