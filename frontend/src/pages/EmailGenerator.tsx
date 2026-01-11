@@ -1,5 +1,5 @@
 /**
- * EmailGenerator page - Main V1 email tool flow.
+ * EmailGenerator page - V2 streaming research flow.
  * 
  * Flow:
  * 1. Select products, states, audiences (multi-select)
