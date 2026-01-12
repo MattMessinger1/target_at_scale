@@ -1593,8 +1593,11 @@ function EmailGeneratorPipeline() {
           evidence_pack: full.pipeline_response.evidence_pack,
           treasure_hooks: full.pipeline_response.treasure_hooks,
           filtered_requirements: [],
+          district_research: full.pipeline_response.district_research || null,
           warnings: full.pipeline_response.warnings || [],
         })
+        // Set district research status if data exists
+        setDistrictResearchStatus(full.pipeline_response.district_research ? 'complete' : 'idle')
       }
       
       // Go to review step
