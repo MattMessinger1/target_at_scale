@@ -8,9 +8,10 @@
  * 4. Generate email
  * 5. Copy / Export
  */
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
+import { useEffect } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { 
   api, 
   FundingItem, 
@@ -20,7 +21,6 @@ import {
   GenerateEmailResponse,
   EvidenceChunkCitation,
   EvidencePack,
-  MicroOfferCandidate,
   WebHook,
   FilteredRequirement,
   DistrictResearchResult,
@@ -174,29 +174,6 @@ const saveRuns = (runs: ResearchRunSnapshot[]) => {
     window.localStorage.setItem(RESEARCH_RUNS_STORAGE_KEY, JSON.stringify(runs))
   } catch {
     // Ignore storage quota errors
-  }
-}
-
-/**
- * Sanitize evidence_pack to match backend EvidencePack schema.
- * Old batch runs may have incorrect fields (state_code, funding_items, etc.)
- * that cause 422 errors when sent back to the backend.
- */
-const sanitizeEvidencePack = (
-  ep: Record<string, unknown> | null | undefined,
-  product: string,
-  stateCode: string
-): EvidencePack | null => {
-  if (!ep) return null
-  return {
-    // Use correct field names, falling back to legacy fields
-    product: (ep.product as string) || product || '',
-    product_key: (ep.product_key as string) || null,
-    state: (ep.state as string) || (ep.state_code as string) || stateCode || '',
-    // These fields may not exist in old data
-    retrieved_chunks: (ep.retrieved_chunks as EvidenceChunkCitation[]) || [],
-    micro_offer_candidates: (ep.micro_offer_candidates as MicroOfferCandidate[]) || [],
-    supplemental_brief: (ep.supplemental_brief as Record<string, unknown>) || null,
   }
 }
 
@@ -1267,7 +1244,6 @@ type CacheStatus = {
 }
 
 function EmailGeneratorPipeline() {
-  const navigate = useNavigate()
   const [wizardStep, setWizardStep] = useState<WizardStep>(1)
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   const [selectedStates, setSelectedStates] = useState<SelectedState[]>([])
@@ -1327,14 +1303,6 @@ function EmailGeneratorPipeline() {
   // Batch processing state
   const [showBatchModal, setShowBatchModal] = useState(false)
   const [batchStates, setBatchStates] = useState<Array<{ code: string; name: string }>>([])
-  
-  // District email generation override (used when generating email for a specific district)
-  const districtEmailOverrideRef = useRef<{
-    districtName: string
-    hookKeys: string[]
-    primaryHookKey: string
-    extraHooks: WebHook[]
-  } | null>(null)
   const [startingBatch, setStartingBatch] = useState(false)
 
   useEffect(() => {
@@ -1486,68 +1454,6 @@ function EmailGeneratorPipeline() {
     return () => { cancelled = true }
   }, []) // Only run once on mount
 
-  // Auto-load saved run from sessionStorage (from SavedRuns page navigation)
-  useEffect(() => {
-    const savedRunJson = sessionStorage.getItem('loadSavedRun')
-    if (!savedRunJson) return
-    
-    sessionStorage.removeItem('loadSavedRun')
-    
-    try {
-      const full = JSON.parse(savedRunJson)
-      
-      // Restore all state (same as loadSavedRun function)
-      setSelectedProducts([full.product])
-      setSelectedStates([{ code: full.state_code, name: full.state_full || full.state_code }])
-      setSelectedAudiences(full.audiences || [])
-      setDistrictName(full.district_name || '')
-      
-      // Restore pipeline result
-      setResult(full.pipeline_response)
-      setActiveAudience(full.pipeline_response?.variants?.[0]?.audience || null)
-      
-      // Restore hook selection
-      setSelectedHookLinks(full.selected_hook_links || [])
-      setPrimaryHookLink(full.primary_hook_link || null)
-      setHookReasonTags(full.hook_reason_tags || {})
-      setHookReasonNotes(full.hook_reason_notes || {})
-      
-      // Extract prep data from pipeline response (sanitize evidence_pack for schema compatibility)
-      const resp = full.pipeline_response || {}
-      if (resp.evidence_pack) {
-        const sanitizedEp = sanitizeEvidencePack(
-          resp.evidence_pack as unknown as Record<string, unknown>,
-          full.product,
-          full.state_code
-        )
-        if (sanitizedEp) {
-          setPrep({
-            evidence_pack: sanitizedEp,
-            treasure_hooks: resp.treasure_hooks || resp.hooks || [],
-            filtered_requirements: resp.filtered_requirements || [],
-            warnings: resp.warnings || [],
-          })
-        }
-      }
-      
-      // Navigate to appropriate step
-      if (full.run_type === 'research') {
-        setWizardStep(3)  // Curation step for research runs
-      } else {
-        setWizardStep(5)  // Review step for email runs
-      }
-      
-      setCurrentSavedRunId(full.id)
-      
-      toast({
-        title: 'Run loaded',
-        description: full.name || `Loaded ${full.product} / ${full.state_code}`,
-      })
-    } catch (err) {
-      console.error('Failed to load saved run from session:', err)
-    }
-  }, [])
-
   const toggleReasonTag = (link: string, tag: string) => {
     setHookReasonTags((prev) => {
       const existing = prev[link] || []
@@ -1681,21 +1587,14 @@ function EmailGeneratorPipeline() {
       setHookReasonTags(full.hook_reason_tags)
       setHookReasonNotes(full.hook_reason_notes)
       
-      // Extract prep data from pipeline response (sanitize evidence_pack for schema compatibility)
+      // Extract prep data from pipeline response
       if (full.pipeline_response.evidence_pack && full.pipeline_response.treasure_hooks) {
-        const sanitizedEp = sanitizeEvidencePack(
-          full.pipeline_response.evidence_pack as unknown as Record<string, unknown>,
-          full.product,
-          full.state_code
-        )
-        if (sanitizedEp) {
-          setPrep({
-            evidence_pack: sanitizedEp,
-            treasure_hooks: full.pipeline_response.treasure_hooks,
-            filtered_requirements: [],
-            warnings: full.pipeline_response.warnings || [],
-          })
-        }
+        setPrep({
+          evidence_pack: full.pipeline_response.evidence_pack,
+          treasure_hooks: full.pipeline_response.treasure_hooks,
+          filtered_requirements: [],
+          warnings: full.pipeline_response.warnings || [],
+        })
       }
       
       // Go to review step
@@ -1816,50 +1715,29 @@ function EmailGeneratorPipeline() {
 
   const pipelineMutation = useMutation<PipelineRunResponse, Error, void>({
     mutationFn: () => {
-      // Check for district email generation override
-      const override = districtEmailOverrideRef.current
-      const effectiveDistrictName = override?.districtName || districtName.trim() || undefined
-      const effectiveHookKeys = override?.hookKeys || selectedHookLinks
-      const effectivePrimaryHookKey = override?.primaryHookKey || primaryHookLink || effectiveHookKeys[0] || ''
-      
       const req: PipelineRunStreamRequest = {
         product: selectedProducts[0] || '',
         state: selectedStates[0]?.code || '',
         state_full: selectedStates[0]?.name || undefined,
         audiences: selectedAudiences.length ? selectedAudiences : undefined,
-        district_name: effectiveDistrictName,
+        district_name: districtName.trim() || undefined,
         district_url: districtUrl.trim() || undefined,
       }
-      
-      // Merge extra hooks from override into treasure_hooks
-      let effectiveHooks = prep?.treasure_hooks || []
-      if (override?.extraHooks && override.extraHooks.length > 0) {
-        const existingKeys = new Set(effectiveHooks.map(h => getHookKey(h)))
-        const newHooks = override.extraHooks.filter(h => !existingKeys.has(getHookKey(h)))
-        effectiveHooks = [...effectiveHooks, ...newHooks]
-      }
-      
       if (prep) {
         req.evidence_pack = prep.evidence_pack
-        req.treasure_hooks = effectiveHooks
+        req.treasure_hooks = prep.treasure_hooks
       }
-      if (effectiveHookKeys.length > 0) {
+      if (selectedHookLinks.length > 0) {
         // Send hook IDs (preferred) for reliable selection
-        req.selected_hook_ids = effectiveHookKeys
-        req.primary_hook_id = effectivePrimaryHookKey.trim() || undefined
+        req.selected_hook_ids = selectedHookLinks  // selectedHookLinks now contains hook_id or link
+        req.primary_hook_id = (primaryHookLink || selectedHookLinks[0] || '').trim() || undefined
         // Also send legacy links for backwards compatibility (convert keys back to links if needed)
-        const filteredLinks = effectiveHooks
-          .filter(h => effectiveHookKeys.includes(getHookKey(h)))
-          .map(h => h.link)
-        // Only set selected_hook_links if we have matches (avoid empty array failing min_length=1)
-        const selectedLinks = filteredLinks && filteredLinks.length > 0 ? filteredLinks : effectiveHookKeys
+        const selectedLinks = prep?.treasure_hooks
+          .filter(h => selectedHookLinks.includes(getHookKey(h)))
+          .map(h => h.link) || selectedHookLinks
         req.selected_hook_links = selectedLinks
-        req.primary_hook_link = effectiveHooks.find(h => getHookKey(h) === effectivePrimaryHookKey)?.link || effectivePrimaryHookKey || undefined
+        req.primary_hook_link = prep?.treasure_hooks.find(h => getHookKey(h) === primaryHookLink)?.link || primaryHookLink || undefined
       }
-      
-      // Clear the override after use
-      districtEmailOverrideRef.current = null
-      
       // Use polling-based approach to avoid browser connection timeouts
       return api.generate.pipelineRunPolling(req, (progress, message) => {
         setEmailProgress({ progress, message })
@@ -2679,7 +2557,10 @@ function EmailGeneratorPipeline() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => navigate('/saved-runs')}
+              onClick={() => {
+                setShowSavedRuns(true)
+                loadSavedRuns()
+              }}
               className="px-3 py-2 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-slate-200 transition-colors flex items-center gap-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2741,21 +2622,6 @@ function EmailGeneratorPipeline() {
                               <span>{run.product}</span>
                               <span>•</span>
                               <span>{run.state_full || run.state_code}</span>
-                              <span>•</span>
-                              {/* State vs District indicator */}
-                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                                run.district_name 
-                                  ? 'bg-amber-900/50 text-amber-300 border border-amber-700/50' 
-                                  : 'bg-slate-700/50 text-slate-400 border border-slate-600/50'
-                              }`}>
-                                {run.district_name ? 'District' : 'State'}
-                              </span>
-                              {run.district_name && (
-                                <>
-                                  <span>•</span>
-                                  <span className="text-amber-400 truncate max-w-[120px]">{run.district_name}</span>
-                                </>
-                              )}
                               <span>•</span>
                               <span>{run.audiences.length} audience{run.audiences.length !== 1 ? 's' : ''}</span>
                               <span>•</span>
@@ -2916,7 +2782,7 @@ function EmailGeneratorPipeline() {
                         product: selectedProducts[0],
                         states: batchStates,
                         audiences: selectedAudiences,
-                        include_district_research: includeDistrictResearch,
+                        include_district_research: false,
                       })
                       toast({
                         title: 'Batch job started!',
@@ -3420,37 +3286,16 @@ function EmailGeneratorPipeline() {
                             if (!byDistrict[district]) byDistrict[district] = []
                             byDistrict[district].push(hook)
                           }
-                          return Object.entries(byDistrict).map(([district, districtHooks]) => (
+                          return Object.entries(byDistrict).map(([district, hooks]) => (
                             <div key={district} className="p-4 bg-slate-800/50 rounded-lg border border-amber-700/30">
                               <div className="flex items-center justify-between mb-3">
                                 <h4 className="font-medium text-amber-400">{district}</h4>
                                 <button
                                   onClick={() => {
-                                    // Generate email for this district with its hooks
-                                    const hookKeys = districtHooks.map(h => getHookKey(h))
-                                    
-                                    // Set override ref with district context (synchronous)
-                                    districtEmailOverrideRef.current = {
-                                      districtName: district,
-                                      hookKeys,
-                                      primaryHookKey: hookKeys[0] || '',
-                                      extraHooks: districtHooks,
-                                    }
-                                    
-                                    // Update UI state for display
-                                    setDistrictName(district)
-                                    setSelectedHookLinks(hookKeys)
-                                    setPrimaryHookLink(hookKeys[0] || null)
-                                    
-                                    // Go to generate step and trigger mutation immediately
-                                    setTraceEvents([])
-                                    setEmailProgress(null)
-                                    setWizardStep(4)
-                                    pipelineMutation.mutate()
-                                    
+                                    // TODO: Generate email for this district
                                     toast({
-                                      title: 'Generating district email',
-                                      description: `Creating email for ${district} with ${districtHooks.length} hook(s)`,
+                                      title: 'Coming soon',
+                                      description: `Generate email for ${district} will be available soon.`,
                                     })
                                   }}
                                   className="px-3 py-1.5 text-sm bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors"
@@ -3459,7 +3304,7 @@ function EmailGeneratorPipeline() {
                                 </button>
                               </div>
                               <div className="space-y-2">
-                                {districtHooks.map((hook, i) => (
+                                {hooks.map((hook, i) => (
                                   <div key={i} className="text-sm">
                                     <span className="text-slate-300">{cleanQuoteText(hook.quote)}</span>
                                     {hook.why_district_specific && (

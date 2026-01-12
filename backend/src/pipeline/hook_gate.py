@@ -14,10 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Dict, List, Optional, Tuple
-
-from dateutil import parser as date_parser
 
 from .schemas import EvidencePack, WebHook
 
@@ -267,55 +264,10 @@ def _has_deliverable_tie_in(h: WebHook, *, evidence_pack: Optional[EvidencePack]
     return False
 
 
-# ---------------------------------------------------------------------------
-# Expired deadline detection
-# ---------------------------------------------------------------------------
-
-def _extract_deadline_date(trigger_excerpt: str) -> Optional[datetime]:
-    """Extract the most relevant date from trigger excerpt.
-    
-    Returns None if no parseable date found.
-    """
-    if not trigger_excerpt:
-        return None
-    
-    # Common date patterns in trigger excerpts
-    # "Deadline: March 31, 2025", "August 1, 2025", "by FY26", etc.
-    date_patterns = [
-        r'(\w+\s+\d{1,2},?\s+\d{4})',  # "March 31, 2025" or "March 31 2025"
-        r'(\d{1,2}/\d{1,2}/\d{2,4})',   # "3/31/2025" or "03/31/25"
-        r'(\d{4}-\d{2}-\d{2})',          # "2025-03-31"
-    ]
-    
-    for pattern in date_patterns:
-        match = re.search(pattern, trigger_excerpt, re.I)
-        if match:
-            try:
-                return date_parser.parse(match.group(1), fuzzy=True)
-            except Exception:
-                continue
-    
-    return None
-
-
-def _is_deadline_expired(trigger_excerpt: str) -> bool:
-    """Check if the deadline in trigger_excerpt has passed.
-    
-    Returns True (expired) only if we found a parseable date AND it's in the past.
-    Returns False if no date found (benefit of the doubt) or date is future.
-    """
-    deadline = _extract_deadline_date(trigger_excerpt)
-    if deadline is None:
-        return False  # No date found - don't filter
-    
-    return deadline < datetime.now()
-
-
 # Human-readable labels for rejection reasons
 REASON_LABELS: Dict[str, str] = {
     "missing_link": "No source URL provided",
     "low_confidence": "Source quality too uncertain",
-    "expired_deadline": "Deadline has already passed",
     "table_stakes_title_i_iii": "Generic Title I/III (not school improvement specific)",
     "missing_impetus_now_trigger": "No deadline/FY/monitoring language found",
     "missing_deliverable_tie_in": "Doesn't connect to a concrete artifact we offer",
@@ -349,11 +301,6 @@ def gate_treasure_hooks(
         if not h or not (h.link and str(h.link).strip()):
             if h:
                 _filter(h, "missing_link")
-            continue
-
-        # Expired deadline check - filter hooks with dates that have already passed
-        if _is_deadline_expired(h.trigger_excerpt or ""):
-            _filter(h, "expired_deadline")
             continue
 
         # Confidence: drop low-confidence hooks (too risky for outreach).
