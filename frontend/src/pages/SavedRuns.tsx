@@ -150,14 +150,18 @@ export default function SavedRuns() {
           </div>
           <div className="text-xs text-slate-500 flex items-center gap-3">
             <span>{formatDate(run.created_at)}</span>
+            {/* State vs District indicator */}
+            <Badge variant="outline" className={run.district_name ? 'border-amber-600 text-amber-300' : 'border-slate-600 text-slate-400'}>
+              {run.district_name ? 'District' : 'State'}
+            </Badge>
+            {run.district_name && (
+              <span className="text-amber-400 truncate max-w-[150px]">{run.district_name}</span>
+            )}
             {run.run_type === 'research' && run.hook_count !== undefined && (
               <span>{run.hook_count} hooks</span>
             )}
             {run.run_type === 'email' && run.subject_preview && (
               <span className="truncate max-w-[200px]">{run.subject_preview}</span>
-            )}
-            {run.district_name && (
-              <span className="text-amber-400">{run.district_name}</span>
             )}
           </div>
         </div>

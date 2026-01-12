@@ -41,6 +41,20 @@ import { CurationStep } from '../components/CurationStep'
 
 type Step = 'select' | 'research' | 'curate' | 'generate' | 'done'
 
+// Clean up markdown URLs and links from quote text for display
+const cleanQuoteText = (text: string | undefined | null): string => {
+  if (!text) return ''
+  // Remove markdown links: [text](url) -> text
+  let cleaned = text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+  // Remove standalone URLs
+  cleaned = cleaned.replace(/https?:\/\/[^\s]+/g, '')
+  // Remove markdown URL artifacts like ([text]...)
+  cleaned = cleaned.replace(/\(\[?[^\)]+\]?\)/g, '')
+  // Clean up extra whitespace
+  cleaned = cleaned.replace(/\s+/g, ' ').trim()
+  return cleaned
+}
+
 const STEP_ORDER: Step[] = ['select', 'research', 'curate', 'generate', 'done']
 const STEP_LABELS: Record<Step, string> = {
   select: 'Select',
@@ -2215,7 +2229,7 @@ function EmailGeneratorPipeline() {
                   <a className="mt-1 block text-sm text-emerald-300 hover:text-emerald-200 underline break-all" href={h.link} target="_blank" rel="noreferrer">
                     {h.link}
                   </a>
-                  <div className="mt-2 text-sm text-slate-300">“{h.quote}”</div>
+                  <div className="mt-2 text-sm text-slate-300">"{cleanQuoteText(h.quote)}"</div>
                 </div>
               ))}
               {(result.treasure_hooks || []).length === 0 && (
@@ -2245,16 +2259,16 @@ function EmailGeneratorPipeline() {
           <div className="text-xs text-slate-500">{h.hook_type} · {h.confidence}</div>
         </div>
         <div className="mt-2 text-xs text-slate-500 uppercase tracking-wide">Primary Requirement (opener)</div>
-        <div className="mt-2 text-sm text-slate-300">“{h.quote}”</div>
+        <div className="mt-2 text-sm text-slate-300">"{cleanQuoteText(h.quote)}"</div>
         <a className="mt-2 block text-sm text-emerald-300 hover:text-emerald-200 underline break-all" href={h.link} target="_blank" rel="noreferrer">
           {h.link}
         </a>
         <div className="mt-3 text-xs text-slate-500 uppercase tracking-wide">Trigger excerpt</div>
-        <div className="mt-1 text-sm text-slate-300">{h.trigger_excerpt}</div>
+        <div className="mt-1 text-sm text-slate-300">{cleanQuoteText(h.trigger_excerpt)}</div>
         {h.eligibility_excerpt && (
           <>
             <div className="mt-3 text-xs text-slate-500 uppercase tracking-wide">Eligibility excerpt</div>
-            <div className="mt-1 text-sm text-slate-300">{h.eligibility_excerpt}</div>
+            <div className="mt-1 text-sm text-slate-300">{cleanQuoteText(h.eligibility_excerpt)}</div>
           </>
         )}
 
@@ -2265,16 +2279,16 @@ function EmailGeneratorPipeline() {
                 <div className="text-xs text-slate-500 uppercase tracking-wide">Secondary Requirement (supporting)</div>
                 <div className="text-xs text-slate-500">{sh.hook_type} · {sh.confidence}</div>
               </div>
-              <div className="mt-2 text-sm text-slate-300">“{sh.quote}”</div>
+              <div className="mt-2 text-sm text-slate-300">"{cleanQuoteText(sh.quote)}"</div>
               <a className="mt-2 block text-sm text-emerald-300 hover:text-emerald-200 underline break-all" href={sh.link} target="_blank" rel="noreferrer">
                 {sh.link}
               </a>
               <div className="mt-3 text-xs text-slate-500 uppercase tracking-wide">Trigger excerpt</div>
-              <div className="mt-1 text-sm text-slate-300">{sh.trigger_excerpt}</div>
+              <div className="mt-1 text-sm text-slate-300">{cleanQuoteText(sh.trigger_excerpt)}</div>
               {sh.eligibility_excerpt && (
                 <>
                   <div className="mt-3 text-xs text-slate-500 uppercase tracking-wide">Eligibility excerpt</div>
-                  <div className="mt-1 text-sm text-slate-300">{sh.eligibility_excerpt}</div>
+                  <div className="mt-1 text-sm text-slate-300">{cleanQuoteText(sh.eligibility_excerpt)}</div>
                 </>
               )}
             </div>
@@ -2374,9 +2388,9 @@ function EmailGeneratorPipeline() {
       district_specific: 'District Specific',
     }
     
-    // Truncate long quotes
+    // Truncate long quotes (use global cleanQuoteText helper)
     const MAX_QUOTE_LENGTH = 250
-    const quote = h.quote || ''
+    const quote = cleanQuoteText(h.quote)
     const truncatedQuote = quote.length > MAX_QUOTE_LENGTH 
       ? quote.slice(0, MAX_QUOTE_LENGTH) + '...' 
       : quote
@@ -2438,17 +2452,17 @@ function EmailGeneratorPipeline() {
             <div className="space-y-2">
               <div>
                 <div className="text-xs text-slate-500 uppercase tracking-wide font-medium">Trigger</div>
-                <div className="mt-0.5 text-sm text-slate-300">{h.trigger_excerpt}</div>
+                <div className="mt-0.5 text-sm text-slate-300">{cleanQuoteText(h.trigger_excerpt)}</div>
               </div>
               {h.eligibility_excerpt && (
                 <div>
                   <div className="text-xs text-slate-500 uppercase tracking-wide font-medium">Eligibility</div>
-                  <div className="mt-0.5 text-sm text-slate-300">{h.eligibility_excerpt}</div>
+                  <div className="mt-0.5 text-sm text-slate-300">{cleanQuoteText(h.eligibility_excerpt)}</div>
                 </div>
               )}
               <div>
                 <div className="text-xs text-slate-500 uppercase tracking-wide font-medium">Why Relevant</div>
-                <div className="mt-0.5 text-sm text-slate-400">{h.why_relevant}</div>
+                <div className="mt-0.5 text-sm text-slate-400">{cleanQuoteText(h.why_relevant)}</div>
               </div>
             </div>
             
@@ -3251,10 +3265,10 @@ function EmailGeneratorPipeline() {
                               <div className="space-y-2">
                                 {hooks.map((hook, i) => (
                                   <div key={i} className="text-sm">
-                                    <span className="text-slate-300">{hook.quote}</span>
+                                    <span className="text-slate-300">{cleanQuoteText(hook.quote)}</span>
                                     {hook.why_district_specific && (
                                       <p className="text-xs text-slate-500 mt-1">
-                                        Why district-specific: {hook.why_district_specific}
+                                        Why district-specific: {cleanQuoteText(hook.why_district_specific)}
                                       </p>
                                     )}
                                   </div>
@@ -3287,7 +3301,7 @@ function EmailGeneratorPipeline() {
                         <div className="mt-2 space-y-2 pl-4 border-l-2 border-slate-700">
                           {prep.district_research.filtered_hooks.map((item, i) => (
                             <div key={i} className="text-xs text-slate-500">
-                              <span className="font-medium">{item.hook.quote?.slice(0, 80)}...</span>
+                              <span className="font-medium">{cleanQuoteText(item.hook.quote)?.slice(0, 80)}...</span>
                               <span className="text-slate-600 ml-2">— {item.filter_detail}</span>
                             </div>
                           ))}

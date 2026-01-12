@@ -1221,11 +1221,17 @@ export const api = {
         body: JSON.stringify(data),
       })
       const taskId = startResult.task_id
-      onProgress(startResult.phase || 'state', 0, startResult.existing ? 'Reconnecting to research...' : 'Research started...')
-
-      // Poll for completion
+      
+      // Poll immediately first (for cache hits that complete instantly)
+      // Only show progress UI if not immediately complete
+      let firstPoll = true
+      
       for (let i = 0; i < maxPolls; i++) {
-        await new Promise((resolve) => setTimeout(resolve, pollInterval))
+        // Skip initial wait on first poll to check for cache hits
+        if (!firstPoll) {
+          await new Promise((resolve) => setTimeout(resolve, pollInterval))
+        }
+        firstPoll = false
         
         const status = await fetchApi<{
           task_id: string
@@ -1241,13 +1247,22 @@ export const api = {
             warnings: string[]
           }
           error?: string
+          from_cache?: boolean
         }>(`/generate/pipeline/prep/status?task_id=${encodeURIComponent(taskId)}`)
 
-        onProgress(status.phase || 'state', status.progress, status.message)
-
+        // For immediate cache hits, return without showing progress UI
         if (status.status === 'completed' && status.result) {
+          // Only show a brief message for cache hits
+          if (status.from_cache) {
+            onProgress(status.phase || 'state', 100, 'Loaded from cache')
+          } else {
+            onProgress(status.phase || 'state', status.progress, status.message)
+          }
           return status.result
         }
+
+        // Show progress for actual research (not cache hits)
+        onProgress(status.phase || 'state', status.progress, status.message)
 
         if (status.status === 'failed') {
           throw new Error(status.error || 'Research failed')
