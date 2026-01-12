@@ -20,8 +20,8 @@ class District(Base):
     el_percentage: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     
     # Scraping status
-    scrape_status: Mapped[str] = mapped_column(String(20), default="pending")
-    scrape_phase: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    scrape_status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, in_progress, completed, error
+    scrape_phase: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # mapping, contacts, research
     last_scraped_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     
     # Identified needs (extracted from scraping)
@@ -81,7 +81,7 @@ class ScrapedContent(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     district_id: Mapped[str] = mapped_column(String(50), ForeignKey("districts.id"), nullable=False)
     
-    # Content type
+    # Content type: funding, compliance, strategic_priority, news, contact_page, url_mapping
     content_type: Mapped[str] = mapped_column(String(50), nullable=False)
     
     # Content details
@@ -90,7 +90,7 @@ class ScrapedContent(Base):
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     # Source tracking
-    source: Mapped[str] = mapped_column(String(50), default="firecrawl")
+    source: Mapped[str] = mapped_column(String(50), default="firecrawl")  # firecrawl, perplexity, knowledge_base
     source_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     
     # For human curation
@@ -148,11 +148,11 @@ class Email(Base):
     email_body: Mapped[str] = mapped_column(Text, nullable=False)
     
     # Generation context
-    content_used: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    content_used: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # IDs of ScrapedContent used
     generation_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     # Status workflow
-    status: Mapped[str] = mapped_column(String(20), default="draft")
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft, approved, exported
     
     # Review
     approved_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
@@ -181,7 +181,7 @@ class ExtractedSnippet(Base):
     source_content_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("scraped_content.id"), nullable=True)
     
     # Snippet categorization
-    category: Mapped[str] = mapped_column(String(50), nullable=False)
+    category: Mapped[str] = mapped_column(String(50), nullable=False)  # contact, statistic, priority, funding, compliance, program
     
     # The actual email-ready snippet
     snippet_text: Mapped[str] = mapped_column(Text, nullable=False)
@@ -213,8 +213,8 @@ class KnowledgeBaseItem(Base):
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
     
     # Content categorization
-    category: Mapped[str] = mapped_column(String(50), nullable=False)
-    subcategory: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    category: Mapped[str] = mapped_column(String(50), nullable=False)  # product, case_study, state_content, testimonial
+    subcategory: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # e.g., care_coaching, wida_model, florida
     
     # Content
     title: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -238,7 +238,11 @@ class KnowledgeBaseItem(Base):
 
 
 class ProductBrief(Base):
-    """Stored, structured product brief used for email generation."""
+    """Stored, structured product brief used for email generation.
+
+    Briefs are built (offline) from KB materials + optional curated overrides, then
+    stored in the database for fast, reliable runtime generation.
+    """
 
     __tablename__ = "product_briefs"
     __table_args__ = (
@@ -252,7 +256,7 @@ class ProductBrief(Base):
     # Optional two-letter state code variant (e.g., FL). NULL means general brief.
     state_code: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
 
-    # JSON blob holding the brief fields
+    # JSON blob holding the brief fields (see research/product_briefs.py)
     brief_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
     # How this brief was produced (auto, override, merged, on_demand)
@@ -280,9 +284,9 @@ class TreasureHookFeedback(Base):
     district_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Decision + reasons
-    decision: Mapped[str] = mapped_column(String(12), nullable=False)
-    rank: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    reason_tags: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    decision: Mapped[str] = mapped_column(String(12), nullable=False)  # selected|rejected
+    rank: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1=primary, 2=secondary
+    reason_tags: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # list[str]
     reason_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Hook payload (denormalized for easy export)
@@ -327,7 +331,11 @@ class EmailImprovementReview(Base):
 
 
 class DeepResearchCache(Base):
-    """Cache for OpenAI Deep Research results (14-day TTL)."""
+    """Cache for OpenAI Deep Research results (14-day TTL).
+    
+    Deep Research takes 5-30 minutes and is expensive, so we cache results
+    by (state_code, product_key) for reuse.
+    """
     
     __tablename__ = "deep_research_cache"
     __table_args__ = (
@@ -347,6 +355,9 @@ class DeepResearchCache(Base):
     # Research results (JSON blob)
     results_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     
+    # Full prep response (evidence_pack + hooks) for instant cache hits
+    full_prep_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    
     # OpenAI response metadata
     openai_response_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     model_used: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
@@ -365,7 +376,11 @@ class DeepResearchCache(Base):
 
 
 class DistrictResearchCache(Base):
-    """Cache for district-level research results (30-day TTL)."""
+    """Cache for district-level research results (30-day TTL).
+    
+    District research surveys top 30 districts in a state by EL population
+    for incremental funding/compliance opportunities beyond state-level findings.
+    """
     
     __tablename__ = "district_research_cache"
     __table_args__ = (
@@ -405,7 +420,11 @@ class DistrictResearchCache(Base):
 
 
 class ResearchTask(Base):
-    """Track research tasks for polling-based progress."""
+    """Track research tasks for polling-based progress.
+    
+    This enables robust research that survives browser tab sleep,
+    network hiccups, and page refreshes.
+    """
     __tablename__ = "research_tasks"
     
     id: Mapped[str] = mapped_column(String(50), primary_key=True)  # UUID

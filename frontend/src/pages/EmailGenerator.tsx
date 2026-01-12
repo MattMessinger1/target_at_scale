@@ -38,6 +38,7 @@ import { ProductSelector } from '../components/ProductSelector'
 import { StateSelector, SelectedState } from '../components/StateSelector'
 import { AudienceSelector } from '../components/AudienceSelector'
 import { CurationStep } from '../components/CurationStep'
+import { Loader2 } from 'lucide-react'
 
 type Step = 'select' | 'research' | 'curate' | 'generate' | 'done'
 
@@ -1266,6 +1267,7 @@ function EmailGeneratorPipeline() {
   // Cache status for the current state+product selection
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null)
   const [showReSearchConfirm, setShowReSearchConfirm] = useState(false)
+  const [loadingCachedResults, setLoadingCachedResults] = useState(false)
 
   const [result, setResult] = useState<PipelineRunResponse | null>(null)
   const [activeAudience, setActiveAudience] = useState<string | null>(null)
@@ -1845,8 +1847,10 @@ function EmailGeneratorPipeline() {
     },
   })
 
-  const handlePrep = () => {
+  const handlePrep = async () => {
     if (!canPrep) return
+    
+    // Reset state
     setTraceEvents([])
     setResearchStartTime(new Date())
     setPrep(null)
@@ -1858,7 +1862,35 @@ function EmailGeneratorPipeline() {
     setReviewDrafts({})
     setResult(null)
     setActiveAudience(null)
-    setWizardStep(2) // Go to Research step
+    
+    // If cache is completed, try to load directly (instant!)
+    if (cacheStatus?.status === 'completed') {
+      setLoadingCachedResults(true)
+      try {
+        const cached = await api.generate.getCachedPrep(
+          selectedStates[0]?.code || '',
+          selectedProducts[0] || ''
+        )
+        if (cached.result) {
+          setPrep(cached.result)
+          setDistrictResearchStatus(cached.result.district_research ? 'complete' : 'idle')
+          setWizardStep(3) // Go directly to results
+          toast({
+            title: 'Loaded cached results',
+            description: `Research from ${cached.cache_age_days} day${cached.cache_age_days !== 1 ? 's' : ''} ago`,
+          })
+          return
+        }
+      } catch {
+        // Fall through to normal research flow
+        // This happens if full_prep_json isn't cached yet
+      } finally {
+        setLoadingCachedResults(false)
+      }
+    }
+    
+    // Normal research flow - show progress UI
+    setWizardStep(2)
     prepMutation.mutate()
   }
 
@@ -2921,16 +2953,25 @@ function EmailGeneratorPipeline() {
                   )}
                   <button
                     onClick={handlePrep}
-                    disabled={!canPrep}
-                    className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-                      !canPrep
+                    disabled={!canPrep || loadingCachedResults}
+                    className={`px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                      !canPrep || loadingCachedResults
                         ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
                         : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                     }`}
                   >
-                    {cacheStatus?.status === 'completed' ? 'View Cached Results →' : 
-                     cacheStatus?.status === 'in_progress' ? 'View Progress →' :
-                     'Find Requirements →'}
+                    {loadingCachedResults ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Loading...
+                      </>
+                    ) : cacheStatus?.status === 'completed' ? (
+                      'View Cached Results →'
+                    ) : cacheStatus?.status === 'in_progress' ? (
+                      'View Progress →'
+                    ) : (
+                      'Find Requirements →'
+                    )}
                   </button>
                 </div>
               </div>

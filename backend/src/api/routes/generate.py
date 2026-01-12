@@ -919,6 +919,17 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 }
                 _research_tasks[task_id]["result"] = result
                 
+                # Store full prep in DeepResearchCache for instant future loads
+                try:
+                    from ...research.deep_research import get_cached_research
+                    cache_entry = await get_cached_research(db, state_code, product_key)
+                    if cache_entry:
+                        cache_entry.full_prep_json = result
+                        await db.commit()
+                        logger.info(f"Research task {task_id}: Stored full prep in cache")
+                except Exception as cache_err:
+                    logger.warning(f"Research task {task_id}: Failed to cache full prep: {cache_err}")
+                
                 logger.info(f"Research task {task_id} completed successfully")
                 
             except Exception as e:
@@ -1049,6 +1060,36 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             "task_id": task_id,
             "cancelled": True,
         }
+
+    @router.get("/pipeline/prep/cached")
+    async def get_cached_prep(
+        state: str,
+        product: str,
+        db: AsyncSession = Depends(get_db),
+    ):
+        """Get cached prep response directly (skips evidence pack building).
+        
+        This enables instant loads for previously-completed research.
+        Returns 404 if no cached prep is available.
+        """
+        from ...research.deep_research import get_cached_research
+        from ...research.product_briefs import normalize_product_key
+        
+        product_key = normalize_product_key(product)
+        state_code = state.strip().upper()
+        
+        cached = await get_cached_research(db, state_code, product_key)
+        
+        if cached and cached.full_prep_json:
+            cache_age = datetime.utcnow() - cached.created_at
+            return {
+                "cached": True,
+                "result": cached.full_prep_json,
+                "cache_age_days": cache_age.days,
+                "cached_at": cached.created_at.isoformat(),
+            }
+        
+        raise HTTPException(status_code=404, detail="No cached prep available")
 
     @router.get("/pipeline/prep/active")
     async def get_active_research():

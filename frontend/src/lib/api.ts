@@ -1020,6 +1020,23 @@ export const api = {
         error?: string
       }>(`/generate/pipeline/cache/status?${params.toString()}`)
     },
+    getCachedPrep: (state: string, product: string) => {
+      const params = new URLSearchParams()
+      params.set('state', state)
+      params.set('product', product)
+      return fetchApi<{
+        cached: boolean
+        result: {
+          evidence_pack: EvidencePack
+          treasure_hooks: WebHook[]
+          filtered_requirements: FilteredRequirement[]
+          district_research?: DistrictResearchResult | null
+          warnings: string[]
+        }
+        cache_age_days: number
+        cached_at: string
+      }>(`/generate/pipeline/prep/cached?${params.toString()}`)
+    },
     cancelResearch: (state: string, product: string) => {
       const params = new URLSearchParams()
       params.set('state', state)
