@@ -2850,7 +2850,7 @@ function EmailGeneratorPipeline() {
                         product: selectedProducts[0],
                         states: batchStates,
                         audiences: selectedAudiences,
-                        include_district_research: false,
+                        include_district_research: includeDistrictResearch,
                       })
                       toast({
                         title: 'Batch job started!',
