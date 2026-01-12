@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- WCEPS Logo - Double Chevron "W" Mark -->
+  <!-- Top smaller chevron -->
+  <path fill="#E31B54" d="M50 8 L72 30 L62 30 L50 18 L38 30 L28 30 Z"/>
+  <!-- Bottom larger chevron -->
+  <path fill="#E31B54" d="M50 32 L90 72 L75 72 L50 47 L25 72 L10 72 Z"/>
+</svg>
