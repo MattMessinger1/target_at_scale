@@ -1332,11 +1332,13 @@ function EmailGeneratorPipeline() {
       setHookReasonNotes(full.hook_reason_notes)
       
       // Extract prep data from pipeline response
-      if (full.pipeline_response.evidence_pack && full.pipeline_response.treasure_hooks) {
+      // Handle both field names: treasure_hooks (email runs) and hooks (research runs)
+      const hooks = full.pipeline_response.treasure_hooks || full.pipeline_response.hooks || []
+      if (full.pipeline_response.evidence_pack && hooks.length > 0) {
         setPrep({
           evidence_pack: full.pipeline_response.evidence_pack,
-          treasure_hooks: full.pipeline_response.treasure_hooks,
-          filtered_requirements: [],
+          treasure_hooks: hooks,
+          filtered_requirements: full.pipeline_response.filtered_requirements || [],
           district_research: full.pipeline_response.district_research || null,
           warnings: full.pipeline_response.warnings || [],
         })
@@ -1640,11 +1642,13 @@ function EmailGeneratorPipeline() {
       setHookReasonNotes(full.hook_reason_notes)
       
       // Extract prep data from pipeline response
-      if (full.pipeline_response.evidence_pack && full.pipeline_response.treasure_hooks) {
+      // Handle both field names: treasure_hooks (email runs) and hooks (research runs)
+      const hooks = full.pipeline_response.treasure_hooks || full.pipeline_response.hooks || []
+      if (full.pipeline_response.evidence_pack && hooks.length > 0) {
         setPrep({
           evidence_pack: full.pipeline_response.evidence_pack,
-          treasure_hooks: full.pipeline_response.treasure_hooks,
-          filtered_requirements: [],
+          treasure_hooks: hooks,
+          filtered_requirements: full.pipeline_response.filtered_requirements || [],
           district_research: full.pipeline_response.district_research || null,
           warnings: full.pipeline_response.warnings || [],
         })
