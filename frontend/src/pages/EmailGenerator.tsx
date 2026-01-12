@@ -8,8 +8,7 @@
  * 4. Generate email
  * 5. Copy / Export
  */
-import { useState } from 'react'
-import { useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { 
@@ -174,6 +173,29 @@ const saveRuns = (runs: ResearchRunSnapshot[]) => {
     window.localStorage.setItem(RESEARCH_RUNS_STORAGE_KEY, JSON.stringify(runs))
   } catch {
     // Ignore storage quota errors
+  }
+}
+
+/**
+ * Sanitize evidence_pack to match backend EvidencePack schema.
+ * Old batch runs may have incorrect fields (state_code, funding_items, etc.)
+ * that cause 422 errors when sent back to the backend.
+ */
+const sanitizeEvidencePack = (
+  ep: Record<string, unknown> | null | undefined,
+  product: string,
+  stateCode: string
+): EvidencePack | null => {
+  if (!ep) return null
+  return {
+    // Use correct field names, falling back to legacy fields
+    product: (ep.product as string) || product || '',
+    product_key: (ep.product_key as string) || null,
+    state: (ep.state as string) || (ep.state_code as string) || stateCode || '',
+    // These fields may not exist in old data
+    retrieved_chunks: (ep.retrieved_chunks as EvidenceChunkCitation[]) || [],
+    micro_offer_candidates: (ep.micro_offer_candidates as MicroOfferCandidate[]) || [],
+    supplemental_brief: (ep.supplemental_brief as Record<string, unknown>) || null,
   }
 }
 
@@ -1304,6 +1326,14 @@ function EmailGeneratorPipeline() {
   // Batch processing state
   const [showBatchModal, setShowBatchModal] = useState(false)
   const [batchStates, setBatchStates] = useState<Array<{ code: string; name: string }>>([])
+  
+  // District email generation override (used when generating email for a specific district)
+  const districtEmailOverrideRef = useRef<{
+    districtName: string
+    hookKeys: string[]
+    primaryHookKey: string
+    extraHooks: WebHook[]
+  } | null>(null)
   const [startingBatch, setStartingBatch] = useState(false)
 
   useEffect(() => {
@@ -1481,15 +1511,22 @@ function EmailGeneratorPipeline() {
       setHookReasonTags(full.hook_reason_tags || {})
       setHookReasonNotes(full.hook_reason_notes || {})
       
-      // Extract prep data from pipeline response
+      // Extract prep data from pipeline response (sanitize evidence_pack for schema compatibility)
       const resp = full.pipeline_response || {}
       if (resp.evidence_pack) {
-        setPrep({
-          evidence_pack: resp.evidence_pack,
-          treasure_hooks: resp.treasure_hooks || resp.hooks || [],
-          filtered_requirements: resp.filtered_requirements || [],
-          warnings: resp.warnings || [],
-        })
+        const sanitizedEp = sanitizeEvidencePack(
+          resp.evidence_pack as Record<string, unknown>,
+          full.product,
+          full.state_code
+        )
+        if (sanitizedEp) {
+          setPrep({
+            evidence_pack: sanitizedEp,
+            treasure_hooks: resp.treasure_hooks || resp.hooks || [],
+            filtered_requirements: resp.filtered_requirements || [],
+            warnings: resp.warnings || [],
+          })
+        }
       }
       
       // Navigate to appropriate step
@@ -1643,14 +1680,21 @@ function EmailGeneratorPipeline() {
       setHookReasonTags(full.hook_reason_tags)
       setHookReasonNotes(full.hook_reason_notes)
       
-      // Extract prep data from pipeline response
+      // Extract prep data from pipeline response (sanitize evidence_pack for schema compatibility)
       if (full.pipeline_response.evidence_pack && full.pipeline_response.treasure_hooks) {
-        setPrep({
-          evidence_pack: full.pipeline_response.evidence_pack,
-          treasure_hooks: full.pipeline_response.treasure_hooks,
-          filtered_requirements: [],
-          warnings: full.pipeline_response.warnings || [],
-        })
+        const sanitizedEp = sanitizeEvidencePack(
+          full.pipeline_response.evidence_pack as Record<string, unknown>,
+          full.product,
+          full.state_code
+        )
+        if (sanitizedEp) {
+          setPrep({
+            evidence_pack: sanitizedEp,
+            treasure_hooks: full.pipeline_response.treasure_hooks,
+            filtered_requirements: [],
+            warnings: full.pipeline_response.warnings || [],
+          })
+        }
       }
       
       // Go to review step
@@ -1771,31 +1815,50 @@ function EmailGeneratorPipeline() {
 
   const pipelineMutation = useMutation<PipelineRunResponse, Error, void>({
     mutationFn: () => {
+      // Check for district email generation override
+      const override = districtEmailOverrideRef.current
+      const effectiveDistrictName = override?.districtName || districtName.trim() || undefined
+      const effectiveHookKeys = override?.hookKeys || selectedHookLinks
+      const effectivePrimaryHookKey = override?.primaryHookKey || primaryHookLink || effectiveHookKeys[0] || ''
+      
       const req: PipelineRunStreamRequest = {
         product: selectedProducts[0] || '',
         state: selectedStates[0]?.code || '',
         state_full: selectedStates[0]?.name || undefined,
         audiences: selectedAudiences.length ? selectedAudiences : undefined,
-        district_name: districtName.trim() || undefined,
+        district_name: effectiveDistrictName,
         district_url: districtUrl.trim() || undefined,
       }
+      
+      // Merge extra hooks from override into treasure_hooks
+      let effectiveHooks = prep?.treasure_hooks || []
+      if (override?.extraHooks && override.extraHooks.length > 0) {
+        const existingKeys = new Set(effectiveHooks.map(h => getHookKey(h)))
+        const newHooks = override.extraHooks.filter(h => !existingKeys.has(getHookKey(h)))
+        effectiveHooks = [...effectiveHooks, ...newHooks]
+      }
+      
       if (prep) {
         req.evidence_pack = prep.evidence_pack
-        req.treasure_hooks = prep.treasure_hooks
+        req.treasure_hooks = effectiveHooks
       }
-      if (selectedHookLinks.length > 0) {
+      if (effectiveHookKeys.length > 0) {
         // Send hook IDs (preferred) for reliable selection
-        req.selected_hook_ids = selectedHookLinks  // selectedHookLinks now contains hook_id or link
-        req.primary_hook_id = (primaryHookLink || selectedHookLinks[0] || '').trim() || undefined
+        req.selected_hook_ids = effectiveHookKeys
+        req.primary_hook_id = effectivePrimaryHookKey.trim() || undefined
         // Also send legacy links for backwards compatibility (convert keys back to links if needed)
-        const filteredLinks = prep?.treasure_hooks
-          .filter(h => selectedHookLinks.includes(getHookKey(h)))
+        const filteredLinks = effectiveHooks
+          .filter(h => effectiveHookKeys.includes(getHookKey(h)))
           .map(h => h.link)
         // Only set selected_hook_links if we have matches (avoid empty array failing min_length=1)
-        const selectedLinks = filteredLinks && filteredLinks.length > 0 ? filteredLinks : selectedHookLinks
+        const selectedLinks = filteredLinks && filteredLinks.length > 0 ? filteredLinks : effectiveHookKeys
         req.selected_hook_links = selectedLinks
-        req.primary_hook_link = prep?.treasure_hooks.find(h => getHookKey(h) === primaryHookLink)?.link || primaryHookLink || undefined
+        req.primary_hook_link = effectiveHooks.find(h => getHookKey(h) === effectivePrimaryHookKey)?.link || effectivePrimaryHookKey || undefined
       }
+      
+      // Clear the override after use
+      districtEmailOverrideRef.current = null
+      
       // Use polling-based approach to avoid browser connection timeouts
       return api.generate.pipelineRunPolling(req, (progress, message) => {
         setEmailProgress({ progress, message })
@@ -3356,16 +3419,37 @@ function EmailGeneratorPipeline() {
                             if (!byDistrict[district]) byDistrict[district] = []
                             byDistrict[district].push(hook)
                           }
-                          return Object.entries(byDistrict).map(([district, hooks]) => (
+                          return Object.entries(byDistrict).map(([district, districtHooks]) => (
                             <div key={district} className="p-4 bg-slate-800/50 rounded-lg border border-amber-700/30">
                               <div className="flex items-center justify-between mb-3">
                                 <h4 className="font-medium text-amber-400">{district}</h4>
                                 <button
                                   onClick={() => {
-                                    // TODO: Generate email for this district
+                                    // Generate email for this district with its hooks
+                                    const hookKeys = districtHooks.map(h => getHookKey(h))
+                                    
+                                    // Set override ref with district context (synchronous)
+                                    districtEmailOverrideRef.current = {
+                                      districtName: district,
+                                      hookKeys,
+                                      primaryHookKey: hookKeys[0] || '',
+                                      extraHooks: districtHooks,
+                                    }
+                                    
+                                    // Update UI state for display
+                                    setDistrictName(district)
+                                    setSelectedHookLinks(hookKeys)
+                                    setPrimaryHookLink(hookKeys[0] || null)
+                                    
+                                    // Go to generate step and trigger mutation immediately
+                                    setTraceEvents([])
+                                    setEmailProgress(null)
+                                    setWizardStep(4)
+                                    pipelineMutation.mutate()
+                                    
                                     toast({
-                                      title: 'Coming soon',
-                                      description: `Generate email for ${district} will be available soon.`,
+                                      title: 'Generating district email',
+                                      description: `Creating email for ${district} with ${districtHooks.length} hook(s)`,
                                     })
                                   }}
                                   className="px-3 py-1.5 text-sm bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors"
@@ -3374,7 +3458,7 @@ function EmailGeneratorPipeline() {
                                 </button>
                               </div>
                               <div className="space-y-2">
-                                {hooks.map((hook, i) => (
+                                {districtHooks.map((hook, i) => (
                                   <div key={i} className="text-sm">
                                     <span className="text-slate-300">{cleanQuoteText(hook.quote)}</span>
                                     {hook.why_district_specific && (

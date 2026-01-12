@@ -581,11 +581,11 @@ async def process_batch_job(
                         district_name=None,
                         pipeline_response={
                             "evidence_pack": {
-                                "product_key": product_key,
-                                "state_code": state_code,
-                                "state_full": state_name,
-                                "funding_items": research_result.get("funding_items", []),
-                                "compliance_items": research_result.get("compliance_items", []),
+                                "product": product,  # Display name (required)
+                                "product_key": product_key,  # Key for lookups
+                                "state": state_code,  # State code (required)
+                                "retrieved_chunks": [],
+                                "micro_offer_candidates": [],
                             },
                             "hooks": hooks,
                             "filtered_requirements": [],
