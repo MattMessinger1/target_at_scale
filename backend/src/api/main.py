@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from datetime import datetime, timedelta
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, text
 
 from ..db import init_db, AsyncSessionLocal
 from ..config import get_settings
@@ -32,6 +32,29 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     await init_db()
+    
+    # Run database migrations (add missing columns)
+    try:
+        async with AsyncSessionLocal() as db:
+            # Add full_prep_json column to deep_research_cache if missing
+            await db.execute(text("""
+                ALTER TABLE deep_research_cache 
+                ADD COLUMN IF NOT EXISTS full_prep_json JSONB
+            """))
+            # Add batch job checkpointing columns if missing
+            await db.execute(text("""
+                ALTER TABLE batch_jobs 
+                ADD COLUMN IF NOT EXISTS completed_state_codes JSONB DEFAULT '[]'
+            """))
+            await db.execute(text("""
+                ALTER TABLE batch_jobs 
+                ADD COLUMN IF NOT EXISTS include_district_research BOOLEAN DEFAULT false
+            """))
+            await db.commit()
+            logger.info("Database migrations completed")
+    except Exception as e:
+        logger.warning(f"Migration check failed (may be SQLite or column exists): {e}")
+    
     # Auto-index KB if empty (safety net for fresh DBs / new Postgres instances)
     try:
         async with AsyncSessionLocal() as db:
@@ -76,6 +99,18 @@ async def lifespan(app: FastAPI):
             await db.commit()
     except Exception as e:
         logger.error(f"Cleanup failed (startup will continue): {e}", exc_info=True)
+    
+    # Clean up duplicate batch runs (keep only latest per product/state)
+    try:
+        await batch.cleanup_all_duplicate_runs()
+    except Exception as e:
+        logger.error(f"Failed to clean up duplicate runs (startup will continue): {e}", exc_info=True)
+    
+    # Auto-resume interrupted batch jobs
+    try:
+        await batch.resume_interrupted_jobs()
+    except Exception as e:
+        logger.error(f"Failed to resume batch jobs (startup will continue): {e}", exc_info=True)
     
     yield
     # Shutdown (if needed)

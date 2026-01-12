@@ -480,12 +480,14 @@ class BatchJob(Base):
     product: Mapped[str] = mapped_column(String(200), nullable=False)
     states: Mapped[list] = mapped_column(JSON, nullable=False)  # List of {code, name} objects
     audiences: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    include_district_research: Mapped[bool] = mapped_column(Boolean, default=False)  # For resume
     
     # Progress tracking
-    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, running, completed, failed, cancelled
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, running, completed, partial, failed, cancelled
     total_states: Mapped[int] = mapped_column(Integer, nullable=False)
     completed_states: Mapped[int] = mapped_column(Integer, default=0)
     failed_states: Mapped[int] = mapped_column(Integer, default=0)
+    completed_state_codes: Mapped[list] = mapped_column(JSON, default=list)  # For checkpointing/resume
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     # Timestamps

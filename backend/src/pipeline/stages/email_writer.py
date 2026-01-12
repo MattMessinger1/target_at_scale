@@ -733,7 +733,7 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     
-    # Use GPT-5.2 Pro with Responses API for extended reasoning
+    # Use GPT-5.2 Pro with Responses API (default reasoning for speed)
     full_prompt = f"Return only valid JSON. No markdown.\n\n{prompt}"
     
     # Log before API call
@@ -745,11 +745,11 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
     
     try:
         # Start task in background mode (returns immediately with task ID)
-        # This avoids HTTP timeout issues for long-running xhigh reasoning
+        # Using default reasoning for faster iteration
         resp = await client.responses.create(
             model=settings.openai_pro_model,  # gpt-5.2-pro
             input=full_prompt,
-            reasoning={"effort": "high"},  # High reasoning depth (faster than xhigh)
+            # reasoning removed for faster iteration
             background=True,  # Non-blocking, returns task ID for polling
         )
         
