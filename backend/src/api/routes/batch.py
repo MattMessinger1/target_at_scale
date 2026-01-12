@@ -305,6 +305,9 @@ async def process_batch_job(
     
     Runs research for each state and saves results.
     Uses concurrent processing with rate limiting.
+    
+    IMPORTANT: Each concurrent task gets its OWN database session to avoid
+    SQLAlchemy async session conflicts. Do NOT share sessions across tasks.
     """
     from ...db.database import AsyncSessionLocal
     from ...research.product_briefs import (
@@ -316,169 +319,171 @@ async def process_batch_job(
     from ...research.district_research import run_district_deep_research
     
     MAX_CONCURRENT = 3  # Limit concurrent research tasks
+    product_key = normalize_product_key(product)
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT)
     
-    async with AsyncSessionLocal() as db:
-        try:
-            # Update job status
+    # Track results in memory to avoid concurrent DB writes to same row
+    completed_count = 0
+    failed_count = 0
+    
+    # Step 1: Mark job as running (separate session)
+    try:
+        async with AsyncSessionLocal() as db:
             stmt = select(BatchJob).where(BatchJob.id == job_id)
             result = await db.execute(stmt)
             job = result.scalar_one_or_none()
             
             if not job or job.status == "cancelled":
+                logger.info(f"Batch job {job_id}: Job not found or cancelled, exiting")
                 return
             
             job.status = "running"
             job.started_at = datetime.utcnow()
             await db.commit()
+            logger.info(f"Batch job {job_id}: Started processing {len(states)} states")
+    except Exception as e:
+        logger.error(f"Batch job {job_id}: Failed to start: {e}")
+        return
+    
+    # Step 2: Define state processor (each call gets its OWN session)
+    async def process_state(state: Dict[str, str]) -> bool:
+        """Process a single state with its own DB session.
+        
+        Returns True if successful, False if failed.
+        """
+        nonlocal completed_count, failed_count
+        
+        async with semaphore:
+            state_code = state["code"]
+            state_name = state["name"]
             
-            product_key = normalize_product_key(product)
-            semaphore = asyncio.Semaphore(MAX_CONCURRENT)
-            
-            async def process_state(state: Dict[str, str]):
-                """Process a single state."""
-                async with semaphore:
-                    state_code = state["code"]
-                    state_name = state["name"]
+            # CRITICAL: Each task gets its OWN database session
+            async with AsyncSessionLocal() as state_db:
+                try:
+                    # Check if job was cancelled
+                    check_stmt = select(BatchJob).where(BatchJob.id == job_id)
+                    check_result = await state_db.execute(check_stmt)
+                    current_job = check_result.scalar_one_or_none()
+                    if current_job and current_job.status == "cancelled":
+                        logger.info(f"Batch job {job_id}: Cancelled, skipping {state_code}")
+                        return False
                     
-                    try:
-                        # Check if job was cancelled
-                        check_stmt = select(BatchJob).where(BatchJob.id == job_id)
-                        check_result = await db.execute(check_stmt)
-                        current_job = check_result.scalar_one_or_none()
-                        if current_job and current_job.status == "cancelled":
-                            return
+                    logger.info(f"Batch job {job_id}: Starting {state_code} ({state_name})")
+                    
+                    # Build product context from YAML override (same as treasure_hunter)
+                    override = load_override_brief(product_key, state_code=state_code)
+                    product_context = brief_to_research_context(override) if override else f"Product: {product}"
+                    
+                    logger.info(f"Batch job {job_id}: Running deep research for {state_code}")
+                    
+                    # Run deep research with this task's own session
+                    research_result = await run_deep_research(
+                        db=state_db,
+                        state_code=state_code,
+                        state_full=state_name,
+                        product_key=product_key,
+                        product_context=product_context,
+                    )
+                    
+                    # Convert research results to WebHook objects
+                    hooks = convert_to_webhooks(
+                        research_result.get("funding_items", []),
+                        research_result.get("compliance_items", []),
+                        product_key,
+                    )
+                    
+                    logger.info(f"Batch job {job_id}: {state_code} found {len(hooks)} hooks")
+                    
+                    # Optionally run district research
+                    district_result = None
+                    if include_district_research and hooks:
+                        logger.info(f"Batch job {job_id}: Running district research for {state_code}")
                         
-                        logger.info(f"Batch job {job_id}: Starting {state_code} ({state_name})")
+                        # Convert hooks to dict format for de-duplication
+                        state_hooks_dict = [
+                            {
+                                "hook_type": h.hook_type,
+                                "quote": h.quote,
+                                "link": h.link,
+                            }
+                            for h in hooks
+                        ]
                         
-                        # Build product context from YAML override (same as treasure_hunter)
-                        override = load_override_brief(product_key, state_code=state_code)
-                        product_context = brief_to_research_context(override) if override else f"Product: {product}"
-                        
-                        logger.info(f"Batch job {job_id}: Running deep research for {state_code}")
-                        
-                        # Run deep research with correct parameters
-                        research_result = await run_deep_research(
-                            db=db,
+                        district_result = await run_district_deep_research(
+                            db=state_db,
                             state_code=state_code,
                             state_full=state_name,
                             product_key=product_key,
                             product_context=product_context,
+                            state_hooks=state_hooks_dict,
                         )
                         
-                        # Convert research results to WebHook objects
-                        hooks = convert_to_webhooks(
-                            research_result.get("funding_items", []),
-                            research_result.get("compliance_items", []),
-                            product_key,
-                        )
-                        
-                        logger.info(f"Batch job {job_id}: {state_code} found {len(hooks)} hooks")
-                        
-                        # Optionally run district research
-                        district_result = None
-                        if include_district_research and hooks:
-                            logger.info(f"Batch job {job_id}: Running district research for {state_code}")
-                            
-                            # Convert hooks to dict format for de-duplication
-                            state_hooks_dict = [
-                                {
-                                    "hook_type": h.hook_type,
-                                    "quote": h.quote,
-                                    "link": h.link,
-                                }
-                                for h in hooks
-                            ]
-                            
-                            district_result = await run_district_deep_research(
-                                db=db,
-                                state_code=state_code,
-                                state_full=state_name,
-                                product_key=product_key,
-                                product_context=product_context,
-                                state_hooks=state_hooks_dict,
-                            )
-                            
-                            passed_count = len(district_result.get("passed_hooks", []))
-                            logger.info(f"Batch job {job_id}: {state_code} district research found {passed_count} district hooks")
-                        
-                        # Save as research run with proper format
-                        run = SavedEmailRun(
-                            run_type="research",
-                            name=f"{product} - {state_name}",
-                            product=product,
-                            state_code=state_code,
-                            state_full=state_name,
-                            audiences=audiences,
-                            district_name=None,
-                            pipeline_response={
-                                "evidence_pack": {
-                                    "product_key": product_key,
-                                    "state_code": state_code,
-                                    "state_full": state_name,
-                                    "funding_items": research_result.get("funding_items", []),
-                                    "compliance_items": research_result.get("compliance_items", []),
-                                },
-                                "hooks": [h.model_dump() for h in hooks],
-                                "filtered_requirements": [],
-                                "district_research": district_result,
+                        passed_count = len(district_result.get("passed_hooks", []))
+                        logger.info(f"Batch job {job_id}: {state_code} district research found {passed_count} district hooks")
+                    
+                    # Save as research run with proper format
+                    run = SavedEmailRun(
+                        run_type="research",
+                        name=f"{product} - {state_name}",
+                        product=product,
+                        state_code=state_code,
+                        state_full=state_name,
+                        audiences=audiences,
+                        district_name=None,
+                        pipeline_response={
+                            "evidence_pack": {
+                                "product_key": product_key,
+                                "state_code": state_code,
+                                "state_full": state_name,
+                                "funding_items": research_result.get("funding_items", []),
+                                "compliance_items": research_result.get("compliance_items", []),
                             },
-                            selected_hook_links=[],
-                            primary_hook_link=None,
-                            hook_reason_tags={},
-                            hook_reason_notes={},
-                            batch_job_id=job_id,
-                        )
-                        db.add(run)
-                        
-                        # Update job progress
-                        update_stmt = select(BatchJob).where(BatchJob.id == job_id)
-                        update_result = await db.execute(update_stmt)
-                        job_to_update = update_result.scalar_one_or_none()
-                        if job_to_update:
-                            job_to_update.completed_states += 1
-                        
-                        await db.commit()
-                        logger.info(f"Batch job {job_id}: Completed {state_code} successfully")
-                        
-                    except Exception as e:
-                        logger.error(f"Batch job {job_id}: Failed {state_code}: {e}", exc_info=True)
-                        
-                        # Update failed count
-                        try:
-                            fail_stmt = select(BatchJob).where(BatchJob.id == job_id)
-                            fail_result = await db.execute(fail_stmt)
-                            job_to_fail = fail_result.scalar_one_or_none()
-                            if job_to_fail:
-                                job_to_fail.failed_states += 1
-                            await db.commit()
-                        except Exception as commit_err:
-                            logger.error(f"Batch job {job_id}: Failed to update failure count: {commit_err}")
+                            "hooks": [h.model_dump() for h in hooks],
+                            "filtered_requirements": [],
+                            "district_research": district_result,
+                        },
+                        selected_hook_links=[],
+                        primary_hook_link=None,
+                        hook_reason_tags={},
+                        hook_reason_notes={},
+                        batch_job_id=job_id,
+                    )
+                    state_db.add(run)
+                    await state_db.commit()
+                    
+                    completed_count += 1
+                    logger.info(f"Batch job {job_id}: Completed {state_code} successfully ({completed_count}/{len(states)})")
+                    return True
+                    
+                except Exception as e:
+                    logger.error(f"Batch job {job_id}: Failed {state_code}: {e}", exc_info=True)
+                    await state_db.rollback()
+                    failed_count += 1
+                    return False
+    
+    # Step 3: Process all states concurrently (with semaphore limiting)
+    try:
+        await asyncio.gather(*[process_state(s) for s in states], return_exceptions=True)
+    except Exception as e:
+        logger.error(f"Batch job {job_id}: Error during gather: {e}")
+    
+    # Step 4: Update final job status (separate session)
+    try:
+        async with AsyncSessionLocal() as db:
+            stmt = select(BatchJob).where(BatchJob.id == job_id)
+            result = await db.execute(stmt)
+            job = result.scalar_one_or_none()
             
-            # Process all states concurrently (with semaphore limiting)
-            await asyncio.gather(*[process_state(s) for s in states], return_exceptions=True)
-            
-            # Mark job as completed
-            final_stmt = select(BatchJob).where(BatchJob.id == job_id)
-            final_result = await db.execute(final_stmt)
-            final_job = final_result.scalar_one_or_none()
-            if final_job and final_job.status != "cancelled":
-                final_job.status = "completed"
-                final_job.completed_at = datetime.utcnow()
+            if job and job.status != "cancelled":
+                job.completed_states = completed_count
+                job.failed_states = failed_count
+                job.status = "completed" if failed_count == 0 else "completed_with_errors"
+                job.completed_at = datetime.utcnow()
+                if failed_count > 0:
+                    job.error_message = f"{failed_count} states failed out of {len(states)}"
                 await db.commit()
-            
-            logger.info(f"Batch job {job_id}: Completed all {len(states)} states")
-            
-        except Exception as e:
-            logger.error(f"Batch job {job_id} failed: {e}", exc_info=True)
-            
-            try:
-                error_stmt = select(BatchJob).where(BatchJob.id == job_id)
-                error_result = await db.execute(error_stmt)
-                error_job = error_result.scalar_one_or_none()
-                if error_job:
-                    error_job.status = "failed"
-                    error_job.error_message = str(e)[:500]  # Truncate long errors
-                    error_job.completed_at = datetime.utcnow()
-                    await db.commit()
-            except Exception as final_err:
-                logger.error(f"Batch job {job_id}: Failed to update job status: {final_err}")
+        
+        logger.info(f"Batch job {job_id}: Finished - {completed_count} completed, {failed_count} failed")
+        
+    except Exception as e:
+        logger.error(f"Batch job {job_id}: Failed to update final status: {e}")
