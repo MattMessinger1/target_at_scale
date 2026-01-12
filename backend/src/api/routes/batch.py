@@ -106,10 +106,12 @@ async def create_batch_job(
         product=request.product,
         states=[{"code": s.code, "name": s.name} for s in request.states],
         audiences=request.audiences,
+        include_district_research=request.include_district_research,
         status="pending",
         total_states=len(request.states),
         completed_states=0,
         failed_states=0,
+        completed_state_codes=[],
     )
     db.add(job)
     await db.commit()
@@ -300,6 +302,7 @@ async def process_batch_job(
     states: List[Dict[str, str]],
     audiences: List[str],
     include_district_research: bool,
+    already_completed: Optional[List[str]] = None,  # For resume: state codes already done
 ):
     """Background task to process a batch job.
     
@@ -308,6 +311,9 @@ async def process_batch_job(
     
     IMPORTANT: Each concurrent task gets its OWN database session to avoid
     SQLAlchemy async session conflicts. Do NOT share sessions across tasks.
+    
+    Supports checkpointing: after each state completes, we update the job's
+    completed_state_codes so we can resume if interrupted.
     """
     from ...db.database import AsyncSessionLocal
     from ...research.product_briefs import (
@@ -322,9 +328,16 @@ async def process_batch_job(
     product_key = normalize_product_key(product)
     semaphore = asyncio.Semaphore(MAX_CONCURRENT)
     
+    # Track which states are already done (for resume)
+    completed_codes = set(already_completed or [])
+    
+    # Filter to only states we still need to process
+    states_to_process = [s for s in states if s["code"] not in completed_codes]
+    
     # Track results in memory to avoid concurrent DB writes to same row
-    completed_count = 0
+    completed_count = len(completed_codes)  # Start from previous progress
     failed_count = 0
+    newly_completed_codes: List[str] = []  # Track new completions for checkpointing
     
     # Step 1: Mark job as running (separate session)
     try:
@@ -338,9 +351,14 @@ async def process_batch_job(
                 return
             
             job.status = "running"
-            job.started_at = datetime.utcnow()
+            if not job.started_at:
+                job.started_at = datetime.utcnow()
             await db.commit()
-            logger.info(f"Batch job {job_id}: Started processing {len(states)} states")
+            
+            if states_to_process:
+                logger.info(f"Batch job {job_id}: Processing {len(states_to_process)} states ({len(completed_codes)} already done)")
+            else:
+                logger.info(f"Batch job {job_id}: All {len(states)} states already completed")
     except Exception as e:
         logger.error(f"Batch job {job_id}: Failed to start: {e}")
         return
@@ -385,12 +403,8 @@ async def process_batch_job(
                         product_context=product_context,
                     )
                     
-                    # Convert research results to WebHook objects
-                    hooks = convert_to_webhooks(
-                        research_result.get("funding_items", []),
-                        research_result.get("compliance_items", []),
-                        product_key,
-                    )
+                    # Convert research results to hook dicts (async function)
+                    hooks = await convert_to_webhooks(research_result, product_key)
                     
                     logger.info(f"Batch job {job_id}: {state_code} found {len(hooks)} hooks")
                     
@@ -399,12 +413,12 @@ async def process_batch_job(
                     if include_district_research and hooks:
                         logger.info(f"Batch job {job_id}: Running district research for {state_code}")
                         
-                        # Convert hooks to dict format for de-duplication
+                        # Hooks are already dicts, extract fields for de-duplication
                         state_hooks_dict = [
                             {
-                                "hook_type": h.hook_type,
-                                "quote": h.quote,
-                                "link": h.link,
+                                "hook_type": h.get("hook_type", ""),
+                                "quote": h.get("quote", ""),
+                                "link": h.get("link", ""),
                             }
                             for h in hooks
                         ]
@@ -422,6 +436,7 @@ async def process_batch_job(
                         logger.info(f"Batch job {job_id}: {state_code} district research found {passed_count} district hooks")
                     
                     # Save as research run with proper format
+                    # Note: hooks are already dicts, no need for .model_dump()
                     run = SavedEmailRun(
                         run_type="research",
                         name=f"{product} - {state_name}",
@@ -438,7 +453,7 @@ async def process_batch_job(
                                 "funding_items": research_result.get("funding_items", []),
                                 "compliance_items": research_result.get("compliance_items", []),
                             },
-                            "hooks": [h.model_dump() for h in hooks],
+                            "hooks": hooks,  # Already dicts
                             "filtered_requirements": [],
                             "district_research": district_result,
                         },
@@ -452,7 +467,12 @@ async def process_batch_job(
                     await state_db.commit()
                     
                     completed_count += 1
+                    newly_completed_codes.append(state_code)
                     logger.info(f"Batch job {job_id}: Completed {state_code} successfully ({completed_count}/{len(states)})")
+                    
+                    # Checkpoint: update job with newly completed state
+                    await _checkpoint_progress(job_id, state_code)
+                    
                     return True
                     
                 except Exception as e:
@@ -461,11 +481,12 @@ async def process_batch_job(
                     failed_count += 1
                     return False
     
-    # Step 3: Process all states concurrently (with semaphore limiting)
-    try:
-        await asyncio.gather(*[process_state(s) for s in states], return_exceptions=True)
-    except Exception as e:
-        logger.error(f"Batch job {job_id}: Error during gather: {e}")
+    # Step 3: Process all remaining states concurrently (with semaphore limiting)
+    if states_to_process:
+        try:
+            await asyncio.gather(*[process_state(s) for s in states_to_process], return_exceptions=True)
+        except Exception as e:
+            logger.error(f"Batch job {job_id}: Error during gather: {e}")
     
     # Step 4: Update final job status (separate session)
     try:
@@ -477,7 +498,7 @@ async def process_batch_job(
             if job and job.status != "cancelled":
                 job.completed_states = completed_count
                 job.failed_states = failed_count
-                job.status = "completed" if failed_count == 0 else "completed_with_errors"
+                job.status = "completed" if failed_count == 0 else "partial"  # "partial" fits VARCHAR(20)
                 job.completed_at = datetime.utcnow()
                 if failed_count > 0:
                     job.error_message = f"{failed_count} states failed out of {len(states)}"
@@ -487,3 +508,78 @@ async def process_batch_job(
         
     except Exception as e:
         logger.error(f"Batch job {job_id}: Failed to update final status: {e}")
+
+
+async def _checkpoint_progress(job_id: int, state_code: str):
+    """Update job's completed_state_codes for checkpointing.
+    
+    This allows resuming interrupted jobs.
+    """
+    from ...db.database import AsyncSessionLocal
+    
+    try:
+        async with AsyncSessionLocal() as db:
+            stmt = select(BatchJob).where(BatchJob.id == job_id)
+            result = await db.execute(stmt)
+            job = result.scalar_one_or_none()
+            
+            if job:
+                codes = list(job.completed_state_codes or [])
+                if state_code not in codes:
+                    codes.append(state_code)
+                    job.completed_state_codes = codes
+                    job.completed_states = len(codes)
+                    await db.commit()
+    except Exception as e:
+        # Non-fatal - just log and continue
+        logger.warning(f"Batch job {job_id}: Failed to checkpoint {state_code}: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Auto-resume interrupted jobs on server startup
+# ---------------------------------------------------------------------------
+
+async def resume_interrupted_jobs():
+    """Find and resume batch jobs that were interrupted (status='running').
+    
+    Called on server startup to continue processing jobs that were
+    interrupted by a deploy or container restart.
+    """
+    from ...db.database import AsyncSessionLocal
+    
+    try:
+        async with AsyncSessionLocal() as db:
+            # Find jobs that were running when server stopped
+            stmt = select(BatchJob).where(BatchJob.status == "running")
+            result = await db.execute(stmt)
+            interrupted_jobs = result.scalars().all()
+            
+            if not interrupted_jobs:
+                logger.info("No interrupted batch jobs to resume")
+                return
+            
+            logger.info(f"Found {len(interrupted_jobs)} interrupted batch jobs to resume")
+            
+            for job in interrupted_jobs:
+                already_completed = list(job.completed_state_codes or [])
+                remaining = len(job.states) - len(already_completed)
+                
+                logger.info(
+                    f"Resuming batch job {job.id}: {job.product} - "
+                    f"{len(already_completed)}/{len(job.states)} completed, {remaining} remaining"
+                )
+                
+                # Create background task to resume processing
+                asyncio.create_task(
+                    process_batch_job(
+                        job_id=job.id,
+                        product=job.product,
+                        states=job.states,
+                        audiences=job.audiences,
+                        include_district_research=job.include_district_research,
+                        already_completed=already_completed,
+                    )
+                )
+                
+    except Exception as e:
+        logger.error(f"Failed to resume interrupted batch jobs: {e}")

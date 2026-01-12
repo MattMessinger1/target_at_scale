@@ -41,6 +41,15 @@ async def lifespan(app: FastAPI):
                 ALTER TABLE deep_research_cache 
                 ADD COLUMN IF NOT EXISTS full_prep_json JSONB
             """))
+            # Add batch job checkpointing columns if missing
+            await db.execute(text("""
+                ALTER TABLE batch_jobs 
+                ADD COLUMN IF NOT EXISTS completed_state_codes JSONB DEFAULT '[]'
+            """))
+            await db.execute(text("""
+                ALTER TABLE batch_jobs 
+                ADD COLUMN IF NOT EXISTS include_district_research BOOLEAN DEFAULT false
+            """))
             await db.commit()
             logger.info("Database migrations completed")
     except Exception as e:
@@ -90,6 +99,12 @@ async def lifespan(app: FastAPI):
             await db.commit()
     except Exception as e:
         logger.error(f"Cleanup failed (startup will continue): {e}", exc_info=True)
+    
+    # Auto-resume interrupted batch jobs
+    try:
+        await batch.resume_interrupted_jobs()
+    except Exception as e:
+        logger.error(f"Failed to resume batch jobs (startup will continue): {e}", exc_info=True)
     
     yield
     # Shutdown (if needed)
