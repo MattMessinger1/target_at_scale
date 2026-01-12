@@ -375,6 +375,7 @@ async def process_batch_job(
         brief_to_research_context,
     )
     from ...research.deep_research import run_deep_research, convert_to_webhooks
+    from ...research.quality_gate import filter_items
     from ...research.district_research import run_district_deep_research
     from ...config import get_settings
     
@@ -520,6 +521,14 @@ async def process_batch_job(
                         state_full=state_name,
                         product_key=product_key,
                         product_context=product_context,
+                    )
+                    
+                    # Filter out expired deadlines and low-quality items (belt-and-suspenders)
+                    research_result["funding_items"] = filter_items(
+                        research_result.get("funding_items", []), "funding", product_key, is_kb=False
+                    )
+                    research_result["compliance_items"] = filter_items(
+                        research_result.get("compliance_items", []), "compliance", product_key, is_kb=False
                     )
                     
                     # Convert research results to hook dicts (async function)
