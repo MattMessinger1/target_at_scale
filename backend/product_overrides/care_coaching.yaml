@@ -31,6 +31,28 @@ safe_claims:
   - "CARE Coaching supports job-embedded professional learning and implementation routines."
   - "CARE Coaching can be aligned to compliance-driven priorities (when districts choose the focus)."
 
+differentiators:
+  - "Job-embedded coaching counts toward state-mandated PD hours - teachers learn while implementing, not in separate workshops"
+  - "Coaching cycles align to district's existing improvement plans - not a generic program that adds extra work"
+  - "Sustained implementation support over months, not one-time training events that fade"
+  - "Artifacts and documentation built into the process - ready evidence for compliance reporting"
+  - "WIDA-aligned expertise specifically for multilingual learner instruction - not generic coaching"
+
+compliance_hooks:
+  - "State-mandated ESOL/EL professional development hours"
+  - "CSI/TSI school improvement plan implementation"
+  - "Teacher endorsement and certification requirements"
+  - "Corrective action plan evidence of PD completion"
+  - "Title III professional development requirements"
+  - "State monitoring documentation for EL programs"
+
+case_studies:
+  - state: null
+    district: null
+    context: "Districts implementing CARE Coaching cycles can document job-embedded PD hours that count toward state ESOL endorsement requirements while building sustainable instructional practices."
+    proof_snippet: "Coaching cycles provide artifacts and documentation that evidence PD completion for compliance reporting."
+    outcomes: null
+
 avoid_phrases:
   - "Are you maximizing"
   - "Did you know"

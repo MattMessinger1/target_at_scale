@@ -5,11 +5,12 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from sqlalchemy import select, func
+from datetime import datetime, timedelta
+from sqlalchemy import select, func, delete, text
 
 from ..db import init_db, AsyncSessionLocal
 from ..config import get_settings
-from ..db.models import KnowledgeBaseItem
+from ..db.models import KnowledgeBaseItem, SavedEmailRun, BatchJob
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -19,7 +20,7 @@ settings = get_settings()
 
 # Import routes with error handling
 try:
-    from .routes import districts, content, kb, emails, snippets, research, generate, feedback
+    from .routes import districts, content, kb, emails, snippets, research, generate, feedback, saved_runs, batch
     logger.info("All routes imported successfully")
 except Exception as e:
     logger.error(f"Failed to import routes: {e}")
@@ -31,6 +32,20 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     await init_db()
+    
+    # Run database migrations (add missing columns)
+    try:
+        async with AsyncSessionLocal() as db:
+            # Add full_prep_json column to deep_research_cache if missing
+            await db.execute(text("""
+                ALTER TABLE deep_research_cache 
+                ADD COLUMN IF NOT EXISTS full_prep_json JSONB
+            """))
+            await db.commit()
+            logger.info("Database migrations completed")
+    except Exception as e:
+        logger.warning(f"Migration check failed (may be SQLite or column exists): {e}")
+    
     # Auto-index KB if empty (safety net for fresh DBs / new Postgres instances)
     try:
         async with AsyncSessionLocal() as db:
@@ -46,6 +61,36 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         # Never block startup if indexing fails; allow manual /api/kb/index as fallback
         logger.error(f"KB auto-index failed (startup will continue): {e}", exc_info=True)
+    
+    # Cleanup old saved runs (30-day retention)
+    try:
+        async with AsyncSessionLocal() as db:
+            cutoff = datetime.utcnow() - timedelta(days=30)
+            
+            # Delete old saved runs
+            runs_result = await db.execute(
+                select(func.count()).select_from(SavedEmailRun).where(SavedEmailRun.created_at < cutoff)
+            )
+            old_runs_count = int(runs_result.scalar() or 0)
+            
+            if old_runs_count > 0:
+                await db.execute(delete(SavedEmailRun).where(SavedEmailRun.created_at < cutoff))
+                logger.info(f"Cleaned up {old_runs_count} saved runs older than 30 days")
+            
+            # Delete old batch jobs
+            batch_result = await db.execute(
+                select(func.count()).select_from(BatchJob).where(BatchJob.created_at < cutoff)
+            )
+            old_batch_count = int(batch_result.scalar() or 0)
+            
+            if old_batch_count > 0:
+                await db.execute(delete(BatchJob).where(BatchJob.created_at < cutoff))
+                logger.info(f"Cleaned up {old_batch_count} batch jobs older than 30 days")
+            
+            await db.commit()
+    except Exception as e:
+        logger.error(f"Cleanup failed (startup will continue): {e}", exc_info=True)
+    
     yield
     # Shutdown (if needed)
 
@@ -84,6 +129,8 @@ app.include_router(emails.router, prefix="/api/emails", tags=["Emails"])
 app.include_router(research.router, prefix="/api/research", tags=["Research"])
 app.include_router(generate.router, prefix="/api/generate", tags=["Email Generation"])
 app.include_router(feedback.router, prefix="/api/feedback", tags=["Feedback"])
+app.include_router(saved_runs.router, prefix="/api", tags=["Saved Runs"])
+app.include_router(batch.router, prefix="/api", tags=["Batch Processing"])
 
 
 @app.get("/")

@@ -1,31 +1,22 @@
 """Knowledge Base API routes."""
-import asyncio
 import io
 import json
-import logging
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Header, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, delete
+from sqlalchemy import select, or_
 from sqlalchemy import func
 from pydantic import BaseModel
 
 from ...db import get_db, KnowledgeBaseItem
-from ...db.models import ProductBrief
 from ...config import get_settings
 
 settings = get_settings()
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# In-memory storage for background rebuild task status
-# Key: task_id, Value: status dict
-_REBUILD_TASKS: Dict[str, Dict[str, Any]] = {}
 
 
 class KBItemResponse(BaseModel):
@@ -617,6 +608,7 @@ async def rebuild_product_briefs(
     """Rebuild (offline) a product brief from KB + overrides and store it.
 
     Protected by X-Admin-Token header matching ADMIN_TOKEN env var.
+    Uses enhanced hybrid search (SQL + semantic) for better KB coverage.
     """
     _require_admin_token(x_admin_token)
 
@@ -624,7 +616,7 @@ async def rebuild_product_briefs(
         build_brief_from_kb,
         normalize_product_key,
         load_override_brief,
-        deep_merge,
+        merge_yaml_primary,
         upsert_product_brief,
     )
 
@@ -644,127 +636,63 @@ async def rebuild_product_briefs(
         if existing:
             return {"message": "Brief already exists (use force=true to rebuild)", "product_key": product_key}
 
+    # Build with hybrid search (SQL + semantic)
     auto = await build_brief_from_kb(db, product, state_code=state)
     override = load_override_brief(product_key, state_code=state)
-    merged = deep_merge(auto, override) if override else auto
+    # Use YAML-primary merge (YAML wins, auto supplements)
+    merged = merge_yaml_primary(auto, override) if override else auto
 
-    await upsert_product_brief(db, product_key, merged, state_code=state, source="merged")
+    await upsert_product_brief(db, product_key, merged, state_code=state, source="hybrid_merged")
 
-    return {"message": "Rebuilt product brief", "product_key": product_key, "state": state}
-
-
-async def _run_rebuild_task(task_id: str):
-    """Background task to rebuild all product briefs."""
-    # Initialize task status FIRST before any imports that might fail
-    _REBUILD_TASKS[task_id] = {
-        "status": "initializing",
-        "started_at": datetime.utcnow().isoformat(),
-        "completed": 0,
-        "total": 7,
-        "products": [],
-        "errors": [],
+    return {
+        "message": "Rebuilt product brief with hybrid search",
+        "product_key": product_key,
+        "state": state,
+        "semantic_search_used": auto.get("_meta", {}).get("semantic_search_used", False),
     }
-    
-    try:
-        from ...db.database import AsyncSessionLocal
-        from ...research.product_briefs import (
-            DISPLAY_TO_KEY,
-            build_brief_from_kb,
-            upsert_product_brief,
-            normalize_product_key,
-        )
-        
-        products_list = list(DISPLAY_TO_KEY.keys())
-        _REBUILD_TASKS[task_id]["total"] = len(products_list)
-        _REBUILD_TASKS[task_id]["status"] = "running"
-        async with AsyncSessionLocal() as db:
-            # Clear all existing cached briefs
-            await db.execute(delete(ProductBrief))
-            await db.commit()
-            logger.info(f"[Task {task_id}] Cleared existing briefs, starting rebuild...")
-            
-            for display_name in products_list:
-                try:
-                    logger.info(f"[Task {task_id}] Building brief for {display_name}...")
-                    brief = await build_brief_from_kb(db, display_name)
-                    product_key = normalize_product_key(display_name)
-                    await upsert_product_brief(db, product_key, brief, state_code=None, source="rebuild_pro_xhigh")
-                    
-                    _REBUILD_TASKS[task_id]["completed"] += 1
-                    _REBUILD_TASKS[task_id]["products"].append({
-                        "product": display_name,
-                        "product_key": product_key,
-                        "status": "done"
-                    })
-                    logger.info(f"[Task {task_id}] Completed {display_name} ({_REBUILD_TASKS[task_id]['completed']}/{len(products_list)})")
-                    
-                except Exception as e:
-                    logger.error(f"[Task {task_id}] Error building {display_name}: {e}")
-                    _REBUILD_TASKS[task_id]["errors"].append({
-                        "product": display_name,
-                        "error": str(e)
-                    })
-            
-            _REBUILD_TASKS[task_id]["status"] = "completed"
-            _REBUILD_TASKS[task_id]["finished_at"] = datetime.utcnow().isoformat()
-            logger.info(f"[Task {task_id}] Rebuild completed: {_REBUILD_TASKS[task_id]['completed']}/{len(products_list)} products")
-            
-    except Exception as e:
-        logger.error(f"[Task {task_id}] Task failed: {e}")
-        _REBUILD_TASKS[task_id]["status"] = "failed"
-        _REBUILD_TASKS[task_id]["error"] = str(e)
-        _REBUILD_TASKS[task_id]["finished_at"] = datetime.utcnow().isoformat()
 
 
-@router.post("/briefs/rebuild-all")
+@router.post("/product-briefs/rebuild-all")
 async def rebuild_all_product_briefs(
+    force: bool = Query(default=True, description="If true, rebuild even if briefs exist"),
     x_admin_token: Optional[str] = Header(default=None, alias="X-Admin-Token"),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Start background task to rebuild ALL product briefs using GPT-5.2 Pro with xhigh reasoning.
+    """Rebuild ALL product briefs using enhanced hybrid search.
 
-    Returns immediately with a task_id. Poll /briefs/rebuild-status?task_id=... for progress.
+    This uses both SQL and semantic search to maximize KB content discovery,
+    including competitive comparisons, case studies, and differentiators.
+
     Protected by X-Admin-Token header matching ADMIN_TOKEN env var.
-    
-    Products rebuilt:
-    - CARE Coaching
-    - WebbAlign
-    - WIDA MODEL Online
-    - WIDA Professional Learning
-    - CALL
-    - The Discussion Project
-    - WIDA SIS
     """
     _require_admin_token(x_admin_token)
-    
-    task_id = str(uuid4())
-    
-    # Start background task
-    asyncio.create_task(_run_rebuild_task(task_id))
-    
+
+    from ...research.product_briefs import regenerate_all_briefs
+
+    results = await regenerate_all_briefs(db, force_rebuild=force)
+
     return {
-        "task_id": task_id,
-        "status": "started",
-        "message": f"Rebuild started. Poll /api/kb/briefs/rebuild-status?task_id={task_id} for progress.",
+        "message": f"Regenerated {len(results['success'])} product briefs",
+        "results": results,
     }
 
 
-@router.get("/briefs/rebuild-status")
-async def get_rebuild_status(
-    task_id: str = Query(..., description="Task ID from rebuild-all response"),
+@router.get("/product-briefs/quality-report")
+async def get_brief_quality_report(
+    db: AsyncSession = Depends(get_db),
 ):
-    """Get status of a product briefs rebuild task.
-    
-    Returns:
-    - status: "running", "completed", or "failed"
-    - completed: number of products rebuilt so far
-    - total: total number of products
-    - products: list of completed products with status
-    - errors: list of any errors encountered
+    """Generate a quality report for all product briefs.
+
+    Shows field coverage and identifies briefs that may need enhancement.
     """
-    if task_id not in _REBUILD_TASKS:
-        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
-    
-    return _REBUILD_TASKS[task_id]
+    from ...research.product_briefs import get_brief_quality_report
+
+    report = await get_brief_quality_report(db)
+
+    return {
+        "message": "Brief quality report",
+        "products": report,
+    }
 
 
 @router.post("/ingest-documents")

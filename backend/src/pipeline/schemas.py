@@ -115,6 +115,9 @@ class EvidencePack(BaseModel):
 
     retrieved_chunks: List[EvidenceChunkCitation] = Field(default_factory=list)
     micro_offer_candidates: List[MicroOfferCandidate] = Field(default_factory=list)
+    
+    # Case studies / testimonials from KB (social proof)
+    case_study_chunks: List[EvidenceChunkCitation] = Field(default_factory=list)
 
     # Optional: supplemental brief content (used only to fill gaps, not primary positioning)
     supplemental_brief: Optional[dict] = None
@@ -125,11 +128,18 @@ class EvidencePack(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+SourceLevel = Literal["state", "district"]
+
+
 class WebHook(BaseModel):
     """A 'treasure' hook with source-backed quote + trigger/eligibility excerpts."""
 
     model_config = ConfigDict(extra="forbid")
 
+    hook_id: Optional[str] = Field(
+        default=None,
+        description="Unique identifier for this hook (hash of content). Used for reliable selection."
+    )
     hook_type: HookType
     quote: str = Field(..., description="Verbatim quote excerpt to include in the opener.")
     link: str = Field(..., description="Single source URL backing the quote (must match opener link).")
@@ -147,6 +157,20 @@ class WebHook(BaseModel):
         description="Source-quality confidence (district_specific requires higher quality).",
     )
     source_quality_reason: Optional[str] = None
+    
+    # District-level fields (NEW)
+    source_level: SourceLevel = Field(
+        default="state",
+        description="Whether this hook is from state-level or district-level research."
+    )
+    district_name: Optional[str] = Field(
+        default=None,
+        description="For district-level hooks, the specific district name."
+    )
+    why_district_specific: Optional[str] = Field(
+        default=None,
+        description="For district-level hooks, explanation of why this is unique to this district."
+    )
 
 
 class SelectedHook(BaseModel):
@@ -167,6 +191,46 @@ class FilteredRequirement(BaseModel):
     hook: WebHook
     reason: str = Field(..., description="Machine-readable reason code.")
     reason_label: str = Field(..., description="Human-readable explanation.")
+
+
+class FilteredDistrictHook(BaseModel):
+    """A district hook that was filtered out, with reason for transparency display."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    hook: WebHook
+    filter_reason: str = Field(
+        ..., 
+        description="Machine-readable reason: 'failed_quality_gate', 'not_district_specific', 'duplicate_url', 'duplicate_title'"
+    )
+    filter_detail: str = Field(..., description="Human-readable explanation of why it was filtered.")
+
+
+class DistrictResearchResult(BaseModel):
+    """Results from district-level deep research."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    districts_surveyed: List[str] = Field(
+        default_factory=list,
+        description="List of district names that were surveyed (up to 30)."
+    )
+    passed_hooks: List[WebHook] = Field(
+        default_factory=list,
+        description="District hooks that passed the high bar quality gate."
+    )
+    filtered_hooks: List[FilteredDistrictHook] = Field(
+        default_factory=list,
+        description="District hooks that were filtered out, with reasons for transparency."
+    )
+    status: str = Field(
+        default="completed",
+        description="Status: 'completed', 'no_findings', 'in_progress', 'failed', 'cancelled'"
+    )
+    research_summary: Optional[str] = Field(
+        default=None,
+        description="Summary of district-level research findings."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -293,6 +357,12 @@ class PipelineRunResponse(BaseModel):
 
     evidence_pack: EvidencePack
     treasure_hooks: List[WebHook] = Field(default_factory=list)
+    
+    # District-level research results (NEW)
+    district_research: Optional[DistrictResearchResult] = Field(
+        default=None,
+        description="Results from district-level deep research, if enabled."
+    )
 
     variants: List[AudienceVariantResult] = Field(default_factory=list)
     trace: PipelineTrace

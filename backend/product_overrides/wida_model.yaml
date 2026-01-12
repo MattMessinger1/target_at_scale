@@ -39,6 +39,20 @@ safe_claims:
   - "WIDA MODEL provides domain-level data for targeted EL instruction."
   - "WIDA MODEL supports compliance with state EL progress monitoring requirements."
 
+differentiators:
+  - "Only interim ELP assessment with proven correlation to ACCESS scores - competitors offer generic language assessments without WIDA alignment"
+  - "Domain-level reporting (listening, speaking, reading, writing) enables targeted intervention - many competitors only provide composite scores"
+  - "Direct alignment to WIDA standards and Can Do Descriptors - not a proxy assessment that requires crosswalking"
+  - "Established validity and reliability research with 15+ years of data - newer assessments lack comparable track record"
+  - "Seamless integration with ACCESS score history for longitudinal EL progress tracking"
+
+case_studies:
+  - state: null
+    district: null
+    context: "Districts using WIDA MODEL for fall and winter administrations can identify EL students at risk of not meeting reclassification criteria 4-6 months before ACCESS testing."
+    proof_snippet: "MODEL scores correlate with ACCESS results, giving teachers actionable data to adjust instruction mid-year."
+    outcomes: null
+
 compliance_hooks:
   - "EL progress monitoring mandates"
   - "Title III accountability requirements"

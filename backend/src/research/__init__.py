@@ -16,6 +16,13 @@ from .kb_extractor import (
     get_product_context,
     build_perplexity_context,
 )
+from .district_research import (
+    run_district_deep_research,
+    filter_district_hooks,
+    get_cached_district_research,
+    cancel_district_research,
+    clear_district_research_cache,
+)
 
 __all__ = [
     "PerplexityClient",
@@ -29,4 +36,10 @@ __all__ = [
     "extract_from_kb",
     "get_product_context",
     "build_perplexity_context",
+    # District research
+    "run_district_deep_research",
+    "filter_district_hooks",
+    "get_cached_district_research",
+    "cancel_district_research",
+    "clear_district_research_cache",
 ]

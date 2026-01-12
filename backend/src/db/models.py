@@ -355,6 +355,9 @@ class DeepResearchCache(Base):
     # Research results (JSON blob)
     results_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     
+    # Full prep response (evidence_pack + hooks) for instant cache hits
+    full_prep_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    
     # OpenAI response metadata
     openai_response_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     model_used: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
@@ -367,6 +370,168 @@ class DeepResearchCache(Base):
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     
-    # Timestamps for cache invalidation (14-day TTL)
+    # Timestamps for cache invalidation (30-day TTL)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class DistrictResearchCache(Base):
+    """Cache for district-level research results (30-day TTL).
+    
+    District research surveys top 30 districts in a state by EL population
+    for incremental funding/compliance opportunities beyond state-level findings.
+    """
+    
+    __tablename__ = "district_research_cache"
+    __table_args__ = (
+        UniqueConstraint("state_code", "product_key", name="uq_district_research_cache_key"),
+    )
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    
+    # Cache key components
+    state_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    product_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    
+    # Districts surveyed (up to 30)
+    districts_surveyed: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    
+    # Results: list of district hooks (each tagged with district_name)
+    results_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    
+    # Filtered items (for transparency display)
+    filtered_items_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    
+    # OpenAI task tracking (for resumability)
+    openai_response_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    model_used: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    
+    # Status: pending, in_progress, completed, failed, cancelled
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # Timing
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    
+    # Timestamps for cache invalidation (30-day TTL)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ResearchTask(Base):
+    """Track research tasks for polling-based progress.
+    
+    This enables robust research that survives browser tab sleep,
+    network hiccups, and page refreshes.
+    """
+    __tablename__ = "research_tasks"
+    
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)  # UUID
+    
+    # Request context
+    state_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    product_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    product_display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    state_full: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    audiences: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    include_district_research: Mapped[bool] = mapped_column(Boolean, default=False)
+    district_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    district_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    
+    # Phase: 'state' or 'district'
+    phase: Mapped[str] = mapped_column(String(20), default='state')
+    
+    # Status: queued, in_progress, completed, failed, cancelled
+    status: Mapped[str] = mapped_column(String(20), default='queued')
+    
+    # Progress (0-100)
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # Human-readable status message
+    message: Mapped[str] = mapped_column(Text, default='')
+    
+    # Results stored as JSON (when completed)
+    evidence_pack_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    treasure_hooks_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    filtered_requirements_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    district_research_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    warnings_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    
+    # Error details (when failed)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # Timestamps
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    
+    # Cleanup: auto-delete old tasks after 1 hour
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class BatchJob(Base):
+    """Batch research jobs across multiple states."""
+    __tablename__ = "batch_jobs"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    
+    # Job configuration
+    name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    product: Mapped[str] = mapped_column(String(200), nullable=False)
+    states: Mapped[list] = mapped_column(JSON, nullable=False)  # List of {code, name} objects
+    audiences: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    
+    # Progress tracking
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, running, completed, failed, cancelled
+    total_states: Mapped[int] = mapped_column(Integer, nullable=False)
+    completed_states: Mapped[int] = mapped_column(Integer, default=0)
+    failed_states: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    
+    # Relationships
+    runs: Mapped[List["SavedEmailRun"]] = relationship("SavedEmailRun", back_populates="batch_job")
+
+
+class SavedEmailRun(Base):
+    """Saved email/research runs for later retrieval."""
+    __tablename__ = "saved_email_runs"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    
+    # Run type: "research" (pre-email) or "email" (full pipeline)
+    run_type: Mapped[str] = mapped_column(String(20), default="email")
+    
+    # User-provided name (optional)
+    name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    
+    # Generation context
+    product: Mapped[str] = mapped_column(String(200), nullable=False)
+    state_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    state_full: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    audiences: Mapped[list] = mapped_column(JSON, nullable=False)
+    district_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    
+    # Full pipeline response (variants, evidence_pack, hooks)
+    # For run_type="research": contains evidence_pack and hooks only
+    # For run_type="email": contains full pipeline response with variants
+    pipeline_response: Mapped[dict] = mapped_column(JSON, nullable=False)
+    
+    # Selected hooks context
+    selected_hook_links: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    primary_hook_link: Mapped[Optional[str]] = mapped_column(String(800), nullable=True)
+    hook_reason_tags: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    hook_reason_notes: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    
+    # Batch job reference (if part of a batch)
+    batch_job_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("batch_jobs.id"), nullable=True)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    batch_job: Mapped[Optional["BatchJob"]] = relationship("BatchJob", back_populates="runs")
