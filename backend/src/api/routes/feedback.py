@@ -351,3 +351,210 @@ async def export_email_reviews(
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")
 
+
+# ---------------------------------------------------------------------------
+# List endpoints for Training Feedback UI
+# ---------------------------------------------------------------------------
+
+class EmailReviewListItem(BaseModel):
+    """Summary of an email review for list view."""
+    id: int
+    created_at: Optional[str] = None
+    run_id: Optional[str] = None
+    product: str
+    product_key: Optional[str] = None
+    state_code: str
+    audience: str
+    district_name: Optional[str] = None
+    subject_preview: str  # First 80 chars of edited subject line
+    rubric: dict
+    was_edited: bool  # Whether the email was edited vs original
+
+
+class EmailReviewListResponse(BaseModel):
+    total: int
+    items: List[EmailReviewListItem]
+
+
+@router.get("/email-reviews", response_model=EmailReviewListResponse)
+async def list_email_reviews(
+    product: Optional[str] = None,
+    state_code: Optional[str] = None,
+    audience: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    """List email reviews with optional filtering."""
+    from sqlalchemy import func
+    
+    # Build query
+    query = select(EmailImprovementReview).order_by(EmailImprovementReview.created_at.desc())
+    count_query = select(func.count()).select_from(EmailImprovementReview)
+    
+    if product:
+        query = query.where(EmailImprovementReview.product == product)
+        count_query = count_query.where(EmailImprovementReview.product == product)
+    if state_code:
+        query = query.where(EmailImprovementReview.state_code == state_code.upper())
+        count_query = count_query.where(EmailImprovementReview.state_code == state_code.upper())
+    if audience:
+        query = query.where(EmailImprovementReview.audience == audience)
+        count_query = count_query.where(EmailImprovementReview.audience == audience)
+    
+    # Get total count
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+    
+    # Get paginated items
+    query = query.offset(offset).limit(limit)
+    result = await db.execute(query)
+    rows = result.scalars().all()
+    
+    items = []
+    for r in rows:
+        was_edited = (
+            r.original_subject_line != r.edited_subject_line or
+            r.original_email_body != r.edited_email_body
+        )
+        items.append(EmailReviewListItem(
+            id=r.id,
+            created_at=r.created_at.isoformat() if r.created_at else None,
+            run_id=r.run_id,
+            product=r.product,
+            product_key=r.product_key,
+            state_code=r.state_code,
+            audience=r.audience,
+            district_name=r.district_name,
+            subject_preview=r.edited_subject_line[:80] if r.edited_subject_line else "",
+            rubric=r.rubric or {},
+            was_edited=was_edited,
+        ))
+    
+    return EmailReviewListResponse(total=total, items=items)
+
+
+class GoldenEmailListItem(BaseModel):
+    """Summary of a golden email for list view."""
+    id: int
+    created_at: Optional[str] = None
+    product: str
+    product_key: Optional[str] = None
+    state_code: str
+    audience: str
+    district_name: Optional[str] = None
+    subject_line: str
+    source: str  # "edited" | "rubric_qualified"
+    rubric_scores: Optional[dict] = None
+    review_id: Optional[int] = None
+
+
+class GoldenEmailListResponse(BaseModel):
+    total: int
+    items: List[GoldenEmailListItem]
+
+
+class GoldenEmailDetail(BaseModel):
+    """Full golden email with body content."""
+    id: int
+    created_at: Optional[str] = None
+    product: str
+    product_key: Optional[str] = None
+    state_code: str
+    audience: str
+    district_name: Optional[str] = None
+    subject_line: str
+    email_body: str
+    source: str
+    rubric_scores: Optional[dict] = None
+    hook_types_used: Optional[list] = None
+    review_id: Optional[int] = None
+
+
+@router.get("/golden-emails", response_model=GoldenEmailListResponse)
+async def list_golden_emails(
+    product: Optional[str] = None,
+    state_code: Optional[str] = None,
+    audience: Optional[str] = None,
+    source: Optional[str] = None,  # "edited" | "rubric_qualified"
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    """List golden emails with optional filtering."""
+    from sqlalchemy import func
+    
+    # Build query
+    query = select(GoldenEmail).order_by(GoldenEmail.created_at.desc())
+    count_query = select(func.count()).select_from(GoldenEmail)
+    
+    if product:
+        query = query.where(GoldenEmail.product == product)
+        count_query = count_query.where(GoldenEmail.product == product)
+    if state_code:
+        query = query.where(GoldenEmail.state_code == state_code.upper())
+        count_query = count_query.where(GoldenEmail.state_code == state_code.upper())
+    if audience:
+        query = query.where(GoldenEmail.audience == audience)
+        count_query = count_query.where(GoldenEmail.audience == audience)
+    if source:
+        query = query.where(GoldenEmail.source == source)
+        count_query = count_query.where(GoldenEmail.source == source)
+    
+    # Get total count
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
+    
+    # Get paginated items
+    query = query.offset(offset).limit(limit)
+    result = await db.execute(query)
+    rows = result.scalars().all()
+    
+    items = []
+    for r in rows:
+        items.append(GoldenEmailListItem(
+            id=r.id,
+            created_at=r.created_at.isoformat() if r.created_at else None,
+            product=r.product,
+            product_key=r.product_key,
+            state_code=r.state_code,
+            audience=r.audience,
+            district_name=r.district_name,
+            subject_line=r.subject_line,
+            source=r.source,
+            rubric_scores=r.rubric_scores,
+            review_id=r.review_id,
+        ))
+    
+    return GoldenEmailListResponse(total=total, items=items)
+
+
+@router.get("/golden-emails/{email_id}", response_model=GoldenEmailDetail)
+async def get_golden_email(
+    email_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get full details of a golden email including body."""
+    result = await db.execute(
+        select(GoldenEmail).where(GoldenEmail.id == email_id)
+    )
+    email = result.scalar_one_or_none()
+    if not email:
+        raise HTTPException(status_code=404, detail="Golden email not found")
+    
+    return GoldenEmailDetail(
+        id=email.id,
+        created_at=email.created_at.isoformat() if email.created_at else None,
+        product=email.product,
+        product_key=email.product_key,
+        state_code=email.state_code,
+        audience=email.audience,
+        district_name=email.district_name,
+        subject_line=email.subject_line,
+        email_body=email.email_body,
+        source=email.source,
+        rubric_scores=email.rubric_scores,
+        hook_types_used=email.hook_types_used,
+        review_id=email.review_id,
+    )
+

@@ -672,6 +672,13 @@ function EmailGeneratorV1() {
               >
                 Saved Runs
               </Link>
+              <Link
+                to="/training"
+                className="px-3 py-2 rounded-md bg-slate-800/60 text-amber-300 border border-amber-700/50 hover:bg-amber-900/30 transition-colors text-sm"
+                title="View golden emails and training feedback"
+              >
+                Training Data
+              </Link>
               <button
                 onClick={() => openModelEmailUploader()}
                 className="px-3 py-2 rounded-md bg-slate-800/60 text-slate-200 border border-slate-700 hover:bg-slate-800 transition-colors text-sm"
@@ -1907,13 +1914,13 @@ function EmailGeneratorPipeline() {
     mutationFn: (payload: EmailReviewRequest) => api.feedback.submitEmailReview(payload),
     onSuccess: () => {
       toast({
-        title: 'Review saved',
-        description: 'Saved for training/export.',
+        title: 'Email saved',
+        description: 'Saved to Saved Runs and submitted for training.',
       })
     },
     onError: (error) => {
       toast({
-        title: 'Review save failed',
+        title: 'Save failed',
         description: error instanceof Error ? error.message : 'Unknown error',
         variant: 'destructive',
       })
@@ -2168,8 +2175,8 @@ function EmailGeneratorPipeline() {
     return (
       <div className="mt-4 p-4 rounded-lg border border-slate-700 bg-slate-800/50">
         <div className="flex items-center justify-between gap-3">
-          <div className="text-sm font-medium text-slate-200">Review (training loop)</div>
-          {reviewMutation.isPending && <div className="text-xs text-slate-400">Saving…</div>}
+          <div className="text-sm font-medium text-slate-200">Review and Save</div>
+          {(reviewMutation.isPending || savingRun) && <div className="text-xs text-slate-400">Saving…</div>}
         </div>
 
         <div className="mt-3 space-y-3">
@@ -2253,7 +2260,7 @@ function EmailGeneratorPipeline() {
         </div>
 
         <button
-          onClick={() => {
+          onClick={async () => {
             const rubric = draft.rubric
             const getScore = (key: ReviewSectionKey) => {
               const item = rubric[key]
@@ -2288,14 +2295,18 @@ function EmailGeneratorPipeline() {
               },
             }
 
+            // Unified save: saves both the run AND the review
+            // 1. Save to Saved Runs for retrieval
+            await saveCurrentRun()
+            // 2. Save review feedback for training
             reviewMutation.mutate(payload)
           }}
-          disabled={!canSave}
+          disabled={!canSave || savingRun}
           className={`mt-4 w-full px-6 py-3 rounded-lg font-medium transition-colors ${
-            !canSave ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+            (!canSave || savingRun) ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-500 text-white'
           }`}
         >
-          Save review
+          {savingRun ? 'Saving...' : 'Save Email'}
         </button>
       </div>
     )
@@ -2637,6 +2648,16 @@ function EmailGeneratorPipeline() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
               </svg>
               Saved Runs
+            </Link>
+            <Link
+              to="/training"
+              className="px-3 py-2 rounded-lg border border-amber-700/50 text-amber-300 hover:bg-amber-900/30 transition-colors flex items-center gap-2"
+              title="View golden emails and training feedback"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+              </svg>
+              Training Data
             </Link>
             <ThemeToggle />
           </div>
@@ -3650,39 +3671,6 @@ function EmailGeneratorPipeline() {
                       className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium transition-colors"
                     >
                       Export CSV
-                    </button>
-                    <button
-                      onClick={() => {
-                        const name = prompt('Save run as (optional):', '')
-                        saveCurrentRun(name || undefined)
-                      }}
-                      disabled={savingRun}
-                      className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                        currentSavedRunId
-                          ? 'bg-emerald-700/30 border border-emerald-600 text-emerald-300'
-                          : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
-                      }`}
-                    >
-                      {savingRun ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                          Saving...
-                        </>
-                      ) : currentSavedRunId ? (
-                        <>
-                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                          Saved
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-                          </svg>
-                          Save Run
-                        </>
-                      )}
                     </button>
                     <button
                       onClick={() => {

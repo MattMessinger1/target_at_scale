@@ -8,6 +8,7 @@ import KnowledgeBase from '@/pages/KnowledgeBase'
 import Export from '@/pages/Export'
 import EmailGenerator from '@/pages/EmailGenerator'
 import SavedRuns from '@/pages/SavedRuns'
+import TrainingFeedback from '@/pages/TrainingFeedback'
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
         <Route path="/" element={<EmailGenerator />} />
         <Route path="/generator" element={<EmailGenerator />} />
         <Route path="/saved-runs" element={<SavedRuns />} />
+        <Route path="/training" element={<TrainingFeedback />} />
         
         {/* Legacy district-based routes under /admin */}
         <Route path="/admin" element={<Layout />}>

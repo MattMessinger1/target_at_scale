@@ -539,6 +539,64 @@ export interface EmailReviewResponse {
 }
 
 // ----------------------------------------------------------------------------
+// Training Feedback Types (for Training Feedback page)
+// ----------------------------------------------------------------------------
+
+export interface EmailReviewListItem {
+  id: number
+  created_at?: string | null
+  run_id?: string | null
+  product: string
+  product_key?: string | null
+  state_code: string
+  audience: string
+  district_name?: string | null
+  subject_preview: string
+  rubric: Record<string, { score?: number | null; comment?: string | null }>
+  was_edited: boolean
+}
+
+export interface EmailReviewListResponse {
+  total: number
+  items: EmailReviewListItem[]
+}
+
+export interface GoldenEmailListItem {
+  id: number
+  created_at?: string | null
+  product: string
+  product_key?: string | null
+  state_code: string
+  audience: string
+  district_name?: string | null
+  subject_line: string
+  source: 'edited' | 'rubric_qualified'
+  rubric_scores?: Record<string, number> | null
+  review_id?: number | null
+}
+
+export interface GoldenEmailListResponse {
+  total: number
+  items: GoldenEmailListItem[]
+}
+
+export interface GoldenEmailDetail {
+  id: number
+  created_at?: string | null
+  product: string
+  product_key?: string | null
+  state_code: string
+  audience: string
+  district_name?: string | null
+  subject_line: string
+  email_body: string
+  source: 'edited' | 'rubric_qualified'
+  rubric_scores?: Record<string, number> | null
+  hook_types_used?: string[] | null
+  review_id?: number | null
+}
+
+// ----------------------------------------------------------------------------
 // Saved Runs Types
 // ----------------------------------------------------------------------------
 
@@ -1309,6 +1367,30 @@ export const api = {
     submitEmailReview: (data: EmailReviewRequest) =>
       fetchApi<EmailReviewResponse>('/feedback/email-reviews', { method: 'POST', body: JSON.stringify(data) }),
     exportEmailReviews: () => fetch(`${API_BASE}/feedback/email-reviews/export`),
+    
+    // Training Feedback UI endpoints
+    listEmailReviews: (params?: { product?: string; state_code?: string; audience?: string; limit?: number; offset?: number }) => {
+      const searchParams = new URLSearchParams()
+      if (params?.product) searchParams.set('product', params.product)
+      if (params?.state_code) searchParams.set('state_code', params.state_code)
+      if (params?.audience) searchParams.set('audience', params.audience)
+      if (params?.limit) searchParams.set('limit', String(params.limit))
+      if (params?.offset) searchParams.set('offset', String(params.offset))
+      const query = searchParams.toString()
+      return fetchApi<EmailReviewListResponse>(`/feedback/email-reviews${query ? `?${query}` : ''}`)
+    },
+    listGoldenEmails: (params?: { product?: string; state_code?: string; audience?: string; source?: string; limit?: number; offset?: number }) => {
+      const searchParams = new URLSearchParams()
+      if (params?.product) searchParams.set('product', params.product)
+      if (params?.state_code) searchParams.set('state_code', params.state_code)
+      if (params?.audience) searchParams.set('audience', params.audience)
+      if (params?.source) searchParams.set('source', params.source)
+      if (params?.limit) searchParams.set('limit', String(params.limit))
+      if (params?.offset) searchParams.set('offset', String(params.offset))
+      const query = searchParams.toString()
+      return fetchApi<GoldenEmailListResponse>(`/feedback/golden-emails${query ? `?${query}` : ''}`)
+    },
+    getGoldenEmail: (id: number) => fetchApi<GoldenEmailDetail>(`/feedback/golden-emails/${id}`),
   },
 
   savedRuns: {
