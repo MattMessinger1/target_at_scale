@@ -14,7 +14,6 @@ Key features:
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import logging
 import re
@@ -32,7 +31,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 # Cache TTL in days
-CACHE_TTL_DAYS = 30
+CACHE_TTL_DAYS = 14
 
 
 # Deep Research prompt template
@@ -840,16 +839,6 @@ Remember: Return ONLY a valid JSON object, no other text."""
         raise
 
 
-def _generate_hook_id(hook_type: str, quote: str, link: str, trigger_excerpt: str) -> str:
-    """Generate a unique ID for a hook based on its content.
-    
-    Uses SHA-256 hash of key fields to create a stable, unique identifier.
-    This allows reliable hook selection even when multiple hooks share the same URL.
-    """
-    content = f"{hook_type}|{quote}|{link}|{trigger_excerpt}"
-    return hashlib.sha256(content.encode('utf-8')).hexdigest()[:16]
-
-
 async def convert_to_webhooks(
     research_results: Dict[str, Any],
     product_key: str,
@@ -871,17 +860,11 @@ async def convert_to_webhooks(
         if districts_eligible:
             eligibility_parts.append(f"Eligible districts: {', '.join(districts_eligible[:5])}")
         
-        hook_type = "funding_guidance"
-        quote = item.get("description", "")
-        link = item.get("url", "")
-        trigger_excerpt = f"Deadline: {item.get('deadline', 'See source')}" if item.get("deadline") else item.get("description", "")
-        
         hooks.append({
-            "hook_id": _generate_hook_id(hook_type, quote, link, trigger_excerpt),
-            "hook_type": hook_type,
-            "quote": quote,
-            "link": link,
-            "trigger_excerpt": trigger_excerpt,
+            "hook_type": "funding_guidance",
+            "quote": item.get("description", ""),
+            "link": item.get("url", ""),
+            "trigger_excerpt": f"Deadline: {item.get('deadline', 'See source')}" if item.get("deadline") else item.get("description", ""),
             "eligibility_excerpt": "; ".join(eligibility_parts) if eligibility_parts else None,
             "why_relevant": item.get("relevance_to_product", f"Funding opportunity for {product_key}"),
             "confidence": "high" if item.get("status") == "active" else "medium",
@@ -912,16 +895,11 @@ async def convert_to_webhooks(
         if item.get("el_link_explicit") is False:
             el_note = " (EL link not explicit)"
         
-        quote = item.get("description", "") + el_note
-        link = item.get("url", "")
-        trigger_excerpt = item.get("deadline") or item.get("consequences") or item.get("description", "")
-        
         hooks.append({
-            "hook_id": _generate_hook_id(hook_type, quote, link, trigger_excerpt),
             "hook_type": hook_type,
-            "quote": quote,
-            "link": link,
-            "trigger_excerpt": trigger_excerpt,
+            "quote": item.get("description", "") + el_note,
+            "link": item.get("url", ""),
+            "trigger_excerpt": item.get("deadline") or item.get("consequences") or item.get("description", ""),
             "eligibility_excerpt": district_text or None,
             "why_relevant": item.get("relevance_to_product", f"Compliance situation relevant to {product_key}"),
             "confidence": "high" if item.get("status") == "active" else "medium",
@@ -943,17 +921,11 @@ async def convert_to_webhooks(
         if item.get("el_connected") is False:
             el_note = " (EL link not explicit, but intervention creates opportunity)"
         
-        hook_type_intervention = "monitoring"
-        quote_final = quote + el_note
-        link = item.get("url", "")
-        trigger_excerpt = item.get("requirements") or item.get("timeline") or f"State {intervention_type} in effect"
-        
         hooks.append({
-            "hook_id": _generate_hook_id(hook_type_intervention, quote_final, link, trigger_excerpt),
-            "hook_type": hook_type_intervention,
-            "quote": quote_final,
-            "link": link,
-            "trigger_excerpt": trigger_excerpt,
+            "hook_type": "monitoring",
+            "quote": quote + el_note,
+            "link": item.get("url", ""),
+            "trigger_excerpt": item.get("requirements") or item.get("timeline") or f"State {intervention_type} in effect",
             "eligibility_excerpt": f"District: {district_name}; Timeline: {item.get('timeline', 'Ongoing')}",
             "why_relevant": f"State intervention creates urgency and often mandates specific improvements that our {product_key} can address",
             "confidence": "high",

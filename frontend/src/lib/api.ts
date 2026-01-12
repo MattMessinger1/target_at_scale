@@ -317,17 +317,13 @@ export interface PipelineRequest {
   audiences?: string[] | null
   district_name?: string | null
   district_url?: string | null
-  include_district_research?: boolean
 }
 
 export interface PipelineRunStreamRequest extends PipelineRequest {
   evidence_pack?: EvidencePack | null
   treasure_hooks?: WebHook[] | null
-  district_research?: DistrictResearchResult | null
-  selected_hook_links?: string[] | null   // Deprecated: use selected_hook_ids
-  primary_hook_link?: string | null       // Deprecated: use primary_hook_id
-  selected_hook_ids?: string[] | null     // Preferred: unique hook IDs for reliable selection
-  primary_hook_id?: string | null         // Preferred: unique ID of primary hook
+  selected_hook_links?: string[] | null
+  primary_hook_link?: string | null
 }
 
 export interface EvidenceChunkCitation {
@@ -358,10 +354,7 @@ export interface EvidencePack {
   supplemental_brief?: Record<string, unknown> | null
 }
 
-export type SourceLevel = 'state' | 'district'
-
 export interface WebHook {
-  hook_id?: string | null  // Unique identifier for reliable selection (hash of content)
   hook_type: HookType
   quote: string
   link: string
@@ -370,10 +363,6 @@ export interface WebHook {
   why_relevant: string
   confidence: HookConfidence
   source_quality_reason?: string | null
-  // District-level fields
-  source_level?: SourceLevel
-  district_name?: string | null
-  why_district_specific?: string | null
 }
 
 export interface SelectedHook {
@@ -386,20 +375,6 @@ export interface FilteredRequirement {
   hook: WebHook
   reason: string
   reason_label: string
-}
-
-export interface FilteredDistrictHook {
-  hook: WebHook
-  filter_reason: string
-  filter_detail: string
-}
-
-export interface DistrictResearchResult {
-  districts_surveyed: string[]
-  passed_hooks: WebHook[]
-  filtered_hooks: FilteredDistrictHook[]
-  status: string
-  research_summary?: string | null
 }
 
 export interface EmailDraft {
@@ -469,7 +444,6 @@ export interface PipelineRunResponse {
   request: PipelineRequest
   evidence_pack: EvidencePack
   treasure_hooks: WebHook[]
-  district_research?: DistrictResearchResult | null
   variants: AudienceVariantResult[]
   trace: PipelineTrace
   warnings: string[]
@@ -534,122 +508,6 @@ export interface EmailReviewRequest {
 
 export interface EmailReviewResponse {
   id: number
-}
-
-// ----------------------------------------------------------------------------
-// Saved Runs Types
-// ----------------------------------------------------------------------------
-
-export interface SaveRunRequest {
-  name?: string | null
-  product: string
-  state_code: string
-  state_full?: string | null
-  audiences: string[]
-  district_name?: string | null
-  pipeline_response: PipelineRunResponse
-  selected_hook_links: string[]
-  primary_hook_link?: string | null
-  hook_reason_tags: Record<string, string[]>
-  hook_reason_notes: Record<string, string>
-}
-
-export interface SavedRunSummary {
-  id: number
-  run_type: 'research' | 'email'
-  name?: string | null
-  product: string
-  state_code: string
-  state_full?: string | null
-  audiences: string[]
-  district_name?: string | null
-  created_at: string
-  batch_job_id?: number | null
-  subject_preview?: string | null
-  hook_count?: number | null
-}
-
-export interface SavedRunFull {
-  id: number
-  run_type: 'research' | 'email'
-  name?: string | null
-  product: string
-  state_code: string
-  state_full?: string | null
-  audiences: string[]
-  district_name?: string | null
-  pipeline_response: PipelineRunResponse
-  selected_hook_links: string[]
-  primary_hook_link?: string | null
-  hook_reason_tags: Record<string, string[]>
-  hook_reason_notes: Record<string, string>
-  created_at: string
-  batch_job_id?: number | null
-}
-
-export interface SaveResearchRequest {
-  name?: string
-  product: string
-  state_code: string
-  state_full?: string
-  audiences?: string[]
-  district_name?: string
-  evidence_pack: EvidencePack
-  hooks: WebHook[]
-  filtered_requirements?: FilteredRequirement[]
-  district_research?: DistrictResearchResult | null
-  batch_job_id?: number
-}
-
-export interface GroupedRunsResponse {
-  product: string
-  states: Record<string, SavedRunSummary[]>
-}
-
-export interface BatchJobSummary {
-  id: number
-  name?: string | null
-  product: string
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
-  total_states: number
-  completed_states: number
-  failed_states: number
-  created_at: string
-  started_at?: string | null
-  completed_at?: string | null
-}
-
-export interface BatchJobDetail {
-  id: number
-  name?: string | null
-  product: string
-  states: Array<{ code: string; name: string }>
-  audiences: string[]
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
-  total_states: number
-  completed_states: number
-  failed_states: number
-  error_message?: string | null
-  created_at: string
-  started_at?: string | null
-  completed_at?: string | null
-}
-
-export interface CreateBatchJobRequest {
-  name?: string
-  product: string
-  states: Array<{ code: string; name: string }>
-  audiences?: string[]
-  include_district_research?: boolean
-}
-
-export interface BatchRunSummary {
-  id: number
-  state_code: string
-  state_full?: string | null
-  status: 'completed' | 'failed' | 'pending' | 'queued'
-  hook_count?: number | null
-  created_at: string
 }
 
 // ----------------------------------------------------------------------------
@@ -1020,23 +878,6 @@ export const api = {
         error?: string
       }>(`/generate/pipeline/cache/status?${params.toString()}`)
     },
-    getCachedPrep: (state: string, product: string) => {
-      const params = new URLSearchParams()
-      params.set('state', state)
-      params.set('product', product)
-      return fetchApi<{
-        cached: boolean
-        result: {
-          evidence_pack: EvidencePack
-          treasure_hooks: WebHook[]
-          filtered_requirements: FilteredRequirement[]
-          district_research?: DistrictResearchResult | null
-          warnings: string[]
-        }
-        cache_age_days: number
-        cached_at: string
-      }>(`/generate/pipeline/prep/cached?${params.toString()}`)
-    },
     cancelResearch: (state: string, product: string) => {
       const params = new URLSearchParams()
       params.set('state', state)
@@ -1048,7 +889,7 @@ export const api = {
       }>(`/generate/pipeline/cancel?${params.toString()}`, { method: 'POST' })
     },
     pipelinePrepStream: async (data: PipelineRequest, onEvent: (evt: PipelineStreamEvent) => void) => {
-      let payload: { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; district_research?: DistrictResearchResult | null; warnings: string[] } | null = null
+      let payload: { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; warnings: string[] } | null = null
       let blockedMsg: string | null = null
       let blockedFiltered: FilteredRequirement[] = []
       await fetchNdjson('/generate/pipeline/prep/stream', data, (evt) => {
@@ -1071,26 +912,6 @@ export const api = {
       if (!payload) throw new Error('No prep payload returned')
       return payload
     },
-    // On-demand district research (after state research)
-    districtResearchStream: async (
-      data: { product: string; state: string; state_full?: string; state_hooks: Array<{ hook_id?: string; link: string; quote: string; title?: string }> },
-      onEvent: (evt: PipelineStreamEvent) => void
-    ) => {
-      let payload: DistrictResearchResult | null = null
-      let errorMsg: string | null = null
-      await fetchNdjson('/generate/pipeline/district-research/stream', data, (evt) => {
-        onEvent(evt)
-        if (evt.type === 'error') {
-          errorMsg = typeof evt.error === 'string' ? evt.error : 'District research failed'
-        }
-        if (evt.type === 'district_research_ready') {
-          payload = evt.payload as DistrictResearchResult
-        }
-      })
-      if (errorMsg) throw new Error(errorMsg)
-      if (!payload) throw new Error('No district research payload returned')
-      return payload
-    },
     pipelineRunStream: async (data: PipelineRunStreamRequest, onEvent: (evt: PipelineStreamEvent) => void) => {
       let payload: PipelineRunResponse | null = null
       let blockedMsg: string | null = null
@@ -1104,193 +925,6 @@ export const api = {
       if (blockedMsg) throw new Error(blockedMsg)
       if (!payload) throw new Error('No run payload returned')
       return payload
-    },
-    // Polling-based email generation (avoids connection timeouts)
-    pipelineRunStart: (data: PipelineRunStreamRequest) =>
-      fetchApi<{ task_id: string; status: string; message: string }>('/generate/pipeline/run/start', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
-    pipelineRunStatus: (taskId: string) =>
-      fetchApi<{
-        task_id: string
-        status: 'queued' | 'in_progress' | 'completed' | 'failed'
-        progress: number
-        message: string
-        started_at?: string
-        result?: PipelineRunResponse
-        error?: string
-      }>(`/generate/pipeline/run/status?task_id=${encodeURIComponent(taskId)}`),
-    // Polling wrapper that handles the full flow
-    pipelineRunPolling: async (
-      data: PipelineRunStreamRequest,
-      onProgress: (progress: number, message: string) => void,
-      pollInterval = 3000,
-      maxPolls = 600, // ~30 minutes max (3 audiences × 2 repair attempts × ~5 min each)
-    ): Promise<PipelineRunResponse> => {
-      // Start the task
-      const startResult = await fetchApi<{ task_id: string; status: string; message: string }>(
-        '/generate/pipeline/run/start',
-        { method: 'POST', body: JSON.stringify(data) }
-      )
-      const taskId = startResult.task_id
-      onProgress(0, 'Email generation started...')
-
-      // Poll for completion
-      for (let i = 0; i < maxPolls; i++) {
-        await new Promise((resolve) => setTimeout(resolve, pollInterval))
-        
-        const status = await fetchApi<{
-          task_id: string
-          status: 'queued' | 'in_progress' | 'completed' | 'failed'
-          progress: number
-          message: string
-          result?: PipelineRunResponse
-          error?: string
-        }>(`/generate/pipeline/run/status?task_id=${encodeURIComponent(taskId)}`)
-
-        onProgress(status.progress, status.message)
-
-        if (status.status === 'completed' && status.result) {
-          return status.result
-        }
-
-        if (status.status === 'failed') {
-          throw new Error(status.error || 'Email generation failed')
-        }
-      }
-
-      throw new Error('Email generation timed out after 30 minutes. Please try again with fewer audiences.')
-    },
-    // Polling-based research prep (more robust than streaming)
-    pipelinePrepStart: (data: PipelineRequest) =>
-      fetchApi<{
-        task_id: string
-        status: string
-        phase: 'state' | 'district'
-        message: string
-        existing: boolean
-      }>('/generate/pipeline/prep/start', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      }),
-    pipelinePrepStatus: (taskId: string) =>
-      fetchApi<{
-        task_id: string
-        status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled'
-        phase: 'state' | 'district'
-        progress: number
-        message: string
-        started_at?: string
-        completed_at?: string
-        state_code?: string
-        product_key?: string
-        product_display_name?: string
-        include_district_research?: boolean
-        result?: {
-          evidence_pack: EvidencePack
-          treasure_hooks: WebHook[]
-          filtered_requirements: FilteredRequirement[]
-          district_research?: DistrictResearchResult | null
-          warnings: string[]
-        }
-        error?: string
-      }>(`/generate/pipeline/prep/status?task_id=${encodeURIComponent(taskId)}`),
-    pipelinePrepCancel: (taskId: string) =>
-      fetchApi<{ task_id: string; cancelled: boolean; reason?: string }>(
-        `/generate/pipeline/prep/cancel?task_id=${encodeURIComponent(taskId)}`,
-        { method: 'POST' }
-      ),
-    pipelinePrepActive: () =>
-      fetchApi<{
-        task_id: string | null
-        status?: string
-        phase?: 'state' | 'district'
-        progress?: number
-        message?: string
-        state_code?: string
-        product_key?: string
-        product_display_name?: string
-        include_district_research?: boolean
-      }>('/generate/pipeline/prep/active'),
-    // Polling wrapper that handles the full research prep flow
-    pipelinePrepPolling: async (
-      data: PipelineRequest,
-      onProgress: (phase: 'state' | 'district', progress: number, message: string) => void,
-      pollInterval = 3000,
-      maxPolls = 1200, // ~60 minutes max (state + district research)
-    ): Promise<{
-      evidence_pack: EvidencePack
-      treasure_hooks: WebHook[]
-      filtered_requirements: FilteredRequirement[]
-      district_research?: DistrictResearchResult | null
-      warnings: string[]
-    }> => {
-      // Start the task
-      const startResult = await fetchApi<{
-        task_id: string
-        status: string
-        phase: 'state' | 'district'
-        message: string
-        existing: boolean
-      }>('/generate/pipeline/prep/start', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      })
-      const taskId = startResult.task_id
-      
-      // Poll immediately first (for cache hits that complete instantly)
-      // Only show progress UI if not immediately complete
-      let firstPoll = true
-      
-      for (let i = 0; i < maxPolls; i++) {
-        // Skip initial wait on first poll to check for cache hits
-        if (!firstPoll) {
-          await new Promise((resolve) => setTimeout(resolve, pollInterval))
-        }
-        firstPoll = false
-        
-        const status = await fetchApi<{
-          task_id: string
-          status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled'
-          phase: 'state' | 'district'
-          progress: number
-          message: string
-          result?: {
-            evidence_pack: EvidencePack
-            treasure_hooks: WebHook[]
-            filtered_requirements: FilteredRequirement[]
-            district_research?: DistrictResearchResult | null
-            warnings: string[]
-          }
-          error?: string
-          from_cache?: boolean
-        }>(`/generate/pipeline/prep/status?task_id=${encodeURIComponent(taskId)}`)
-
-        // For immediate cache hits, return without showing progress UI
-        if (status.status === 'completed' && status.result) {
-          // Only show a brief message for cache hits
-          if (status.from_cache) {
-            onProgress(status.phase || 'state', 100, 'Loaded from cache')
-          } else {
-            onProgress(status.phase || 'state', status.progress, status.message)
-          }
-          return status.result
-        }
-
-        // Show progress for actual research (not cache hits)
-        onProgress(status.phase || 'state', status.progress, status.message)
-
-        if (status.status === 'failed') {
-          throw new Error(status.error || 'Research failed')
-        }
-
-        if (status.status === 'cancelled') {
-          throw new Error('Research was cancelled')
-        }
-      }
-
-      throw new Error('Research timed out after 60 minutes. Please try again.')
     },
     batch: (requests: GenerateEmailRequest[]) =>
       fetchApi<{ emails: GenerateEmailResponse[]; count: number }>('/generate/batch', {
@@ -1307,46 +941,5 @@ export const api = {
     submitEmailReview: (data: EmailReviewRequest) =>
       fetchApi<EmailReviewResponse>('/feedback/email-reviews', { method: 'POST', body: JSON.stringify(data) }),
     exportEmailReviews: () => fetch(`${API_BASE}/feedback/email-reviews/export`),
-  },
-
-  savedRuns: {
-    list: (limit = 50, offset = 0) =>
-      fetchApi<SavedRunSummary[]>(`/saved-runs?limit=${limit}&offset=${offset}`),
-    listFiltered: (params: { run_type?: string; product?: string; state_code?: string; limit?: number; offset?: number }) => {
-      const searchParams = new URLSearchParams()
-      if (params.run_type) searchParams.set('run_type', params.run_type)
-      if (params.product) searchParams.set('product', params.product)
-      if (params.state_code) searchParams.set('state_code', params.state_code)
-      if (params.limit) searchParams.set('limit', String(params.limit))
-      if (params.offset) searchParams.set('offset', String(params.offset))
-      return fetchApi<SavedRunSummary[]>(`/saved-runs?${searchParams.toString()}`)
-    },
-    listGrouped: (days = 30) =>
-      fetchApi<GroupedRunsResponse[]>(`/saved-runs/grouped?days=${days}`),
-    get: (id: number) => fetchApi<SavedRunFull>(`/saved-runs/${id}`),
-    save: (data: SaveRunRequest) =>
-      fetchApi<SavedRunFull>('/saved-runs', { method: 'POST', body: JSON.stringify(data) }),
-    saveResearch: (data: SaveResearchRequest) =>
-      fetchApi<SavedRunFull>('/saved-runs/research', { method: 'POST', body: JSON.stringify(data) }),
-    rename: (id: number, name: string) =>
-      fetchApi<SavedRunSummary>(`/saved-runs/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
-    delete: (id: number) =>
-      fetchApi<{ ok: boolean; deleted_id: number }>(`/saved-runs/${id}`, { method: 'DELETE' }),
-    cleanup: (days = 30) =>
-      fetchApi<{ deleted_count: number; cutoff_date: string }>(`/saved-runs/cleanup?days=${days}`, { method: 'DELETE' }),
-  },
-
-  // Batch processing
-  batch: {
-    list: (limit = 20, offset = 0) =>
-      fetchApi<BatchJobSummary[]>(`/batch?limit=${limit}&offset=${offset}`),
-    get: (jobId: number) =>
-      fetchApi<BatchJobDetail>(`/batch/${jobId}`),
-    getRuns: (jobId: number) =>
-      fetchApi<BatchRunSummary[]>(`/batch/${jobId}/runs`),
-    create: (data: CreateBatchJobRequest) =>
-      fetchApi<BatchJobDetail>('/batch', { method: 'POST', body: JSON.stringify(data) }),
-    cancel: (jobId: number) =>
-      fetchApi<{ ok: boolean; job_id: number; status: string }>(`/batch/${jobId}/cancel`, { method: 'POST' }),
   },
 }

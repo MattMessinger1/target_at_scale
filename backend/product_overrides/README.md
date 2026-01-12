@@ -23,18 +23,12 @@ who_its_for:
   - "…"
 problems_solved:
   - "…"
-differentiators:  # NEW - The "delta" vs competitors
-  - "What makes us better than alternatives (e.g., better data, unique features)"
-  - "Specific advantages that research should prioritize when finding funding"
 implementation:
   what_wceps_does:
     - "…"
   what_district_does:
     - "…"
   timeline: "…"
-compliance_hooks:
-  - "State-mandated requirements we help address"
-  - "Compliance situations that create urgency"
 state_fit_notes:
   - "…"
 case_studies:

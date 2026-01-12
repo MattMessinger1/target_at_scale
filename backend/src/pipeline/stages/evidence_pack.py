@@ -173,45 +173,6 @@ async def build_product_evidence_pack(
         state_code=state_code,
         allow_on_demand_build=False,
     )
-    
-    # Case studies / testimonials retrieval (for social proof)
-    case_study_query = f"{product_display_name} case study testimonial results outcomes success"
-    case_study_results = service.query(
-        query_text=case_study_query,
-        n_results=5,
-        filter_product=product_key,
-        filter_state=None,  # Case studies may not be state-specific
-        filter_category="case_study",  # Filter to case studies category
-    )
-    # Also try testimonials if we didn't get enough case studies
-    if len(case_study_results or []) < 3:
-        testimonial_results = service.query(
-            query_text=case_study_query,
-            n_results=3,
-            filter_product=product_key,
-            filter_state=None,
-            filter_category="testimonial",
-        )
-        case_study_results = (case_study_results or []) + (testimonial_results or [])
-    
-    case_study_citations: List[EvidenceChunkCitation] = []
-    for r in case_study_results or []:
-        meta = r.get("metadata") or {}
-        content = r.get("content") or ""
-        case_study_citations.append(
-            EvidenceChunkCitation(
-                chunk_id=str(r.get("id") or ""),
-                source_kb_id=meta.get("source_id") or None,
-                title=meta.get("title") or None,
-                excerpt=_excerpt(content, 400),  # Slightly longer for case studies
-                category=meta.get("category") or None,
-                subcategory=meta.get("subcategory") or None,
-                product_name=meta.get("product_name") or None,
-                applicable_states=_split_states(meta.get("applicable_states") or ""),
-                chunk_index=meta.get("chunk_index"),
-                total_chunks=meta.get("total_chunks"),
-            )
-        )
 
     # Micro-offer candidates (heuristic: map to top evidence chunk)
     micro_offers: List[MicroOfferCandidate] = []
@@ -244,7 +205,6 @@ async def build_product_evidence_pack(
         state=state_code,
         retrieved_chunks=citations,
         micro_offer_candidates=micro_offers,
-        case_study_chunks=case_study_citations,
         supplemental_brief=supplemental_brief or None,
     )
 

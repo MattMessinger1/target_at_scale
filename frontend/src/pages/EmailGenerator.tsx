@@ -1,5 +1,5 @@
 /**
- * EmailGenerator page - V2 streaming research flow.
+ * EmailGenerator page - Main V1 email tool flow.
  * 
  * Flow:
  * 1. Select products, states, audiences (multi-select)
@@ -11,7 +11,6 @@
 import { useState } from 'react'
 import { useEffect } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
 import { 
   api, 
   FundingItem, 
@@ -23,14 +22,12 @@ import {
   EvidencePack,
   WebHook,
   FilteredRequirement,
-  DistrictResearchResult,
   PipelineRequest,
   PipelineRunStreamRequest,
   PipelineRunResponse,
   PipelineStreamEvent,
   HookDecision,
-  EmailReviewRequest,
-  SavedRunSummary
+  EmailReviewRequest
 } from '../lib/api'
 import { toast } from '@/components/ui/use-toast'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -38,23 +35,8 @@ import { ProductSelector } from '../components/ProductSelector'
 import { StateSelector, SelectedState } from '../components/StateSelector'
 import { AudienceSelector } from '../components/AudienceSelector'
 import { CurationStep } from '../components/CurationStep'
-import { Loader2 } from 'lucide-react'
 
 type Step = 'select' | 'research' | 'curate' | 'generate' | 'done'
-
-// Clean up markdown URLs and links from quote text for display
-const cleanQuoteText = (text: string | undefined | null): string => {
-  if (!text) return ''
-  // Remove markdown links: [text](url) -> text
-  let cleaned = text.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-  // Remove standalone URLs
-  cleaned = cleaned.replace(/https?:\/\/[^\s]+/g, '')
-  // Remove markdown URL artifacts like ([text]...)
-  cleaned = cleaned.replace(/\(\[?[^\)]+\]?\)/g, '')
-  // Clean up extra whitespace
-  cleaned = cleaned.replace(/\s+/g, ' ').trim()
-  return cleaned
-}
 
 const STEP_ORDER: Step[] = ['select', 'research', 'curate', 'generate', 'done']
 const STEP_LABELS: Record<Step, string> = {
@@ -665,12 +647,6 @@ function EmailGeneratorV1() {
             </div>
             
             <div className="flex items-center gap-3">
-              <Link
-                to="/saved-runs"
-                className="px-3 py-2 rounded-md bg-slate-800/60 text-slate-200 border border-slate-700 hover:bg-slate-800 transition-colors text-sm"
-              >
-                Saved Runs
-              </Link>
               <button
                 onClick={() => openModelEmailUploader()}
                 className="px-3 py-2 rounded-md bg-slate-800/60 text-slate-200 border border-slate-700 hover:bg-slate-800 transition-colors text-sm"
@@ -1159,7 +1135,6 @@ const STAGE_LABELS: Record<string, string> = {
   'evidence_pack': 'Gathering evidence from knowledge base',
   'treasure_hunter': 'Running Deep Research',
   'hook_gate': 'Filtering requirements',
-  'district_research': 'Surveying districts for opportunities',
   'hook_selector': 'Selecting best hooks',
   'email_writer': 'Writing email',
   'validator': 'Validating email',
@@ -1251,59 +1226,24 @@ function EmailGeneratorPipeline() {
 
   const [districtName, setDistrictName] = useState('')
   const [districtUrl, setDistrictUrl] = useState('')
-  
-  // District research option
-  const [includeDistrictResearch, setIncludeDistrictResearch] = useState(false)
-  const [districtResearchStatus, setDistrictResearchStatus] = useState<'idle' | 'running' | 'complete'>('idle')
-  const [districtResearchProgress, setDistrictResearchProgress] = useState(0)
-  const [districtResearchMessage, setDistrictResearchMessage] = useState('')
-  
-  // Polling-based research state (robust against browser sleep/network issues)
-  const [researchPhase, setResearchPhase] = useState<'idle' | 'state' | 'district'>('idle')
-  const [researchTaskId, setResearchTaskId] = useState<string | null>(null)
-  const [researchProgress, setResearchProgress] = useState(0)
-  const [researchMessage, setResearchMessage] = useState('')
 
   // Cache status for the current state+product selection
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null)
   const [showReSearchConfirm, setShowReSearchConfirm] = useState(false)
-  const [loadingCachedResults, setLoadingCachedResults] = useState(false)
 
   const [result, setResult] = useState<PipelineRunResponse | null>(null)
   const [activeAudience, setActiveAudience] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [traceEvents, setTraceEvents] = useState<PipelineStreamEvent[]>([])
   const [researchStartTime, setResearchStartTime] = useState<Date | null>(null)
-  const [emailProgress, setEmailProgress] = useState<{ progress: number; message: string } | null>(null)
-  const [prep, setPrep] = useState<{ evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; district_research?: DistrictResearchResult | null; warnings: string[] } | null>(null)
+  const [prep, setPrep] = useState<{ evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; warnings: string[] } | null>(null)
   const [blockedFilteredRequirements, setBlockedFilteredRequirements] = useState<FilteredRequirement[]>([])
-  // Use hook_id for reliable selection (handles multiple hooks with same URL)
-  const [selectedHookKeys, setSelectedHookKeys] = useState<string[]>([])  // hook_id or link fallback
-  const [primaryHookKey, setPrimaryHookKey] = useState<string | null>(null)  // hook_id or link fallback
-  // Legacy aliases for backwards compatibility
-  const selectedHookLinks = selectedHookKeys  
-  const setSelectedHookLinks = setSelectedHookKeys
-  const primaryHookLink = primaryHookKey
-  const setPrimaryHookLink = setPrimaryHookKey
+  const [selectedHookLinks, setSelectedHookLinks] = useState<string[]>([])
+  const [primaryHookLink, setPrimaryHookLink] = useState<string | null>(null)
   const [hookReasonTags, setHookReasonTags] = useState<Record<string, string[]>>({})
   const [hookReasonNotes, setHookReasonNotes] = useState<Record<string, string>>({})
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, ReviewDraft>>({})
   const [showFilteredSection, setShowFilteredSection] = useState(false)
-  
-  // Helper: get unique key for a hook (prefer hook_id, fallback to link)
-  const getHookKey = (h: WebHook): string => h.hook_id || h.link
-  
-  // Saved runs state
-  const [showSavedRuns, setShowSavedRuns] = useState(false)
-  const [savedRuns, setSavedRuns] = useState<SavedRunSummary[]>([])
-  const [loadingSavedRuns, setLoadingSavedRuns] = useState(false)
-  const [savingRun, setSavingRun] = useState(false)
-  const [currentSavedRunId, setCurrentSavedRunId] = useState<number | null>(null)
-  
-  // Batch processing state
-  const [showBatchModal, setShowBatchModal] = useState(false)
-  const [batchStates, setBatchStates] = useState<Array<{ code: string; name: string }>>([])
-  const [startingBatch, setStartingBatch] = useState(false)
 
   useEffect(() => {
     if (selectedHookLinks.length === 1) {
@@ -1356,104 +1296,6 @@ function EmailGeneratorPipeline() {
       })
   }, [selectedStates, selectedProducts, wizardStep])
 
-  // On page load: check for any active research and resume if found
-  useEffect(() => {
-    let cancelled = false
-    
-    const checkActiveResearch = async () => {
-      try {
-        const active = await api.generate.pipelinePrepActive()
-        if (cancelled || !active.task_id) return
-        
-        // Found active research - resume polling
-        setResearchTaskId(active.task_id)
-        setResearchPhase(active.phase || 'state')
-        setResearchProgress(active.progress || 0)
-        setResearchMessage(active.message || 'Resuming research...')
-        setWizardStep(2)
-        
-        // Set selection to match active research
-        if (active.product_display_name) {
-          setSelectedProducts([active.product_display_name])
-        }
-        if (active.state_code) {
-          setSelectedStates([{ code: active.state_code, name: active.state_code }])
-        }
-        if (active.include_district_research) {
-          setIncludeDistrictResearch(true)
-        }
-        
-        toast({
-          title: 'Research in progress',
-          description: `Reconnected to active research for ${active.product_display_name || 'your product'} / ${active.state_code || 'your state'}`,
-        })
-        
-        // Resume polling
-        const pollForCompletion = async () => {
-          while (!cancelled) {
-            await new Promise(resolve => setTimeout(resolve, 3000))
-            if (cancelled) break
-            
-            try {
-              const status = await api.generate.pipelinePrepStatus(active.task_id!)
-              if (cancelled) break
-              
-              setResearchPhase(status.phase || 'state')
-              setResearchProgress(status.progress)
-              setResearchMessage(status.message)
-              
-              if (status.phase === 'district') {
-                setDistrictResearchStatus('running')
-                setDistrictResearchProgress(status.progress)
-                setDistrictResearchMessage(status.message)
-              }
-              
-              if (status.status === 'completed' && status.result) {
-                setResearchPhase('idle')
-                setResearchTaskId(null)
-                setDistrictResearchStatus(status.result.district_research ? 'complete' : 'idle')
-                setPrep(status.result)
-                setWizardStep(3)
-                toast({ title: 'Research complete!' })
-                break
-              }
-              
-              if (status.status === 'failed') {
-                setResearchPhase('idle')
-                setResearchTaskId(null)
-                setWizardStep(1)
-                toast({ 
-                  title: 'Research failed', 
-                  description: status.error,
-                  variant: 'destructive' 
-                })
-                break
-              }
-              
-              if (status.status === 'cancelled') {
-                setResearchPhase('idle')
-                setResearchTaskId(null)
-                setWizardStep(1)
-                toast({ title: 'Research was cancelled' })
-                break
-              }
-            } catch (e) {
-              console.warn('Failed to poll research status:', e)
-            }
-          }
-        }
-        
-        pollForCompletion()
-      } catch (e) {
-        console.warn('Failed to check for active research:', e)
-      }
-    }
-    
-    checkActiveResearch()
-    
-    return () => { cancelled = true }
-  }, []) // Only run once on mount
-
   const toggleReasonTag = (link: string, tag: string) => {
     setHookReasonTags((prev) => {
       const existing = prev[link] || []
@@ -1477,208 +1319,25 @@ function EmailGeneratorPipeline() {
     })
   }
 
-  // Saved runs functions
-  const loadSavedRuns = async () => {
-    setLoadingSavedRuns(true)
-    try {
-      const runs = await api.savedRuns.list()
-      setSavedRuns(runs)
-    } catch (err) {
-      toast({
-        title: 'Error loading saved runs',
-        description: err instanceof Error ? err.message : 'Unknown error',
-        variant: 'destructive',
-      })
-    } finally {
-      setLoadingSavedRuns(false)
-    }
-  }
-
-  const saveCurrentRun = async (name?: string) => {
-    if (!result) return
-    setSavingRun(true)
-    try {
-      const saved = await api.savedRuns.save({
-        name: name || undefined,
-        product: selectedProducts[0] || '',
-        state_code: selectedStates[0]?.code || '',
-        state_full: selectedStates[0]?.name || undefined,
-        audiences: selectedAudiences.length ? selectedAudiences : ['Title III Coordinators', 'ELL/Multilingual Directors', 'Curriculum Directors'],
-        district_name: districtName.trim() || undefined,
-        pipeline_response: result,
-        selected_hook_links: selectedHookLinks,
-        primary_hook_link: primaryHookLink || undefined,
-        hook_reason_tags: hookReasonTags,
-        hook_reason_notes: hookReasonNotes,
-      })
-      setCurrentSavedRunId(saved.id)
-      toast({
-        title: 'Run saved',
-        description: name ? `Saved as "${name}"` : 'Run saved successfully',
-      })
-      // Refresh the saved runs list
-      loadSavedRuns()
-    } catch (err) {
-      toast({
-        title: 'Error saving run',
-        description: err instanceof Error ? err.message : 'Unknown error',
-        variant: 'destructive',
-      })
-    } finally {
-      setSavingRun(false)
-    }
-  }
-
-  // Save research results BEFORE email generation (allows revisiting later)
-  const saveResearchRun = async (name?: string) => {
-    if (!prep) return
-    setSavingRun(true)
-    try {
-      const product = selectedProducts[0] || ''
-      const state = selectedStates[0]
-      const defaultName = `${product} - ${state?.name || state?.code || 'Research'}`
-      
-      const saved = await api.savedRuns.saveResearch({
-        name: name || defaultName,
-        product,
-        state_code: state?.code || '',
-        state_full: state?.name || undefined,
-        audiences: selectedAudiences.length ? selectedAudiences : ['Title III Coordinators', 'ELL/Multilingual Directors', 'Curriculum Directors'],
-        district_name: districtName.trim() || undefined,
-        evidence_pack: prep.evidence_pack,
-        hooks: prep.treasure_hooks || [],
-        filtered_requirements: prep.filtered_requirements || [],
-        district_research: prep.district_research || null,
-      })
-      toast({
-        title: 'Research saved',
-        description: `Saved as "${saved.name || defaultName}". View it in Saved Runs.`,
-      })
-      // Refresh the saved runs list
-      loadSavedRuns()
-    } catch (err) {
-      toast({
-        title: 'Error saving research',
-        description: err instanceof Error ? err.message : 'Unknown error',
-        variant: 'destructive',
-      })
-    } finally {
-      setSavingRun(false)
-    }
-  }
-
-  const loadSavedRun = async (run: SavedRunSummary) => {
-    try {
-      const full = await api.savedRuns.get(run.id)
-      
-      // Restore all state
-      setSelectedProducts([full.product])
-      setSelectedStates([{ code: full.state_code, name: full.state_full || full.state_code }])
-      setSelectedAudiences(full.audiences)
-      setDistrictName(full.district_name || '')
-      
-      // Restore pipeline result
-      setResult(full.pipeline_response)
-      setActiveAudience(full.pipeline_response.variants?.[0]?.audience || null)
-      
-      // Restore hook selection
-      setSelectedHookLinks(full.selected_hook_links)
-      setPrimaryHookLink(full.primary_hook_link || null)
-      setHookReasonTags(full.hook_reason_tags)
-      setHookReasonNotes(full.hook_reason_notes)
-      
-      // Extract prep data from pipeline response
-      if (full.pipeline_response.evidence_pack && full.pipeline_response.treasure_hooks) {
-        setPrep({
-          evidence_pack: full.pipeline_response.evidence_pack,
-          treasure_hooks: full.pipeline_response.treasure_hooks,
-          filtered_requirements: [],
-          warnings: full.pipeline_response.warnings || [],
-        })
-      }
-      
-      // Go to review step
-      setWizardStep(5)
-      setCurrentSavedRunId(full.id)
-      setShowSavedRuns(false)
-      
-      toast({
-        title: 'Run loaded',
-        description: run.name || `Loaded ${run.product} / ${run.state_code}`,
-      })
-    } catch (err) {
-      toast({
-        title: 'Error loading run',
-        description: err instanceof Error ? err.message : 'Unknown error',
-        variant: 'destructive',
-      })
-    }
-  }
-
-  const deleteSavedRun = async (id: number) => {
-    try {
-      await api.savedRuns.delete(id)
-      setSavedRuns((prev) => prev.filter((r) => r.id !== id))
-      if (currentSavedRunId === id) {
-        setCurrentSavedRunId(null)
-      }
-      toast({
-        title: 'Run deleted',
-      })
-    } catch (err) {
-      toast({
-        title: 'Error deleting run',
-        description: err instanceof Error ? err.message : 'Unknown error',
-        variant: 'destructive',
-      })
-    }
-  }
-
   const prepMutation = useMutation<
-    { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; district_research?: DistrictResearchResult | null; warnings: string[] },
+    { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; warnings: string[] },
     Error & { filteredRequirements?: FilteredRequirement[] },
     void
   >({
-    mutationFn: async () => {
-      const req: PipelineRequest & { include_district_research?: boolean } = {
+    mutationFn: () => {
+      const req: PipelineRequest = {
         product: selectedProducts[0] || '',
         state: selectedStates[0]?.code || '',
         state_full: selectedStates[0]?.name || undefined,
         audiences: selectedAudiences.length ? selectedAudiences : undefined,
         district_name: districtName.trim() || undefined,
         district_url: districtUrl.trim() || undefined,
-        include_district_research: includeDistrictResearch,
       }
-      
-      // Use polling-based research (more robust than streaming)
-      return api.generate.pipelinePrepPolling(req, (phase, progress, message) => {
-        setResearchPhase(phase)
-        setResearchProgress(progress)
-        setResearchMessage(message)
-        
-        // Also update legacy district research state for UI compatibility
-        if (phase === 'district') {
-          setDistrictResearchStatus('running')
-          setDistrictResearchProgress(progress)
-          setDistrictResearchMessage(message)
-        }
-        
-        // Add trace event for activity log
-        setTraceEvents((prev) => [...prev, { 
-          type: 'progress', 
-          stage: phase === 'district' ? 'district_research' : 'treasure_hunter',
-          message, 
-          percent: progress 
-        } as PipelineStreamEvent])
+      return api.generate.pipelinePrepStream(req, (evt) => {
+        setTraceEvents((prev) => [...prev, evt])
       })
     },
     onSuccess: (data) => {
-      setResearchPhase('idle')
-      setResearchTaskId(null)
-      setResearchProgress(0)
-      setResearchMessage('')
-      setDistrictResearchStatus(data.district_research ? 'complete' : 'idle')
-      
       setPrep(data)
       setBlockedFilteredRequirements([])
       setSelectedHookLinks([])
@@ -1693,12 +1352,6 @@ function EmailGeneratorPipeline() {
       setWizardStep(3) // Go to Select step
     },
     onError: (error) => {
-      setResearchPhase('idle')
-      setResearchTaskId(null)
-      setResearchProgress(0)
-      setResearchMessage('')
-      setDistrictResearchStatus('idle')
-      
       // Capture filtered requirements even on blocked/error
       if (error && 'filteredRequirements' in error && error.filteredRequirements) {
         setBlockedFilteredRequirements(error.filteredRequirements)
@@ -1728,21 +1381,11 @@ function EmailGeneratorPipeline() {
         req.treasure_hooks = prep.treasure_hooks
       }
       if (selectedHookLinks.length > 0) {
-        // Send hook IDs (preferred) for reliable selection
-        req.selected_hook_ids = selectedHookLinks  // selectedHookLinks now contains hook_id or link
-        req.primary_hook_id = (primaryHookLink || selectedHookLinks[0] || '').trim() || undefined
-        // Also send legacy links for backwards compatibility (convert keys back to links if needed)
-        const selectedLinks = prep?.treasure_hooks
-          .filter(h => selectedHookLinks.includes(getHookKey(h)))
-          .map(h => h.link) || selectedHookLinks
-        req.selected_hook_links = selectedLinks
-        req.primary_hook_link = prep?.treasure_hooks.find(h => getHookKey(h) === primaryHookLink)?.link || primaryHookLink || undefined
+        req.selected_hook_links = selectedHookLinks
+        req.primary_hook_link = (primaryHookLink || selectedHookLinks[0] || '').trim() || undefined
       }
-      // Use polling-based approach to avoid browser connection timeouts
-      return api.generate.pipelineRunPolling(req, (progress, message) => {
-        setEmailProgress({ progress, message })
-        // Also add to trace events for activity log
-        setTraceEvents((prev) => [...prev, { type: 'progress', progress, message } as PipelineStreamEvent])
+      return api.generate.pipelineRunStream(req, (evt) => {
+        setTraceEvents((prev) => [...prev, evt])
       })
     },
     onSuccess: (data) => {
@@ -1755,18 +1398,18 @@ function EmailGeneratorPipeline() {
       // Training loop: log the explicit human-selected requirements (no implicit rejections).
       try {
         if (prep && selectedHookLinks.length > 0) {
-          const map = new Map((prep.treasure_hooks || []).map((h) => [getHookKey(h), h]))
+          const map = new Map((prep.treasure_hooks || []).map((h) => [h.link, h]))
           const primary = (primaryHookLink || selectedHookLinks[0] || '').trim()
           const decisions: HookDecision[] = []
-          for (const hookKey of selectedHookLinks) {
-            const hook = map.get(hookKey)
+          for (const link of selectedHookLinks) {
+            const hook = map.get(link)
             if (!hook) continue
-            const rank = selectedHookLinks.length === 1 ? 1 : hookKey === primary ? 1 : 2
+            const rank = selectedHookLinks.length === 1 ? 1 : link === primary ? 1 : 2
             decisions.push({
               decision: 'selected',
               rank,
-              reason_tags: hookReasonTags[hookKey] || [],
-              reason_note: (hookReasonNotes[hookKey] || '').trim() || null,
+              reason_tags: hookReasonTags[link] || [],
+              reason_note: (hookReasonNotes[link] || '').trim() || null,
               hook,
             })
           }
@@ -1847,10 +1490,8 @@ function EmailGeneratorPipeline() {
     },
   })
 
-  const handlePrep = async () => {
+  const handlePrep = () => {
     if (!canPrep) return
-    
-    // Reset state
     setTraceEvents([])
     setResearchStartTime(new Date())
     setPrep(null)
@@ -1862,35 +1503,7 @@ function EmailGeneratorPipeline() {
     setReviewDrafts({})
     setResult(null)
     setActiveAudience(null)
-    
-    // If cache is completed, try to load directly (instant!)
-    if (cacheStatus?.status === 'completed') {
-      setLoadingCachedResults(true)
-      try {
-        const cached = await api.generate.getCachedPrep(
-          selectedStates[0]?.code || '',
-          selectedProducts[0] || ''
-        )
-        if (cached.result) {
-          setPrep(cached.result)
-          setDistrictResearchStatus(cached.result.district_research ? 'complete' : 'idle')
-          setWizardStep(3) // Go directly to results
-          toast({
-            title: 'Loaded cached results',
-            description: `Research from ${cached.cache_age_days} day${cached.cache_age_days !== 1 ? 's' : ''} ago`,
-          })
-          return
-        }
-      } catch {
-        // Fall through to normal research flow
-        // This happens if full_prep_json isn't cached yet
-      } finally {
-        setLoadingCachedResults(false)
-      }
-    }
-    
-    // Normal research flow - show progress UI
-    setWizardStep(2)
+    setWizardStep(2) // Go to Research step
     prepMutation.mutate()
   }
 
@@ -1959,7 +1572,6 @@ function EmailGeneratorPipeline() {
   const handleRun = () => {
     if (!canGenerate) return
     setTraceEvents([])
-    setEmailProgress(null) // Reset progress
     setWizardStep(4) // Go to Generate step
     pipelineMutation.mutate()
   }
@@ -1972,7 +1584,6 @@ function EmailGeneratorPipeline() {
     setSelectedHookLinks([])
     setPrimaryHookLink(null)
     setHookReasonTags({})
-    setEmailProgress(null)
     setHookReasonNotes({})
     setReviewDrafts({})
     setActiveAudience(null)
@@ -2261,7 +1872,7 @@ function EmailGeneratorPipeline() {
                   <a className="mt-1 block text-sm text-emerald-300 hover:text-emerald-200 underline break-all" href={h.link} target="_blank" rel="noreferrer">
                     {h.link}
                   </a>
-                  <div className="mt-2 text-sm text-slate-300">"{cleanQuoteText(h.quote)}"</div>
+                  <div className="mt-2 text-sm text-slate-300">“{h.quote}”</div>
                 </div>
               ))}
               {(result.treasure_hooks || []).length === 0 && (
@@ -2291,16 +1902,16 @@ function EmailGeneratorPipeline() {
           <div className="text-xs text-slate-500">{h.hook_type} · {h.confidence}</div>
         </div>
         <div className="mt-2 text-xs text-slate-500 uppercase tracking-wide">Primary Requirement (opener)</div>
-        <div className="mt-2 text-sm text-slate-300">"{cleanQuoteText(h.quote)}"</div>
+        <div className="mt-2 text-sm text-slate-300">“{h.quote}”</div>
         <a className="mt-2 block text-sm text-emerald-300 hover:text-emerald-200 underline break-all" href={h.link} target="_blank" rel="noreferrer">
           {h.link}
         </a>
         <div className="mt-3 text-xs text-slate-500 uppercase tracking-wide">Trigger excerpt</div>
-        <div className="mt-1 text-sm text-slate-300">{cleanQuoteText(h.trigger_excerpt)}</div>
+        <div className="mt-1 text-sm text-slate-300">{h.trigger_excerpt}</div>
         {h.eligibility_excerpt && (
           <>
             <div className="mt-3 text-xs text-slate-500 uppercase tracking-wide">Eligibility excerpt</div>
-            <div className="mt-1 text-sm text-slate-300">{cleanQuoteText(h.eligibility_excerpt)}</div>
+            <div className="mt-1 text-sm text-slate-300">{h.eligibility_excerpt}</div>
           </>
         )}
 
@@ -2311,16 +1922,16 @@ function EmailGeneratorPipeline() {
                 <div className="text-xs text-slate-500 uppercase tracking-wide">Secondary Requirement (supporting)</div>
                 <div className="text-xs text-slate-500">{sh.hook_type} · {sh.confidence}</div>
               </div>
-              <div className="mt-2 text-sm text-slate-300">"{cleanQuoteText(sh.quote)}"</div>
+              <div className="mt-2 text-sm text-slate-300">“{sh.quote}”</div>
               <a className="mt-2 block text-sm text-emerald-300 hover:text-emerald-200 underline break-all" href={sh.link} target="_blank" rel="noreferrer">
                 {sh.link}
               </a>
               <div className="mt-3 text-xs text-slate-500 uppercase tracking-wide">Trigger excerpt</div>
-              <div className="mt-1 text-sm text-slate-300">{cleanQuoteText(sh.trigger_excerpt)}</div>
+              <div className="mt-1 text-sm text-slate-300">{sh.trigger_excerpt}</div>
               {sh.eligibility_excerpt && (
                 <>
                   <div className="mt-3 text-xs text-slate-500 uppercase tracking-wide">Eligibility excerpt</div>
-                  <div className="mt-1 text-sm text-slate-300">{cleanQuoteText(sh.eligibility_excerpt)}</div>
+                  <div className="mt-1 text-sm text-slate-300">{sh.eligibility_excerpt}</div>
                 </>
               )}
             </div>
@@ -2420,9 +2031,9 @@ function EmailGeneratorPipeline() {
       district_specific: 'District Specific',
     }
     
-    // Truncate long quotes (use global cleanQuoteText helper)
+    // Truncate long quotes
     const MAX_QUOTE_LENGTH = 250
-    const quote = cleanQuoteText(h.quote)
+    const quote = h.quote || ''
     const truncatedQuote = quote.length > MAX_QUOTE_LENGTH 
       ? quote.slice(0, MAX_QUOTE_LENGTH) + '...' 
       : quote
@@ -2484,17 +2095,17 @@ function EmailGeneratorPipeline() {
             <div className="space-y-2">
               <div>
                 <div className="text-xs text-slate-500 uppercase tracking-wide font-medium">Trigger</div>
-                <div className="mt-0.5 text-sm text-slate-300">{cleanQuoteText(h.trigger_excerpt)}</div>
+                <div className="mt-0.5 text-sm text-slate-300">{h.trigger_excerpt}</div>
               </div>
               {h.eligibility_excerpt && (
                 <div>
                   <div className="text-xs text-slate-500 uppercase tracking-wide font-medium">Eligibility</div>
-                  <div className="mt-0.5 text-sm text-slate-300">{cleanQuoteText(h.eligibility_excerpt)}</div>
+                  <div className="mt-0.5 text-sm text-slate-300">{h.eligibility_excerpt}</div>
                 </div>
               )}
               <div>
                 <div className="text-xs text-slate-500 uppercase tracking-wide font-medium">Why Relevant</div>
-                <div className="mt-0.5 text-sm text-slate-400">{cleanQuoteText(h.why_relevant)}</div>
+                <div className="mt-0.5 text-sm text-slate-400">{h.why_relevant}</div>
               </div>
             </div>
             
@@ -2555,260 +2166,8 @@ function EmailGeneratorPipeline() {
               Find funding/compliance requirements and generate targeted emails.
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                setShowSavedRuns(true)
-                loadSavedRuns()
-              }}
-              className="px-3 py-2 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-slate-200 transition-colors flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-              </svg>
-              Saved Runs
-            </button>
-            <ThemeToggle />
-          </div>
+          <ThemeToggle />
         </div>
-
-        {/* Saved Runs Modal */}
-        {showSavedRuns && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-2xl max-h-[80vh] overflow-hidden">
-              <div className="p-4 border-b border-slate-700 flex items-center justify-between">
-                <h2 className="text-lg font-medium text-slate-200">Saved Email Runs</h2>
-                <button
-                  onClick={() => setShowSavedRuns(false)}
-                  className="p-1 text-slate-400 hover:text-slate-200"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <div className="p-4 overflow-y-auto max-h-[60vh]">
-                {loadingSavedRuns ? (
-                  <div className="flex items-center justify-center py-8">
-                    <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-                    <span className="ml-3 text-slate-400">Loading saved runs...</span>
-                  </div>
-                ) : savedRuns.length === 0 ? (
-                  <div className="text-center py-8 text-slate-400">
-                    No saved runs yet. Generate an email and click "Save Run" to save it.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {savedRuns.map((run) => (
-                      <div 
-                        key={run.id} 
-                        className={`p-4 rounded-lg border transition-colors ${
-                          currentSavedRunId === run.id 
-                            ? 'border-emerald-600 bg-emerald-900/20' 
-                            : 'border-slate-700 bg-slate-900/30 hover:border-slate-600'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-slate-200">
-                              {run.name || `${run.product} / ${run.state_code}`}
-                            </div>
-                            {run.subject_preview && (
-                              <div className="text-sm text-slate-400 mt-1 truncate">
-                                "{run.subject_preview}"
-                              </div>
-                            )}
-                            <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
-                              <span>{run.product}</span>
-                              <span>•</span>
-                              <span>{run.state_full || run.state_code}</span>
-                              <span>•</span>
-                              <span>{run.audiences.length} audience{run.audiences.length !== 1 ? 's' : ''}</span>
-                              <span>•</span>
-                              <span>{new Date(run.created_at).toLocaleDateString()}</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => loadSavedRun(run)}
-                              className="px-3 py-1.5 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
-                            >
-                              Load
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (confirm('Delete this saved run?')) {
-                                  deleteSavedRun(run.id)
-                                }
-                              }}
-                              className="p-1.5 text-slate-400 hover:text-red-400 transition-colors"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Batch Research Modal */}
-        {showBatchModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-2xl max-h-[80vh] overflow-hidden">
-              <div className="p-4 border-b border-slate-700 flex items-center justify-between">
-                <h2 className="text-lg font-medium text-slate-200">Batch Research</h2>
-                <button
-                  onClick={() => setShowBatchModal(false)}
-                  className="p-1 text-slate-400 hover:text-slate-200"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <div className="p-4 overflow-y-auto max-h-[60vh]">
-                <p className="text-sm text-slate-400 mb-4">
-                  Run research across multiple states simultaneously. Results will be saved to your Saved Runs.
-                </p>
-                
-                {/* Product Summary */}
-                <div className="mb-4 p-3 bg-slate-900/50 rounded-lg border border-slate-700">
-                  <div className="text-xs text-slate-500 mb-1">Product</div>
-                  <div className="text-sm text-slate-200">{selectedProducts[0] || 'No product selected'}</div>
-                </div>
-                
-                {/* State Selection */}
-                <div className="mb-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-medium text-slate-300">States to research</label>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          // Add all WIDA states
-                          const widaStates = [
-                            { code: 'AL', name: 'Alabama' }, { code: 'CO', name: 'Colorado' },
-                            { code: 'DC', name: 'District of Columbia' }, { code: 'DE', name: 'Delaware' },
-                            { code: 'FL', name: 'Florida' }, { code: 'GA', name: 'Georgia' },
-                            { code: 'HI', name: 'Hawaii' }, { code: 'ID', name: 'Idaho' },
-                            { code: 'IL', name: 'Illinois' }, { code: 'IN', name: 'Indiana' },
-                            { code: 'KY', name: 'Kentucky' }, { code: 'ME', name: 'Maine' },
-                            { code: 'MD', name: 'Maryland' }, { code: 'MA', name: 'Massachusetts' },
-                            { code: 'MI', name: 'Michigan' }, { code: 'MN', name: 'Minnesota' },
-                            { code: 'MO', name: 'Missouri' }, { code: 'MT', name: 'Montana' },
-                            { code: 'NV', name: 'Nevada' }, { code: 'NH', name: 'New Hampshire' },
-                            { code: 'NJ', name: 'New Jersey' }, { code: 'NM', name: 'New Mexico' },
-                            { code: 'NC', name: 'North Carolina' }, { code: 'ND', name: 'North Dakota' },
-                            { code: 'OH', name: 'Ohio' }, { code: 'OK', name: 'Oklahoma' },
-                            { code: 'PA', name: 'Pennsylvania' }, { code: 'RI', name: 'Rhode Island' },
-                            { code: 'SC', name: 'South Carolina' }, { code: 'SD', name: 'South Dakota' },
-                            { code: 'TN', name: 'Tennessee' }, { code: 'UT', name: 'Utah' },
-                            { code: 'VT', name: 'Vermont' }, { code: 'VA', name: 'Virginia' },
-                            { code: 'WI', name: 'Wisconsin' }, { code: 'WY', name: 'Wyoming' },
-                            { code: 'VI', name: 'US Virgin Islands' },
-                          ]
-                          setBatchStates(widaStates)
-                        }}
-                        className="text-xs px-2 py-1 rounded bg-emerald-800/50 text-emerald-300 hover:bg-emerald-700/50"
-                      >
-                        All WIDA States
-                      </button>
-                      <button
-                        onClick={() => setBatchStates([])}
-                        className="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2 p-3 bg-slate-900/30 rounded-lg border border-slate-700 min-h-[60px]">
-                    {batchStates.length === 0 ? (
-                      <span className="text-sm text-slate-500">No states selected. Click "All WIDA States" or add from your current selection.</span>
-                    ) : (
-                      batchStates.map(s => (
-                        <span
-                          key={s.code}
-                          className="inline-flex items-center gap-1 px-2 py-1 bg-slate-700 rounded text-xs text-slate-200"
-                        >
-                          {s.code}
-                          <button
-                            onClick={() => setBatchStates(prev => prev.filter(x => x.code !== s.code))}
-                            className="text-slate-400 hover:text-red-400"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))
-                    )}
-                  </div>
-                  <div className="mt-2 text-xs text-slate-500">
-                    {batchStates.length} states selected
-                  </div>
-                </div>
-                
-                {/* Estimated time/cost */}
-                <div className="mb-4 p-3 bg-amber-900/20 rounded-lg border border-amber-700/30">
-                  <div className="text-sm text-amber-300 font-medium mb-1">Estimated Time & Cost</div>
-                  <div className="text-xs text-amber-200/70">
-                    ~{Math.ceil(batchStates.length / 3) * 15} - {Math.ceil(batchStates.length / 3) * 30} minutes
-                    (3 states in parallel, 5-10 min each)
-                  </div>
-                  <div className="text-xs text-amber-200/70 mt-1">
-                    ~${(batchStates.length * 1.5).toFixed(2)} in API costs ({batchStates.length} states × ~$1.50/state)
-                  </div>
-                </div>
-              </div>
-              
-              <div className="p-4 border-t border-slate-700 flex justify-end gap-3">
-                <button
-                  onClick={() => setShowBatchModal(false)}
-                  className="px-4 py-2 rounded-lg text-slate-300 hover:bg-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!selectedProducts[0] || batchStates.length === 0) return
-                    setStartingBatch(true)
-                    try {
-                      await api.batch.create({
-                        name: `${selectedProducts[0]} - ${batchStates.length} states`,
-                        product: selectedProducts[0],
-                        states: batchStates,
-                        audiences: selectedAudiences,
-                        include_district_research: false,
-                      })
-                      toast({
-                        title: 'Batch job started!',
-                        description: `Processing ${batchStates.length} states. View progress in Saved Runs.`,
-                      })
-                      setShowBatchModal(false)
-                      setBatchStates([])
-                    } catch (err) {
-                      toast({
-                        title: 'Failed to start batch job',
-                        description: err instanceof Error ? err.message : 'Unknown error',
-                        variant: 'destructive',
-                      })
-                    } finally {
-                      setStartingBatch(false)
-                    }
-                  }}
-                  disabled={!selectedProducts[0] || batchStates.length === 0 || startingBatch}
-                  className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {startingBatch ? 'Starting...' : `Start Batch (${batchStates.length} states)`}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {renderProgressBar()}
 
@@ -2841,24 +2200,6 @@ function EmailGeneratorPipeline() {
                 <div className="mt-2 text-xs text-slate-500">
                   Leave audiences empty to use the default 3 (Title III, ELL, Curriculum).
                 </div>
-              </div>
-
-              {/* District Research Toggle */}
-              <div className="flex items-center gap-3 p-4 bg-slate-800/50 rounded-lg border border-slate-700">
-                <input 
-                  type="checkbox" 
-                  id="district-research"
-                  checked={includeDistrictResearch}
-                  onChange={(e) => setIncludeDistrictResearch(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-600 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-900"
-                />
-                <label htmlFor="district-research" className="flex-1 cursor-pointer">
-                  <span className="text-sm font-medium text-slate-200">Include District Research</span>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Survey top 30 districts by EL population for incremental opportunities 
-                    (adds ~10-20 min, runs automatically after state research)
-                  </p>
-                </label>
               </div>
 
               {/* Cache status notification */}
@@ -2932,48 +2273,29 @@ function EmailGeneratorPipeline() {
                 </div>
               )}
 
-              <div className="pt-4 flex justify-between items-center">
-                <button
-                  onClick={() => setShowBatchModal(true)}
-                  disabled={!selectedProducts.length}
-                  className="px-4 py-2 rounded-lg font-medium text-amber-300 border border-amber-600 hover:bg-amber-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Run research across multiple states at once"
-                >
-                  🚀 Batch Research
-                </button>
-                <div className="flex gap-3">
-                  {cacheStatus?.status === 'completed' && (
-                    <button
-                      onClick={handleReSearch}
-                      disabled={!canPrep}
-                      className="px-4 py-2 rounded-lg font-medium text-slate-300 border border-slate-600 hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Re-search (Fresh)
-                    </button>
-                  )}
+              <div className="pt-4 flex justify-end gap-3">
+                {cacheStatus?.status === 'completed' && (
                   <button
-                    onClick={handlePrep}
-                    disabled={!canPrep || loadingCachedResults}
-                    className={`px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                      !canPrep || loadingCachedResults
-                        ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                    }`}
+                    onClick={handleReSearch}
+                    disabled={!canPrep}
+                    className="px-4 py-2 rounded-lg font-medium text-slate-300 border border-slate-600 hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {loadingCachedResults ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Loading...
-                      </>
-                    ) : cacheStatus?.status === 'completed' ? (
-                      'View Cached Results →'
-                    ) : cacheStatus?.status === 'in_progress' ? (
-                      'View Progress →'
-                    ) : (
-                      'Find Requirements →'
-                    )}
+                    Re-search (Fresh)
                   </button>
-                </div>
+                )}
+                <button
+                  onClick={handlePrep}
+                  disabled={!canPrep}
+                  className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                    !canPrep
+                      ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  }`}
+                >
+                  {cacheStatus?.status === 'completed' ? 'View Cached Results →' : 
+                   cacheStatus?.status === 'in_progress' ? 'View Progress →' :
+                   'Find Requirements →'}
+                </button>
               </div>
             </div>
           </div>
@@ -2984,102 +2306,33 @@ function EmailGeneratorPipeline() {
           <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
             <h2 className="text-lg font-medium text-slate-200 mb-4">Researching Funding & Compliance Requirements...</h2>
             
-            {/* Phase Indicator Banner - Prominent display of current phase */}
-            <div className={`mb-6 p-4 rounded-lg border ${
-              researchPhase === 'district' 
-                ? 'border-amber-600/50 bg-amber-900/20' 
-                : 'border-emerald-600/50 bg-emerald-900/20'
-            }`}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    researchPhase === 'district' 
-                      ? 'bg-amber-600/30' 
-                      : 'bg-emerald-600/30'
-                  }`}>
-                    {researchPhase === 'district' ? (
-                      <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                      </svg>
-                    ) : (
-                      <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
-                      </svg>
-                    )}
-                  </div>
-                  <div>
-                    <div className={`text-lg font-semibold ${
-                      researchPhase === 'district' ? 'text-amber-300' : 'text-emerald-300'
-                    }`}>
-                      {researchPhase === 'district' 
-                        ? `Phase 2 of 2: District Research` 
-                        : includeDistrictResearch 
-                          ? `Phase 1 of 2: State Research`
-                          : `State Research`
-                      }
-                    </div>
-                    <div className="text-sm text-slate-400">
-                      {selectedProducts[0] || 'Product'} | {selectedStates[0]?.name || 'State'}
-                    </div>
-                  </div>
+            {/* Deep Research explanation */}
+            <div className="mb-6 p-4 rounded-lg border border-emerald-700/50 bg-emerald-900/20">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-emerald-600/30 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
                 </div>
-                
-                {/* Cancel Button */}
-                <button
-                  onClick={async () => {
-                    if (researchTaskId) {
-                      try {
-                        await api.generate.pipelinePrepCancel(researchTaskId)
-                        setResearchPhase('idle')
-                        setResearchTaskId(null)
-                        setWizardStep(1)
-                        toast({ title: 'Research cancelled' })
-                      } catch (e) {
-                        toast({ 
-                          title: 'Failed to cancel', 
-                          description: e instanceof Error ? e.message : 'Unknown error',
-                          variant: 'destructive' 
-                        })
-                      }
-                    } else {
-                      setWizardStep(1)
-                    }
-                  }}
-                  className="px-3 py-1.5 text-sm text-slate-300 hover:text-white border border-slate-600 hover:border-slate-500 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-              
-              {/* Progress Bar */}
-              <div className="space-y-2">
-                <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-                  <div 
-                    className={`h-full transition-all duration-500 ${
-                      researchPhase === 'district' ? 'bg-amber-500' : 'bg-emerald-500'
-                    }`}
-                    style={{ width: `${researchProgress}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-300">{researchMessage || 'Starting research...'}</span>
-                  <span className={`font-medium ${
-                    researchPhase === 'district' ? 'text-amber-400' : 'text-emerald-400'
-                  }`}>{Math.round(researchProgress)}%</span>
+                <div>
+                  <div className="text-sm font-medium text-emerald-300">
+                    Deep Research is analyzing funding and compliance requirements for {selectedStates[0]?.name || 'your state'}.
+                  </div>
+                  <div className="mt-2 text-sm text-emerald-200/80">
+                    This thorough research typically takes <span className="font-medium">5-30 minutes</span>. Feel free to leave this page and come back - we'll save your results.
+                  </div>
+                  <div className="mt-2 text-sm text-emerald-200/70">
+                    Your results will be saved for <span className="font-medium">14 days</span>. Future searches for {selectedStates[0]?.name || 'this state'} + {selectedProducts[0] || 'this product'} will return instantly until the cache expires.
+                  </div>
                 </div>
               </div>
             </div>
             
-            {/* Additional info */}
-            <div className="mb-6 p-3 rounded-lg border border-slate-700 bg-slate-900/30">
-              <div className="text-sm text-slate-400">
-                {researchPhase === 'district' ? (
-                  <>Surveying top districts in {selectedStates[0]?.name || 'your state'} for additional funding opportunities...</>
-                ) : (
-                  <>This thorough research typically takes <span className="font-medium text-slate-300">5-30 minutes</span>. 
-                  Results are saved for <span className="font-medium text-slate-300">30 days</span>.</>
-                )}
-              </div>
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-slate-300">
+                {getLatestTraceStatus(traceEvents) || 'Running Deep Research...'}
+              </span>
             </div>
             
             {traceEvents.length > 0 && (
@@ -3119,16 +2372,15 @@ function EmailGeneratorPipeline() {
                   <span className="text-xs text-slate-500">Selected: {selectedHookLinks.length}/2</span>
                 </div>
                 {passedRequirements.map((h) => {
-                  const hookKey = getHookKey(h)
-                  const isSelected = selectedHookLinks.includes(hookKey)
-                  const isPrimary = primaryHookLink === hookKey
+                  const isSelected = selectedHookLinks.includes(h.link)
+                  const isPrimary = primaryHookLink === h.link
                   return (
-                    <div key={hookKey}>
+                    <div key={h.link}>
                       {renderRequirementCard(h, {
                         isSelected,
                         isPrimary,
-                        onToggle: () => toggleHook(hookKey),
-                        onSetPrimary: () => setPrimaryHookLink(hookKey),
+                        onToggle: () => toggleHook(h.link),
+                        onSetPrimary: () => setPrimaryHookLink(h.link),
                       })}
                       {/* Reason tags for selected requirements */}
                       {isSelected && (
@@ -3142,17 +2394,17 @@ function EmailGeneratorPipeline() {
                               { tag: 'credible', label: 'Credible source' },
                             ].map((opt) => (
                               <label
-                                key={`${hookKey}-${opt.tag}`}
+                                key={`${h.link}-${opt.tag}`}
                                 className={`flex items-center gap-2 px-2 py-1 rounded border text-xs cursor-pointer ${
-                                  (hookReasonTags[hookKey] || []).includes(opt.tag)
+                                  (hookReasonTags[h.link] || []).includes(opt.tag)
                                     ? 'border-emerald-600 bg-emerald-900/10 text-emerald-200'
                                     : 'border-slate-700 bg-slate-900/10 text-slate-300 hover:bg-slate-900/20'
                                 }`}
                               >
                                 <input
                                   type="checkbox"
-                                  checked={(hookReasonTags[hookKey] || []).includes(opt.tag)}
-                                  onChange={() => toggleReasonTag(hookKey, opt.tag)}
+                                  checked={(hookReasonTags[h.link] || []).includes(opt.tag)}
+                                  onChange={() => toggleReasonTag(h.link, opt.tag)}
                                   className="sr-only"
                                 />
                                 <span>{opt.label}</span>
@@ -3160,8 +2412,8 @@ function EmailGeneratorPipeline() {
                             ))}
                           </div>
                           <textarea
-                            value={hookReasonNotes[hookKey] || ''}
-                            onChange={(e) => setHookReasonNotes((prev) => ({ ...prev, [hookKey]: e.target.value }))}
+                            value={hookReasonNotes[h.link] || ''}
+                            onChange={(e) => setHookReasonNotes((prev) => ({ ...prev, [h.link]: e.target.value }))}
                             placeholder="Optional notes..."
                             className="mt-2 w-full min-h-[60px] px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
                           />
@@ -3210,22 +2462,19 @@ function EmailGeneratorPipeline() {
                 </div>
                 {showFilteredSection && (
                   <div className="mt-4 space-y-4">
-                    {allFilteredRequirements.map((fr, idx) => {
-                      const hookKey = getHookKey(fr.hook)
-                      return (
-                        <div key={`filtered-${idx}`}>
-                          {renderRequirementCard(fr.hook, {
-                            isFiltered: true,
-                            filterReason: fr.reason,
-                            filterReasonLabel: fr.reason_label,
-                            isSelected: selectedHookLinks.includes(hookKey),
-                            isPrimary: primaryHookLink === hookKey,
-                            onToggle: () => toggleHook(hookKey),
-                            onSetPrimary: () => setPrimaryHookLink(hookKey),
-                          })}
-                        </div>
-                      )
-                    })}
+                    {allFilteredRequirements.map((fr, idx) => (
+                      <div key={`filtered-${idx}`}>
+                        {renderRequirementCard(fr.hook, {
+                          isFiltered: true,
+                          filterReason: fr.reason,
+                          filterReasonLabel: fr.reason_label,
+                          isSelected: selectedHookLinks.includes(fr.hook.link),
+                          isPrimary: primaryHookLink === fr.hook.link,
+                          onToggle: () => toggleHook(fr.hook.link),
+                          onSetPrimary: () => setPrimaryHookLink(fr.hook.link),
+                        })}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -3238,180 +2487,6 @@ function EmailGeneratorPipeline() {
               </div>
             )}
 
-            {/* District Research Section */}
-            {prep && (
-              <div className="mt-8 pt-6 border-t border-slate-700">
-                {/* District Research Progress */}
-                {districtResearchStatus === 'running' && (
-                  <div className="mb-6 p-4 bg-slate-800/50 rounded-lg border border-amber-700/50">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="animate-spin h-5 w-5 border-2 border-amber-500 border-t-transparent rounded-full" />
-                      <span className="text-sm font-medium text-amber-400">District Research in Progress</span>
-                    </div>
-                    
-                    {/* Progress bar */}
-                    <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-amber-500 transition-all duration-500"
-                        style={{ width: `${districtResearchProgress}%` }}
-                      />
-                    </div>
-                    
-                    {/* Status text */}
-                    <div className="mt-2 flex justify-between text-xs text-slate-400">
-                      <span>{districtResearchMessage || 'Researching districts...'}</span>
-                      <span>{Math.round(districtResearchProgress)}%</span>
-                    </div>
-                  </div>
-                )}
-                
-                {/* District Results Section */}
-                {prep.district_research && (
-                  <div className="mb-6">
-                    <h3 className="text-lg font-semibold text-amber-400 mb-2 flex items-center gap-2">
-                      🏫 District-Level Opportunities
-                      <span className="text-sm font-normal text-slate-500">
-                        ({prep.district_research.districts_surveyed?.length || 0} districts surveyed)
-                      </span>
-                    </h3>
-                    
-                    {/* Passed Hooks - Grouped by District */}
-                    {prep.district_research.passed_hooks && prep.district_research.passed_hooks.length > 0 ? (
-                      <div className="space-y-4">
-                        {(() => {
-                          // Group hooks by district
-                          const byDistrict: Record<string, typeof prep.district_research.passed_hooks> = {}
-                          for (const hook of prep.district_research.passed_hooks || []) {
-                            const district = hook.district_name || 'Unknown District'
-                            if (!byDistrict[district]) byDistrict[district] = []
-                            byDistrict[district].push(hook)
-                          }
-                          return Object.entries(byDistrict).map(([district, hooks]) => (
-                            <div key={district} className="p-4 bg-slate-800/50 rounded-lg border border-amber-700/30">
-                              <div className="flex items-center justify-between mb-3">
-                                <h4 className="font-medium text-amber-400">{district}</h4>
-                                <button
-                                  onClick={() => {
-                                    // TODO: Generate email for this district
-                                    toast({
-                                      title: 'Coming soon',
-                                      description: `Generate email for ${district} will be available soon.`,
-                                    })
-                                  }}
-                                  className="px-3 py-1.5 text-sm bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors"
-                                >
-                                  Generate Email →
-                                </button>
-                              </div>
-                              <div className="space-y-2">
-                                {hooks.map((hook, i) => (
-                                  <div key={i} className="text-sm">
-                                    <span className="text-slate-300">{cleanQuoteText(hook.quote)}</span>
-                                    {hook.why_district_specific && (
-                                      <p className="text-xs text-slate-500 mt-1">
-                                        Why district-specific: {cleanQuoteText(hook.why_district_specific)}
-                                      </p>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ))
-                        })()}
-                      </div>
-                    ) : (
-                      <div className="p-4 bg-slate-800/30 rounded-lg border border-slate-700">
-                        <p className="text-sm text-slate-400">
-                          ✓ District research completed. No incremental opportunities found beyond state-level findings.
-                        </p>
-                        {prep.district_research.districts_surveyed && prep.district_research.districts_surveyed.length > 0 && (
-                          <p className="text-xs text-slate-500 mt-1">
-                            Surveyed: {prep.district_research.districts_surveyed.slice(0, 10).join(', ')}
-                            {prep.district_research.districts_surveyed.length > 10 && ` +${prep.district_research.districts_surveyed.length - 10} more`}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    
-                    {/* Filtered Items - Expandable for Transparency */}
-                    {prep.district_research.filtered_hooks && prep.district_research.filtered_hooks.length > 0 && (
-                      <details className="mt-4">
-                        <summary className="text-sm text-slate-500 cursor-pointer hover:text-slate-400">
-                          View {prep.district_research.filtered_hooks.length} filtered district items
-                        </summary>
-                        <div className="mt-2 space-y-2 pl-4 border-l-2 border-slate-700">
-                          {prep.district_research.filtered_hooks.map((item, i) => (
-                            <div key={i} className="text-xs text-slate-500">
-                              <span className="font-medium">{cleanQuoteText(item.hook.quote)?.slice(0, 80)}...</span>
-                              <span className="text-slate-600 ml-2">— {item.filter_detail}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </details>
-                    )}
-                  </div>
-                )}
-                
-                {/* Run District Research Button (on-demand) */}
-                {!prep.district_research && !includeDistrictResearch && districtResearchStatus === 'idle' && (
-                  <div className="p-4 bg-amber-900/20 rounded-lg border border-amber-700/50">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="text-sm font-medium text-amber-400">Want more opportunities?</h4>
-                        <p className="text-xs text-slate-400 mt-1">
-                          Survey top 30 districts for additional funding & compliance hooks
-                        </p>
-                      </div>
-                      <button
-                        onClick={async () => {
-                          setDistrictResearchStatus('running')
-                          setDistrictResearchProgress(0)
-                          setDistrictResearchMessage('Starting district research...')
-                          try {
-                            const result: DistrictResearchResult = await api.generate.districtResearchStream(
-                              {
-                                product: selectedProducts[0] || '',
-                                state: selectedStates[0]?.code || '',
-                                state_full: selectedStates[0]?.name,
-                                state_hooks: (prep.treasure_hooks || []).map(h => ({
-                                  hook_id: h.hook_id || undefined,
-                                  link: h.link,
-                                  quote: h.quote,
-                                  title: h.quote?.slice(0, 100),
-                                })),
-                              },
-                              (evt) => {
-                                if (evt.stage === 'district_research' && evt.type === 'progress') {
-                                  setDistrictResearchProgress((evt.percent as number) || 0)
-                                  setDistrictResearchMessage((evt.message as string) || 'Researching...')
-                                }
-                              }
-                            )
-                            setPrep(prev => prev ? { ...prev, district_research: result } : null)
-                            setDistrictResearchStatus('complete')
-                            toast({
-                              title: 'District research complete',
-                              description: `Found ${result.passed_hooks?.length || 0} district-level opportunities.`,
-                            })
-                          } catch (err) {
-                            toast({
-                              title: 'District research failed',
-                              description: err instanceof Error ? err.message : 'Unknown error',
-                              variant: 'destructive',
-                            })
-                            setDistrictResearchStatus('idle')
-                          }
-                        }}
-                        className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium rounded-lg transition-colors"
-                      >
-                        Run District Research
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Navigation */}
             <div className="mt-6 pt-4 border-t border-slate-700 flex justify-between">
               <button
@@ -3421,14 +2496,6 @@ function EmailGeneratorPipeline() {
                 ← Back
               </button>
               <div className="flex gap-3">
-                <button
-                  onClick={() => saveResearchRun()}
-                  disabled={savingRun || !prep}
-                  className="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-600 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Save research for later email generation"
-                >
-                  {savingRun ? 'Saving...' : '💾 Save Research'}
-                </button>
                 <button
                   onClick={handleReSearch}
                   disabled={prepMutation.isPending}
@@ -3453,58 +2520,16 @@ function EmailGeneratorPipeline() {
           </div>
         )}
 
-        {/* Step 4: Generate Email (loading state with polling progress) */}
+        {/* Step 4: Generate Email (loading state) */}
         {wizardStep === 4 && (
           <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
             <h2 className="text-lg font-medium text-slate-200 mb-6">Generating Email...</h2>
-            
-            {/* Show selected hook being used */}
-            {prep && selectedHookLinks.length > 0 && (
-              <div className="mb-4 p-3 rounded-lg border border-slate-600 bg-slate-800/50">
-                <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">Using Hook</div>
-                <div className="text-sm text-slate-300">
-                  {(() => {
-                    const selectedHook = prep.treasure_hooks.find(h => getHookKey(h) === primaryHookLink)
-                    if (selectedHook) {
-                      return (
-                        <div>
-                          <span className="text-emerald-400">[{selectedHook.hook_type}]</span>{' '}
-                          {selectedHook.trigger_excerpt?.slice(0, 100)}
-                          {(selectedHook.trigger_excerpt?.length || 0) > 100 ? '...' : ''}
-                        </div>
-                      )
-                    }
-                    return <span className="text-slate-500">Hook not found</span>
-                  })()}
-                </div>
-              </div>
-            )}
-            
-            {/* Progress bar */}
-            <div className="mb-4">
-              <div className="flex justify-between text-sm text-slate-400 mb-2">
-                <span>{emailProgress?.message || 'Starting...'}</span>
-                <span>{emailProgress?.progress || 0}%</span>
-              </div>
-              <div className="w-full bg-slate-700 rounded-full h-2">
-                <div 
-                  className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${emailProgress?.progress || 0}%` }}
-                />
-              </div>
-            </div>
-            
             <div className="flex items-center gap-3 mb-6">
               <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
               <span className="text-slate-300">
-                {emailProgress?.message || getLatestTraceStatus(traceEvents) || 'Creating audience variants...'}
+                {getLatestTraceStatus(traceEvents) || 'Creating audience variants...'}
               </span>
             </div>
-            
-            <p className="text-sm text-slate-500 mb-4">
-              This typically takes 2-4 minutes. The page will automatically update when complete.
-            </p>
-            
             {traceEvents.length > 0 && (
               <div className="p-4 rounded-lg border border-slate-700 bg-slate-900/30 max-h-48 overflow-y-auto">
                 <div className="text-xs text-slate-500 uppercase tracking-wide mb-2">Activity Log</div>
@@ -3583,39 +2608,6 @@ function EmailGeneratorPipeline() {
                     </button>
                     <button
                       onClick={() => {
-                        const name = prompt('Save run as (optional):', '')
-                        saveCurrentRun(name || undefined)
-                      }}
-                      disabled={savingRun}
-                      className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                        currentSavedRunId
-                          ? 'bg-emerald-700/30 border border-emerald-600 text-emerald-300'
-                          : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
-                      }`}
-                    >
-                      {savingRun ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                          Saving...
-                        </>
-                      ) : currentSavedRunId ? (
-                        <>
-                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
-                          Saved
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-                          </svg>
-                          Save Run
-                        </>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => {
                         setWizardStep(4)
                         setTraceEvents([])
                         pipelineMutation.mutate()
@@ -3640,7 +2632,7 @@ function EmailGeneratorPipeline() {
                       </div>
                       <div className="text-sm text-slate-400 space-y-2">
                         {prep.treasure_hooks
-                          .filter(h => selectedHookLinks.includes(getHookKey(h)))
+                          .filter(h => selectedHookLinks.includes(h.link))
                           .map((hook, idx) => (
                             <div key={idx}>
                               {hook.eligibility_excerpt && (

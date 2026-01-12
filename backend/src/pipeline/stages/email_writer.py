@@ -10,12 +10,10 @@ The deterministic validator enforces the hard gates.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import re
-import time
-from typing import Callable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from openai import AsyncOpenAI
 
@@ -499,8 +497,11 @@ def _normalize_email_body_for_validator(email_body: str) -> str:
     if not paras:
         return (email_body or "").strip()
 
-    # Keep standalone greeting paragraph separate (it's intentional now)
-    # No longer merging greeting into opener paragraph
+    # If the model used a standalone greeting paragraph, merge it into the next paragraph
+    # so the opener paragraph stays coherent (avoid wasting the opener on a greeting-only line).
+    if len(paras) >= 2 and _is_greeting_paragraph(paras[0]):
+        paras[0] = paras[0].rstrip() + " " + paras[1].lstrip()
+        paras.pop(1)
 
     # If the model put a sign-off after the micro-offer CTA, merge sign-off into the CTA paragraph
     # (same paragraph) so the last paragraph still contains the micro-offer phrase.
@@ -547,25 +548,6 @@ def _format_evidence_chunks(evidence_pack: EvidencePack, *, max_chunks: int = 8)
     for c in (evidence_pack.retrieved_chunks or [])[:max_chunks]:
         lines.append(f"- {c.chunk_id}: {c.excerpt}")
     return "\n".join(lines) if lines else "(none)"
-
-
-def _format_case_studies(evidence_pack: EvidencePack, *, max_items: int = 3) -> str:
-    """Format case studies / testimonials from KB for social proof."""
-    chunks = evidence_pack.case_study_chunks or []
-    if not chunks:
-        return ""
-    
-    lines: List[str] = []
-    for c in chunks[:max_items]:
-        title = c.title or "Success Story"
-        excerpt = c.excerpt or ""
-        if excerpt:
-            lines.append(f"  - {title}: {excerpt}")
-    
-    if not lines:
-        return ""
-    
-    return "SUCCESS STORIES FROM KB (use ONE naturally if relevant, do NOT force):\n" + "\n".join(lines)
 
 
 def _format_micro_offers(evidence_pack: EvidencePack, *, max_offers: int = 6) -> str:
@@ -648,8 +630,6 @@ def _format_full_product_context(evidence_pack: EvidencePack) -> str:
         if claims_text:
             sections.append(f"SAFE CLAIMS:\n{claims_text}")
     
-    # Case studies from KB will be added separately via evidence_pack.case_study_chunks
-    
     return "\n\n".join(sections) if sections else "(no product context)"
 
 
@@ -683,7 +663,6 @@ async def write_email_variant(
     district_url: Optional[str],
     repair_instructions: Optional[List[str]] = None,
     prior_email_body: Optional[str] = None,
-    on_progress: Optional[Callable[[str, float], None]] = None,
 ) -> Tuple[EmailDraft, List[ClaimsMapEntry]]:
     """Write or minimally repair an email variant."""
     if not settings.openai_api_key:
@@ -729,100 +708,20 @@ Here are examples of the quality, tone, and style we want:
 
 Now write an email for THIS specific situation. Follow the constraints below.
 
-Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain text only.\n- Do NOT include any URLs in the email body EXCEPT the Calendly link: {CALENDLY_URL_RAW}.\n- 2-3 bullets, each ≤ 10 words. Use 2 if that's all that adds value - don't pad with fluff.\n- Bullets must be specific DELIVERABLES or OUTCOMES (e.g., implementation plan, coaching schedules, progress monitoring).\n- NEVER use the product name itself as a bullet (e.g., "CARE Coaching Professional Learning Program" is WRONG - it's redundant).\n- Each bullet should reuse 1–3 distinctive words from the cited KB excerpt (to keep it grounded).\n- Include at least ONE Product offering phrase verbatim (see list below). Use it in body text, NOT as a bullet.\n- CTA must offer VALUE, not just a generic meeting. Frame it around solving their specific problem.\n- Good CTAs tie the meeting to the grant/compliance need:\n  - \"Would you have 15 minutes to walk through implementation options for [specific grant/requirement]?\"\n  - \"15 minutes to explore how this fits your [CSI plan / Title III goals]?\"\n  - \"I'd love to share how other districts have approached [specific challenge].\"\n- AVOID generic asks like \"15 minutes to discuss\" or \"a quick call to chat\" - be specific about the value.\n- Do NOT offer to \"send\" documents, templates, checklists, or resources.\n- Always include Calendly link: {CALENDLY_URL_RAW}\n- If a secondary hook is provided, you MUST use it later in the email.\n\nSubject line constraints (critical):\n- Ideally mention the product name (e.g., \"CARE Coaching\") - makes it clear what we offer.\n- Ideally mention the specific funding/compliance opportunity (e.g., \"CLSD Grant\", \"CSI Schools\") - shows relevance.\n- Aim for a DIRECT connection between product and opportunity when possible.\n- Avoid generic subjects (\"Quick question\", \"Following up\", \"Checking in\", \"Touching base\").\n- Do NOT use specific past years (2024, 2025) in subject - use \"Current\" or \"FY26\" if referencing time.\n- Best: \"CARE Coaching Fits with CLSD Grant\" (product + specific opportunity)\n- Good: \"CARE Coaching for Alaska CSI Schools\" (product + compliance situation)\n- Good: \"Support for Alaska Literacy Initiative\" (specific opportunity, clear value)\n- Avoid: \"Alaska Districts: Eligible for 2024 Funding Guidance\" (vague, stale year)\n\nDistrict mention rules (critical):\n- If Mode is "state_only": Do NOT mention specific district names (e.g., "Caldwell", "Jerome", "Springfield").\n  Write generically: "your district", "districts in [State]", "schools in your region".\n- Only mention specific districts BY NAME if Mode is "district" AND district_name is provided.\n- This applies to ALL parts of the email including the opener hook.\n\nOpener constraints (critical):\n- The FIRST paragraph must include a specific trigger token that appears in the trigger excerpt from the selected hook source.\n  Suggested trigger token: {trigger_token or '(choose one from trigger excerpt)'}\n- Paraphrase the hook in natural language. Do NOT quote the source verbatim. Do NOT paste URLs.\n- Address the email to a PERSON, not a title. Use \"Dear [Name],\" as a placeholder.\n- Do NOT address by title alone (e.g., \"Dear Title III Coordinator\" is WRONG).\n- The recipient's position/role should inform the CONTENT, not the greeting.\n- The greeting (e.g., "Dear [Name],") should be its own short paragraph, followed by the opener paragraph.\n\nProduct-to-Grant Connection (CRITICAL - spell it out!):\n- EXPLICITLY connect product capabilities to grant/compliance requirements. Do NOT assume the reader will make the connection.\n- If grant is for literacy/reading → mention how the product supports literacy instruction (e.g., \"CARE Coaching helps teachers develop effective literacy instruction for multilingual learners\")\n- If grant requires PD hours → mention \"coaching cycles count toward professional development requirements\"\n- If compliance is for EL monitoring → mention specific monitoring support the product provides\n- If grant mentions specific outcomes (e.g., \"reading outcomes\", \"academic achievement\") → connect product to those outcomes\n- Bad: \"Our CARE Coaching program offers job-embedded coaching cycles\" (too generic, no connection to grant)\n- Good: \"CARE Coaching helps teachers develop literacy instruction skills - directly aligned with CLSD's focus on reading outcomes for EL students\" (explicit connection)\n- Good: \"Our coaching cycles support the literacy improvement goals required by this grant\" (explicit connection)\n\nSocial proof rules:\n- If SUCCESS STORIES are provided in product context, you MAY incorporate ONE naturally when relevant.\n- Use phrases like "We've helped districts like yours..." or "Other [state] districts have seen..."\n- Do NOT name specific districts in case studies - keep them generic.\n- Do NOT force case studies in if they don't fit naturally. Quality over quantity.\n\nEnding constraints (critical):\n- The LAST paragraph must be the CTA.\n- Do NOT add a separate sign-off paragraph after the CTA.\n- If you include a sign-off, include it within the CTA paragraph (same paragraph).\n\nHook context (do not paste any URLs):\n- hook_type: {hook.hook_type}\n- trigger_excerpt: {hook.trigger_excerpt}\n- eligibility_excerpt: {hook.eligibility_excerpt or 'null'}\n{secondary_block}\n\nAudience: {audience}\nProduct: {product}\nState: {state_full} ({state_code})\nMode: {mode_text}\n{district_block}\n\nEvidence (KB chunks you may cite by id):\n{_format_evidence_chunks(evidence_pack)}\n\nProduct context (use this to make EXPLICIT connections to the grant/compliance requirement):\n{_format_full_product_context(evidence_pack)}\n\n{_format_case_studies(evidence_pack)}\n\nClaims-map rules:\n- claims_map must cover:\n  - the opener hook claim (paraphrase)\n  - each deliverable bullet (2-3 entries, one per bullet)\n  - any funding/compliance/outcome claims you make\n  - if a secondary hook is provided, a SECOND hook claim\n- For hook claim(s): claim_text should match the relevant paragraph (paraphrase is OK). The server will attach the correct hook URL.\n  IMPORTANT: Do NOT output placeholder strings like \"hook.link\" in urls.\n- For each bullet claim: claim_text should match the bullet text (no bullet marker), and include kb_chunk_ids from EvidencePack (choose the most relevant chunk id). Use urls=[].\n- Connector/polite text can be omitted from claims_map.\n\nAvoid:\n- Generic bullets like \"Personalized coaching\" or \"Improve outcomes\" (not deliverables).\n- Placeholder signatures like \"[Your Name]\".\n\n{repair_block}\n{prior_block}\n\n{EMAIL_JSON_SPEC}\n\nReturn JSON now."""
+Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain text only.\n- Do NOT include any URLs in the email body EXCEPT the Calendly link: {CALENDLY_URL_RAW}.\n- 2-3 bullets, each ≤ 10 words. Use 2 if that's all that adds value - don't pad with fluff.\n- Bullets must be specific DELIVERABLES or OUTCOMES (e.g., implementation plan, coaching schedules, progress monitoring).\n- NEVER use the product name itself as a bullet (e.g., "CARE Coaching Professional Learning Program" is WRONG - it's redundant).\n- Each bullet should reuse 1–3 distinctive words from the cited KB excerpt (to keep it grounded).\n- Include at least ONE Product offering phrase verbatim (see list below). Use it in body text, NOT as a bullet.\n- CTA must be a simple 15-minute meeting ask with this Calendly link: {CALENDLY_URL_RAW}\n- Do NOT offer to \"send\" documents, templates, checklists, or resources.\n- Keep it conversational: e.g., \"Would you have 15 minutes to discuss? Here's my calendar: {CALENDLY_URL_RAW}\"\n- If a secondary hook is provided, you MUST use it later in the email.\n\nSubject line constraints (critical):\n- Ideally mention the product name (e.g., \"CARE Coaching\") - makes it clear what we offer.\n- Ideally mention the specific funding/compliance opportunity (e.g., \"CLSD Grant\", \"CSI Schools\") - shows relevance.\n- Aim for a DIRECT connection between product and opportunity when possible.\n- Avoid generic subjects (\"Quick question\", \"Following up\", \"Checking in\", \"Touching base\").\n- Do NOT use specific past years (2024, 2025) in subject - use \"Current\" or \"FY26\" if referencing time.\n- Best: \"CARE Coaching Fits with CLSD Grant\" (product + specific opportunity)\n- Good: \"CARE Coaching for Alaska CSI Schools\" (product + compliance situation)\n- Good: \"Support for Alaska Literacy Initiative\" (specific opportunity, clear value)\n- Avoid: \"Alaska Districts: Eligible for 2024 Funding Guidance\" (vague, stale year)\n\nOpener constraints (critical):\n- The FIRST paragraph must include a specific trigger token that appears in the trigger excerpt from the selected hook source.\n  Suggested trigger token: {trigger_token or '(choose one from trigger excerpt)'}\n- Paraphrase the hook in natural language. Do NOT quote the source verbatim. Do NOT paste URLs.\n- Address the email to a PERSON, not a title. Use \"Dear [Name],\" as a placeholder.\n- Do NOT address by title alone (e.g., \"Dear Title III Coordinator\" is WRONG).\n- The recipient's position/role should inform the CONTENT, not the greeting.\n- Keep the greeting in the SAME paragraph as the opener (no standalone greeting line).\n\nProduct-to-Grant Connection (CRITICAL - spell it out!):\n- EXPLICITLY connect product capabilities to grant/compliance requirements. Do NOT assume the reader will make the connection.\n- If grant is for literacy/reading → mention how the product supports literacy instruction (e.g., \"CARE Coaching helps teachers develop effective literacy instruction for multilingual learners\")\n- If grant requires PD hours → mention \"coaching cycles count toward professional development requirements\"\n- If compliance is for EL monitoring → mention specific monitoring support the product provides\n- If grant mentions specific outcomes (e.g., \"reading outcomes\", \"academic achievement\") → connect product to those outcomes\n- Bad: \"Our CARE Coaching program offers job-embedded coaching cycles\" (too generic, no connection to grant)\n- Good: \"CARE Coaching helps teachers develop literacy instruction skills - directly aligned with CLSD's focus on reading outcomes for EL students\" (explicit connection)\n- Good: \"Our coaching cycles support the literacy improvement goals required by this grant\" (explicit connection)\n\nEnding constraints (critical):\n- The LAST paragraph must be the CTA.\n- Do NOT add a separate sign-off paragraph after the CTA.\n- If you include a sign-off, include it within the CTA paragraph (same paragraph).\n\nHook context (do not paste any URLs):\n- hook_type: {hook.hook_type}\n- trigger_excerpt: {hook.trigger_excerpt}\n- eligibility_excerpt: {hook.eligibility_excerpt or 'null'}\n{secondary_block}\n\nAudience: {audience}\nProduct: {product}\nState: {state_full} ({state_code})\nMode: {mode_text}\n{district_block}\n\nEvidence (KB chunks you may cite by id):\n{_format_evidence_chunks(evidence_pack)}\n\nProduct context (use this to make EXPLICIT connections to the grant/compliance requirement):\n{_format_full_product_context(evidence_pack)}\n\nClaims-map rules:\n- claims_map must cover:\n  - the opener hook claim (paraphrase)\n  - each deliverable bullet (2-3 entries, one per bullet)\n  - any funding/compliance/outcome claims you make\n  - if a secondary hook is provided, a SECOND hook claim\n- For hook claim(s): claim_text should match the relevant paragraph (paraphrase is OK). The server will attach the correct hook URL.\n  IMPORTANT: Do NOT output placeholder strings like \"hook.link\" in urls.\n- For each bullet claim: claim_text should match the bullet text (no bullet marker), and include kb_chunk_ids from EvidencePack (choose the most relevant chunk id). Use urls=[].\n- Connector/polite text can be omitted from claims_map.\n\nAvoid:\n- Generic bullets like \"Personalized coaching\" or \"Improve outcomes\" (not deliverables).\n- Placeholder signatures like \"[Your Name]\".\n\n{repair_block}\n{prior_block}\n\n{EMAIL_JSON_SPEC}\n\nReturn JSON now."""
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     
-    # Use GPT-5.2 Pro with Responses API for extended reasoning
+    # Use GPT-5.2 Pro with Responses API (default reasoning for faster iteration)
     full_prompt = f"Return only valid JSON. No markdown.\n\n{prompt}"
-    
-    # Log before API call
-    logger.info(
-        "EmailWriter: Starting GPT-5.2-Pro high call for %s/%s (audience=%s, prompt_len=%d)",
-        state_code, product, audience, len(full_prompt)
+    resp = await client.responses.create(
+        model=settings.openai_pro_model,  # gpt-5.2-pro
+        input=full_prompt,
     )
-    start_time = time.perf_counter()
-    
-    try:
-        # Start task in background mode (returns immediately with task ID)
-        # This avoids HTTP timeout issues for long-running xhigh reasoning
-        resp = await client.responses.create(
-            model=settings.openai_pro_model,  # gpt-5.2-pro
-            input=full_prompt,
-            reasoning={"effort": "high"},  # High reasoning depth (faster than xhigh)
-            background=True,  # Non-blocking, returns task ID for polling
-        )
-        
-        logger.info(
-            "EmailWriter: Task started id=%s, status=%s for %s/%s (audience=%s)",
-            resp.id, resp.status, state_code, product, audience
-        )
-        
-        # Poll for completion (xhigh can take 2-5 minutes)
-        poll_interval = 15  # seconds
-        max_polls = 40  # 10 minutes max (40 * 15s = 600s)
-        
-        for poll_count in range(max_polls):
-            # Check if completed
-            if resp.status == "completed":
-                elapsed = time.perf_counter() - start_time
-                logger.info(
-                    "EmailWriter: Task completed in %.1fs for %s/%s (audience=%s)",
-                    elapsed, state_code, product, audience
-                )
-                if on_progress:
-                    on_progress(f"Email generation complete ({int(elapsed)}s)", 100.0)
-                break
-            
-            # Check for failure
-            if resp.status in ("failed", "cancelled"):
-                elapsed = time.perf_counter() - start_time
-                error_obj = getattr(resp, 'error', None)
-                logger.error(
-                    "EmailWriter: Task %s after %.1fs for %s/%s (audience=%s): %s",
-                    resp.status, elapsed, state_code, product, audience, error_obj
-                )
-                raise RuntimeError(f"Email generation {resp.status}: {error_obj}")
-            
-            # Send progress callback every poll to keep frontend alive
-            elapsed = time.perf_counter() - start_time
-            progress_pct = min(95.0, 10.0 + (poll_count / max_polls) * 85.0)  # 10-95% during polling
-            if on_progress:
-                on_progress(f"Generating email... {int(elapsed)}s elapsed", progress_pct)
-            
-            # Log progress every 60s (every 4 polls)
-            if poll_count > 0 and poll_count % 4 == 0:
-                logger.info(
-                    "EmailWriter: Polling... %.0fs elapsed, status=%s for %s/%s (audience=%s)",
-                    elapsed, resp.status, state_code, product, audience
-                )
-            
-            # Wait before polling again
-            await asyncio.sleep(poll_interval)
-            
-            # Poll for updated status
-            resp = await client.responses.retrieve(resp.id)
-        else:
-            # Loop exhausted without completion
-            elapsed = time.perf_counter() - start_time
-            logger.error(
-                "EmailWriter: Task TIMED OUT after %.1fs for %s/%s (audience=%s)",
-                elapsed, state_code, product, audience
-            )
-            raise RuntimeError(f"Email generation timed out after {max_polls * poll_interval}s")
-        
-    except Exception as e:
-        elapsed = time.perf_counter() - start_time
-        logger.error(
-            "EmailWriter: OpenAI call FAILED after %.1fs for %s/%s (audience=%s): %s",
-            elapsed, state_code, product, audience, str(e)
-        )
-        raise
-    
-    # Extract output from Responses API format (background mode uses output_text)
-    raw = resp.output_text or ""
-    if not raw and hasattr(resp, 'output') and resp.output:
-        # Fallback: try extracting from output content items
+    # Extract output from Responses API format
+    raw = ""
+    if hasattr(resp, 'output') and resp.output:
+        # Responses API returns output as list of content items
         for item in resp.output:
             if hasattr(item, 'content') and item.content:
                 for content_item in item.content:
@@ -831,21 +730,10 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
                         break
             if raw:
                 break
+    if not raw and hasattr(resp, 'output_text'):
+        raw = resp.output_text.strip()
 
-    logger.info(
-        "EmailWriter: Got response for %s/%s (raw_len=%d)",
-        state_code, product, len(raw) if raw else 0
-    )
-    
-    try:
-        data = _parse_json_object(raw)
-    except Exception as e:
-        logger.error(
-            "EmailWriter: JSON parse FAILED for %s/%s: %s (raw preview: %s)",
-            state_code, product, str(e), (raw[:200] if raw else "(empty)")
-        )
-        raise
-    
+    data = _parse_json_object(raw)
     subject_line = str(data.get("subject_line") or "").strip()
     email_body = str(data.get("email_body") or "").strip()
     micro_offer = str(data.get("micro_offer") or "").strip() or None

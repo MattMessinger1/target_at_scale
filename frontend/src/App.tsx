@@ -7,7 +7,6 @@ import DistrictDetail from '@/pages/DistrictDetail'
 import KnowledgeBase from '@/pages/KnowledgeBase'
 import Export from '@/pages/Export'
 import EmailGenerator from '@/pages/EmailGenerator'
-import SavedRuns from '@/pages/SavedRuns'
 
 function App() {
   return (
@@ -15,8 +14,6 @@ function App() {
       <Routes>
         {/* Main V1 Email Generator - now the primary route */}
         <Route path="/" element={<EmailGenerator />} />
-        <Route path="/generator" element={<EmailGenerator />} />
-        <Route path="/saved-runs" element={<SavedRuns />} />
         
         {/* Legacy district-based routes under /admin */}
         <Route path="/admin" element={<Layout />}>

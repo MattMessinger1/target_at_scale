@@ -10,14 +10,12 @@ We also apply a few category-specific hard rules:
 - Exclude WIDA ACCESS compliance items
 - Exclude table-stakes Title I/III funding from general funding
 - Exclude clearly non-government funding sources (foundation/private/corporate)
-- Exclude items with expired deadlines (past dates)
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date, datetime
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 ItemType = Literal["funding", "compliance_funding", "compliance"]
@@ -257,201 +255,6 @@ def _has_product_fit(product: str, text: str) -> bool:
     return any(re.search(rf"\b{re.escape(kw)}\b", text, re.I) for kw in keywords)
 
 
-# Month name to number mapping
-_MONTH_MAP = {
-    "january": 1, "jan": 1,
-    "february": 2, "feb": 2,
-    "march": 3, "mar": 3,
-    "april": 4, "apr": 4,
-    "may": 5,
-    "june": 6, "jun": 6,
-    "july": 7, "jul": 7,
-    "august": 8, "aug": 8,
-    "september": 9, "sep": 9, "sept": 9,
-    "october": 10, "oct": 10,
-    "november": 11, "nov": 11,
-    "december": 12, "dec": 12,
-}
-
-
-def _parse_date_from_text(text: str) -> Optional[date]:
-    """Extract the earliest actionable date from deadline text.
-    
-    Handles patterns like:
-    - "September 30, 2025" / "30 September 2025"
-    - "9/30/2025" / "09-30-2025"
-    - "by 9/2025" / "due March 2025"
-    - "FY2025" (interpreted as end of fiscal year: September 30, 2025)
-    - "obligated by September 30, 2025"
-    
-    Returns None if no parseable date found or if text indicates ongoing/recurring.
-    """
-    if not text:
-        return None
-    
-    text_lower = text.lower()
-    
-    # Skip if text indicates ongoing/recurring (these don't expire)
-    ongoing_markers = [
-        "annually", "annual", "recurring", "ongoing", "continuous",
-        "each year", "every year", "rolling", "open enrollment",
-        "no deadline", "tbd", "to be determined", "dates tbd",
-    ]
-    if any(marker in text_lower for marker in ongoing_markers):
-        return None
-    
-    dates_found: List[date] = []
-    
-    # Pattern 1: "Month DD, YYYY" or "Month DD YYYY" (e.g., "September 30, 2025")
-    pat1 = re.compile(
-        r"\b(january|february|march|april|may|june|july|august|september|october|november|december|"
-        r"jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2}),?\s*(\d{4})\b",
-        re.I
-    )
-    for m in pat1.finditer(text):
-        month_str, day_str, year_str = m.groups()
-        month = _MONTH_MAP.get(month_str.lower())
-        if month:
-            try:
-                dates_found.append(date(int(year_str), month, int(day_str)))
-            except ValueError:
-                pass
-    
-    # Pattern 2: "DD Month YYYY" (e.g., "30 September 2025")
-    pat2 = re.compile(
-        r"\b(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december|"
-        r"jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{4})\b",
-        re.I
-    )
-    for m in pat2.finditer(text):
-        day_str, month_str, year_str = m.groups()
-        month = _MONTH_MAP.get(month_str.lower())
-        if month:
-            try:
-                dates_found.append(date(int(year_str), month, int(day_str)))
-            except ValueError:
-                pass
-    
-    # Pattern 3: MM/DD/YYYY or MM-DD-YYYY (US format)
-    pat3 = re.compile(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b")
-    for m in pat3.finditer(text):
-        m1, m2, year_str = m.groups()
-        # Assume US format: MM/DD/YYYY
-        month, day = int(m1), int(m2)
-        if month > 12:  # Swap if day came first
-            month, day = day, month
-        try:
-            dates_found.append(date(int(year_str), month, day))
-        except ValueError:
-            pass
-    
-    # Pattern 4: Month YYYY without day (e.g., "due March 2025", "by 9/2025")
-    # Use last day of month as the deadline
-    pat4 = re.compile(
-        r"\b(january|february|march|april|may|june|july|august|september|october|november|december|"
-        r"jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{4})\b",
-        re.I
-    )
-    for m in pat4.finditer(text):
-        month_str, year_str = m.groups()
-        month = _MONTH_MAP.get(month_str.lower())
-        if month:
-            # Use last day of month
-            year = int(year_str)
-            if month == 12:
-                last_day = 31
-            else:
-                # Get first day of next month, subtract 1 day
-                next_month = date(year if month < 12 else year + 1, (month % 12) + 1, 1)
-                last_day = (next_month - __import__('datetime').timedelta(days=1)).day
-            try:
-                dates_found.append(date(year, month, last_day))
-            except ValueError:
-                pass
-    
-    # Pattern 5: M/YYYY or MM/YYYY (e.g., "9/2025")
-    pat5 = re.compile(r"\b(\d{1,2})/(\d{4})\b")
-    for m in pat5.finditer(text):
-        month_str, year_str = m.groups()
-        month = int(month_str)
-        if 1 <= month <= 12:
-            year = int(year_str)
-            # Use last day of month
-            if month == 12:
-                last_day = 31
-            else:
-                next_month = date(year if month < 12 else year + 1, (month % 12) + 1, 1)
-                last_day = (next_month - __import__('datetime').timedelta(days=1)).day
-            try:
-                dates_found.append(date(year, month, last_day))
-            except ValueError:
-                pass
-    
-    # Pattern 6: FY20XX (fiscal year ends September 30)
-    # Only match when there's action language nearby (obligated, due, deadline, etc.)
-    fy_pat = re.compile(r"\bfy\s*(\d{4})\b", re.I)
-    action_markers = ["obligat", "due", "deadline", "by", "before", "must be", "expires", "ends"]
-    has_action_language = any(marker in text_lower for marker in action_markers)
-    
-    if has_action_language:
-        for m in fy_pat.finditer(text):
-            year = int(m.group(1))
-            # Federal fiscal year ends September 30
-            try:
-                dates_found.append(date(year, 9, 30))
-            except ValueError:
-                pass
-    
-    # Return the earliest date found (most restrictive deadline)
-    if dates_found:
-        return min(dates_found)
-    
-    return None
-
-
-def _is_deadline_expired(item: Dict[str, Any], combined_text: str) -> bool:
-    """Check if the item has an expired deadline.
-    
-    Returns True if a deadline date is found and it's before today.
-    Returns False if no date found, date is in the future, or text indicates ongoing.
-    """
-    today = date.today()
-    
-    # Check specific deadline fields first
-    deadline_fields = [
-        item.get("deadline"),
-        item.get("deadline_or_frequency"),
-    ]
-    
-    for field in deadline_fields:
-        if field and isinstance(field, str):
-            parsed = _parse_date_from_text(field)
-            if parsed and parsed < today:
-                return True
-    
-    # Also check combined text for deadline patterns with action language
-    # Look for phrases like "must be obligated by September 30, 2025"
-    action_phrases = [
-        r"obligated?\s+by",
-        r"must\s+be\s+(?:obligated?|completed?|submitted?|spent)\s+by",
-        r"deadline[:\s]+",
-        r"due\s+(?:by\s+)?",
-        r"expires?\s+(?:on\s+)?",
-        r"ends?\s+(?:on\s+)?",
-        r"closes?\s+(?:on\s+)?",
-    ]
-    
-    for phrase in action_phrases:
-        pattern = re.compile(phrase + r"(.{5,50})", re.I)
-        for m in pattern.finditer(combined_text):
-            context = m.group(1)
-            parsed = _parse_date_from_text(context)
-            if parsed and parsed < today:
-                return True
-    
-    return False
-
-
 @dataclass(frozen=True)
 class GateResult:
     passed: bool
@@ -471,11 +274,6 @@ def score_item(
     text = _combine_text(item)
 
     # Hard rules
-    
-    # Check for expired deadlines (applies to funding and compliance_funding)
-    if item_type in ("funding", "compliance_funding") and _is_deadline_expired(item, text):
-        return GateResult(False, {}, ["Excluded: deadline has passed"])
-    
     if item_type in ("compliance", "compliance_funding") and _is_wida_access(text):
         return GateResult(False, {}, ["Excluded: WIDA ACCESS"])
 
