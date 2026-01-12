@@ -20,6 +20,7 @@ import {
   GenerateEmailResponse,
   EvidenceChunkCitation,
   EvidencePack,
+  MicroOfferCandidate,
   WebHook,
   FilteredRequirement,
   DistrictResearchResult,
@@ -1515,7 +1516,7 @@ function EmailGeneratorPipeline() {
       const resp = full.pipeline_response || {}
       if (resp.evidence_pack) {
         const sanitizedEp = sanitizeEvidencePack(
-          resp.evidence_pack as Record<string, unknown>,
+          resp.evidence_pack as unknown as Record<string, unknown>,
           full.product,
           full.state_code
         )
@@ -1683,7 +1684,7 @@ function EmailGeneratorPipeline() {
       // Extract prep data from pipeline response (sanitize evidence_pack for schema compatibility)
       if (full.pipeline_response.evidence_pack && full.pipeline_response.treasure_hooks) {
         const sanitizedEp = sanitizeEvidencePack(
-          full.pipeline_response.evidence_pack as Record<string, unknown>,
+          full.pipeline_response.evidence_pack as unknown as Record<string, unknown>,
           full.product,
           full.state_code
         )
