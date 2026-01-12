@@ -367,6 +367,10 @@ async def process_batch_job(
     async def process_state(state: Dict[str, str]) -> bool:
         """Process a single state with its own DB session.
         
+        Smart logic:
+        - If recent state research exists (< 96h): skip state, only run district if requested
+        - If stale or no existing (>= 96h): run state research, optionally run district
+        
         Returns True if successful, False if failed.
         """
         nonlocal completed_count, failed_count
@@ -392,9 +396,67 @@ async def process_batch_job(
                     override = load_override_brief(product_key, state_code=state_code)
                     product_context = brief_to_research_context(override) if override else f"Product: {product}"
                     
+                    # Check for existing run
+                    existing = await _check_existing_batch_run(state_db, product, state_code)
+                    is_fresh = existing and (datetime.utcnow() - existing.created_at) < timedelta(hours=STALE_THRESHOLD_HOURS)
+                    
+                    if is_fresh:
+                        # Recent state research exists - skip state research
+                        age_hours = (datetime.utcnow() - existing.created_at).total_seconds() / 3600
+                        logger.info(f"Batch job {job_id}: Using existing state research for {state_code} ({age_hours:.1f}h old)")
+                        
+                        # Clean up any duplicate runs (keep this one)
+                        deleted_count = await _cleanup_duplicate_runs(state_db, product, state_code, existing.id)
+                        if deleted_count > 0:
+                            logger.info(f"Batch job {job_id}: Cleaned up {deleted_count} duplicate runs for {state_code}")
+                        
+                        if include_district_research:
+                            # Run district research and UPDATE existing run in place
+                            hooks = existing.pipeline_response.get("hooks", [])
+                            if hooks:
+                                logger.info(f"Batch job {job_id}: Running district research for {state_code} (adding to existing run)")
+                                
+                                state_hooks_dict = [
+                                    {
+                                        "hook_type": h.get("hook_type", ""),
+                                        "quote": h.get("quote", ""),
+                                        "link": h.get("link", ""),
+                                    }
+                                    for h in hooks
+                                ]
+                                
+                                district_result = await run_district_deep_research(
+                                    db=state_db,
+                                    state_code=state_code,
+                                    state_full=state_name,
+                                    product_key=product_key,
+                                    product_context=product_context,
+                                    state_hooks=state_hooks_dict,
+                                )
+                                
+                                passed_count = len(district_result.get("passed_hooks", []))
+                                logger.info(f"Batch job {job_id}: {state_code} district research found {passed_count} district hooks")
+                                
+                                # Update existing run in place with district results
+                                updated_response = dict(existing.pipeline_response)
+                                updated_response["district_research"] = district_result
+                                existing.pipeline_response = updated_response
+                                await state_db.commit()
+                                logger.info(f"Batch job {job_id}: Updated existing run for {state_code} with district research")
+                            else:
+                                logger.info(f"Batch job {job_id}: {state_code} has no hooks, skipping district research")
+                        else:
+                            logger.info(f"Batch job {job_id}: {state_code} - no district research requested, done")
+                        
+                        # Count as completed
+                        completed_count += 1
+                        newly_completed_codes.append(state_code)
+                        await _checkpoint_progress(job_id, state_code)
+                        return True
+                    
+                    # Stale or no existing run - run full state research
                     logger.info(f"Batch job {job_id}: Running deep research for {state_code}")
                     
-                    # Run deep research with this task's own session
                     research_result = await run_deep_research(
                         db=state_db,
                         state_code=state_code,
@@ -413,7 +475,6 @@ async def process_batch_job(
                     if include_district_research and hooks:
                         logger.info(f"Batch job {job_id}: Running district research for {state_code}")
                         
-                        # Hooks are already dicts, extract fields for de-duplication
                         state_hooks_dict = [
                             {
                                 "hook_type": h.get("hook_type", ""),
@@ -435,25 +496,15 @@ async def process_batch_job(
                         passed_count = len(district_result.get("passed_hooks", []))
                         logger.info(f"Batch job {job_id}: {state_code} district research found {passed_count} district hooks")
                     
-                    # Check for existing run to avoid duplicates
-                    existing = await _check_existing_batch_run(state_db, product, state_code)
+                    # Delete old run if exists (it's stale)
                     if existing:
-                        age = datetime.utcnow() - existing.created_at
-                        if age < timedelta(hours=48):
-                            # Skip - recent run exists
-                            logger.info(f"Batch job {job_id}: Skipping save for {state_code} - recent run exists ({age.total_seconds()/3600:.1f}h old)")
-                            completed_count += 1
-                            newly_completed_codes.append(state_code)
-                            await _checkpoint_progress(job_id, state_code)
-                            return True
-                        else:
-                            # Delete old run before creating new one
-                            logger.info(f"Batch job {job_id}: Replacing old run for {state_code} ({age.days}d old)")
-                            await state_db.delete(existing)
-                            await state_db.flush()  # Ensure delete is processed before insert
+                        logger.info(f"Batch job {job_id}: Deleting stale run for {state_code}")
+                        await state_db.delete(existing)
+                        # Also clean up any other duplicates
+                        await _cleanup_duplicate_runs(state_db, product, state_code, -1)  # -1 = delete all
+                        await state_db.flush()
                     
                     # Save as research run with proper format
-                    # Note: hooks are already dicts, no need for .model_dump()
                     run = SavedEmailRun(
                         run_type="research",
                         name=f"{product} - {state_name}",
@@ -470,7 +521,7 @@ async def process_batch_job(
                                 "funding_items": research_result.get("funding_items", []),
                                 "compliance_items": research_result.get("compliance_items", []),
                             },
-                            "hooks": hooks,  # Already dicts
+                            "hooks": hooks,
                             "filtered_requirements": [],
                             "district_research": district_result,
                         },
@@ -606,6 +657,9 @@ async def resume_interrupted_jobs():
 # De-duplication helper
 # ---------------------------------------------------------------------------
 
+# State research is considered "fresh" if less than this many hours old
+STALE_THRESHOLD_HOURS = 96
+
 async def _check_existing_batch_run(
     db: AsyncSession,
     product: str,
@@ -629,3 +683,89 @@ async def _check_existing_batch_run(
     
     result = await db.execute(stmt)
     return result.scalar_one_or_none()
+
+
+async def _cleanup_duplicate_runs(db: AsyncSession, product: str, state_code: str, keep_id: int):
+    """Delete all batch runs for this state/product except the one to keep."""
+    stmt = (
+        select(SavedEmailRun)
+        .where(
+            SavedEmailRun.product == product,
+            SavedEmailRun.state_code == state_code,
+            SavedEmailRun.run_type == "research",
+            SavedEmailRun.batch_job_id.isnot(None),
+            SavedEmailRun.id != keep_id,
+        )
+    )
+    result = await db.execute(stmt)
+    duplicates = result.scalars().all()
+    
+    for dup in duplicates:
+        await db.delete(dup)
+    
+    return len(duplicates)
+
+
+async def cleanup_all_duplicate_runs():
+    """One-time cleanup to remove duplicate batch runs across all products/states.
+    
+    Keeps only the most recent run per product+state combination.
+    Called on server startup.
+    """
+    from ...db.database import AsyncSessionLocal
+    from sqlalchemy import func
+    
+    try:
+        async with AsyncSessionLocal() as db:
+            # Find all product/state combinations with batch runs
+            stmt = (
+                select(
+                    SavedEmailRun.product,
+                    SavedEmailRun.state_code,
+                    func.count(SavedEmailRun.id).label('count')
+                )
+                .where(
+                    SavedEmailRun.run_type == "research",
+                    SavedEmailRun.batch_job_id.isnot(None),
+                )
+                .group_by(SavedEmailRun.product, SavedEmailRun.state_code)
+                .having(func.count(SavedEmailRun.id) > 1)
+            )
+            
+            result = await db.execute(stmt)
+            duplicates = result.all()
+            
+            if not duplicates:
+                logger.info("No duplicate batch runs to clean up")
+                return 0
+            
+            logger.info(f"Found {len(duplicates)} product/state combinations with duplicates")
+            
+            total_deleted = 0
+            for product, state_code, count in duplicates:
+                # Get the latest run ID for this combo
+                latest_stmt = (
+                    select(SavedEmailRun.id)
+                    .where(
+                        SavedEmailRun.product == product,
+                        SavedEmailRun.state_code == state_code,
+                        SavedEmailRun.run_type == "research",
+                        SavedEmailRun.batch_job_id.isnot(None),
+                    )
+                    .order_by(desc(SavedEmailRun.created_at))
+                    .limit(1)
+                )
+                latest_result = await db.execute(latest_stmt)
+                latest_id = latest_result.scalar_one_or_none()
+                
+                if latest_id:
+                    deleted = await _cleanup_duplicate_runs(db, product, state_code, latest_id)
+                    total_deleted += deleted
+                    logger.info(f"Cleaned up {deleted} duplicates for {product}/{state_code}")
+            
+            await db.commit()
+            logger.info(f"Total duplicates cleaned up: {total_deleted}")
+            return total_deleted
+            
+    except Exception as e:
+        logger.error(f"Failed to clean up duplicate runs: {e}")

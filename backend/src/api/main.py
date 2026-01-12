@@ -100,6 +100,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Cleanup failed (startup will continue): {e}", exc_info=True)
     
+    # Clean up duplicate batch runs (keep only latest per product/state)
+    try:
+        await batch.cleanup_all_duplicate_runs()
+    except Exception as e:
+        logger.error(f"Failed to clean up duplicate runs (startup will continue): {e}", exc_info=True)
+    
     # Auto-resume interrupted batch jobs
     try:
         await batch.resume_interrupted_jobs()
