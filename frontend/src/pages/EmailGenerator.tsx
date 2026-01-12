@@ -2623,6 +2623,21 @@ function EmailGeneratorPipeline() {
                               <span>•</span>
                               <span>{run.state_full || run.state_code}</span>
                               <span>•</span>
+                              {/* State vs District indicator */}
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                run.district_name 
+                                  ? 'bg-amber-900/50 text-amber-300 border border-amber-700/50' 
+                                  : 'bg-slate-700/50 text-slate-400 border border-slate-600/50'
+                              }`}>
+                                {run.district_name ? 'District' : 'State'}
+                              </span>
+                              {run.district_name && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-amber-400 truncate max-w-[120px]">{run.district_name}</span>
+                                </>
+                              )}
+                              <span>•</span>
                               <span>{run.audiences.length} audience{run.audiences.length !== 1 ? 's' : ''}</span>
                               <span>•</span>
                               <span>{new Date(run.created_at).toLocaleDateString()}</span>
