@@ -300,7 +300,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 product = (request.product or "").strip()
                 state_code = (request.state or "").strip().upper()
                 state_full = (request.state_full or "").strip() or state_code
-                audiences = request.audiences or list(DEFAULT_AUDIENCES)
+                audiences = (request.audiences or list(DEFAULT_AUDIENCES))[:1]  # Single audience for speed
                 warnings: List[str] = []
                 stage_ms: Dict[str, int] = {}
 
@@ -1562,7 +1562,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             product = (request.product or "").strip()
             state_code = (request.state or "").strip().upper()
             state_full = (request.state_full or "").strip() or state_code
-            audiences = request.audiences or list(DEFAULT_AUDIENCES)
+            audiences = (request.audiences or list(DEFAULT_AUDIENCES))[:1]  # Single audience for speed
 
             # Decide whether this is a forced-hook (human selection) run
             # Prefer hook_ids if provided, fallback to links for backwards compatibility
