@@ -30,7 +30,8 @@ import {
   PipelineStreamEvent,
   HookDecision,
   EmailReviewRequest,
-  SavedRunSummary
+  SavedRunSummary,
+  SavedRunFull
 } from '../lib/api'
 import { toast } from '@/components/ui/use-toast'
 import { ThemeToggle } from '@/components/ThemeToggle'
@@ -1305,6 +1306,57 @@ function EmailGeneratorPipeline() {
   const [batchStates, setBatchStates] = useState<Array<{ code: string; name: string }>>([])
   const [startingBatch, setStartingBatch] = useState(false)
 
+  // Load saved run from sessionStorage (when navigating from SavedRuns page)
+  useEffect(() => {
+    const storedRun = sessionStorage.getItem('loadSavedRun')
+    if (!storedRun) return
+    
+    try {
+      const full: SavedRunFull = JSON.parse(storedRun)
+      sessionStorage.removeItem('loadSavedRun')
+      
+      // Restore all state from the saved run
+      setSelectedProducts([full.product])
+      setSelectedStates([{ code: full.state_code, name: full.state_full || full.state_code }])
+      setSelectedAudiences(full.audiences)
+      setDistrictName(full.district_name || '')
+      
+      // Restore pipeline result
+      setResult(full.pipeline_response)
+      setActiveAudience(full.pipeline_response.variants?.[0]?.audience || null)
+      
+      // Restore hook selection
+      setSelectedHookLinks(full.selected_hook_links)
+      setPrimaryHookLink(full.primary_hook_link || null)
+      setHookReasonTags(full.hook_reason_tags)
+      setHookReasonNotes(full.hook_reason_notes)
+      
+      // Extract prep data from pipeline response
+      if (full.pipeline_response.evidence_pack && full.pipeline_response.treasure_hooks) {
+        setPrep({
+          evidence_pack: full.pipeline_response.evidence_pack,
+          treasure_hooks: full.pipeline_response.treasure_hooks,
+          filtered_requirements: [],
+          district_research: full.pipeline_response.district_research || null,
+          warnings: full.pipeline_response.warnings || [],
+        })
+        setDistrictResearchStatus(full.pipeline_response.district_research ? 'complete' : 'idle')
+      }
+      
+      // Go to review step
+      setWizardStep(5)
+      setCurrentSavedRunId(full.id)
+      
+      toast({
+        title: 'Run loaded',
+        description: full.name || `Loaded ${full.product} / ${full.state_code}`,
+      })
+    } catch (err) {
+      console.error('Failed to load saved run from sessionStorage:', err)
+      sessionStorage.removeItem('loadSavedRun')
+    }
+  }, [])
+
   useEffect(() => {
     if (selectedHookLinks.length === 1) {
       setPrimaryHookLink(selectedHookLinks[0])
@@ -2559,18 +2611,15 @@ function EmailGeneratorPipeline() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                setShowSavedRuns(true)
-                loadSavedRuns()
-              }}
+            <Link
+              to="/saved-runs"
               className="px-3 py-2 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-slate-200 transition-colors flex items-center gap-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
               </svg>
               Saved Runs
-            </button>
+            </Link>
             <ThemeToggle />
           </div>
         </div>
