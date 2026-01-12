@@ -469,6 +469,8 @@ export interface PipelineRunResponse {
   request: PipelineRequest
   evidence_pack: EvidencePack
   treasure_hooks: WebHook[]
+  hooks?: WebHook[]  // Alias used in saved research runs
+  filtered_requirements?: FilteredRequirement[]  // Stored for research runs
   district_research?: DistrictResearchResult | null
   variants: AudienceVariantResult[]
   trace: PipelineTrace
