@@ -1294,6 +1294,17 @@ function EmailGeneratorPipeline() {
   // Helper: get unique key for a hook (prefer hook_id, fallback to link)
   const getHookKey = (h: WebHook): string => h.hook_id || h.link
   
+  // Helper: sanitize evidence_pack to match backend EvidencePack schema
+  // Handles legacy saved runs that may have state_code instead of state, or extra fields
+  const sanitizeEvidencePack = (ep: EvidencePack): EvidencePack => ({
+    product: ep.product || (ep as Record<string, unknown>).product_name as string || '',
+    product_key: ep.product_key,
+    state: ep.state || (ep as Record<string, unknown>).state_code as string || '',
+    retrieved_chunks: ep.retrieved_chunks || [],
+    micro_offer_candidates: ep.micro_offer_candidates || [],
+    supplemental_brief: ep.supplemental_brief,
+  })
+  
   // Saved runs state
   const [showSavedRuns, setShowSavedRuns] = useState(false)
   const [savedRuns, setSavedRuns] = useState<SavedRunSummary[]>([])
@@ -1783,7 +1794,7 @@ function EmailGeneratorPipeline() {
         district_url: districtUrl.trim() || undefined,
       }
       if (prep) {
-        req.evidence_pack = prep.evidence_pack
+        req.evidence_pack = sanitizeEvidencePack(prep.evidence_pack)
         req.treasure_hooks = prep.treasure_hooks
       }
       if (selectedHookLinks.length > 0) {
