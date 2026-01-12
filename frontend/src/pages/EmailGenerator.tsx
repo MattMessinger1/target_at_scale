@@ -1343,8 +1343,8 @@ function EmailGeneratorPipeline() {
         setDistrictResearchStatus(full.pipeline_response.district_research ? 'complete' : 'idle')
       }
       
-      // Go to review step
-      setWizardStep(5)
+      // Navigate to appropriate step based on run type
+      setWizardStep(full.run_type === 'research' ? 3 : 5)
       setCurrentSavedRunId(full.id)
       
       toast({
@@ -1652,8 +1652,8 @@ function EmailGeneratorPipeline() {
         setDistrictResearchStatus(full.pipeline_response.district_research ? 'complete' : 'idle')
       }
       
-      // Go to review step
-      setWizardStep(5)
+      // Navigate to appropriate step based on run type
+      setWizardStep(full.run_type === 'research' ? 3 : 5)
       setCurrentSavedRunId(full.id)
       setShowSavedRuns(false)
       
