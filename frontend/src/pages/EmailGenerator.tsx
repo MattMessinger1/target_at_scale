@@ -1296,14 +1296,17 @@ function EmailGeneratorPipeline() {
   
   // Helper: sanitize evidence_pack to match backend EvidencePack schema
   // Handles legacy saved runs that may have state_code instead of state, or extra fields
-  const sanitizeEvidencePack = (ep: EvidencePack): EvidencePack => ({
-    product: ep.product || (ep as Record<string, unknown>).product_name as string || '',
-    product_key: ep.product_key,
-    state: ep.state || (ep as Record<string, unknown>).state_code as string || '',
-    retrieved_chunks: ep.retrieved_chunks || [],
-    micro_offer_candidates: ep.micro_offer_candidates || [],
-    supplemental_brief: ep.supplemental_brief,
-  })
+  const sanitizeEvidencePack = (ep: EvidencePack): EvidencePack => {
+    const raw = ep as unknown as Record<string, unknown>
+    return {
+      product: ep.product || (raw.product_name as string) || '',
+      product_key: ep.product_key,
+      state: ep.state || (raw.state_code as string) || '',
+      retrieved_chunks: ep.retrieved_chunks || [],
+      micro_offer_candidates: ep.micro_offer_candidates || [],
+      supplemental_brief: ep.supplemental_brief,
+    }
+  }
   
   // Saved runs state
   const [showSavedRuns, setShowSavedRuns] = useState(false)
