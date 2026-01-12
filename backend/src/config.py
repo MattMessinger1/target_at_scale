@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     knowledge_base_path: str = "../data/knowledge-base-export-2026-01-05.json"
     pilot_districts_path: str = "../data/pilot_districts.json"
     
+    # Batch processing concurrency (increase for higher OpenAI tiers)
+    # With Tier 4 (10,000 RPM), you can safely use 8-10
+    batch_max_concurrent: int = 5
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

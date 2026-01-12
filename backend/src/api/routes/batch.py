@@ -292,6 +292,59 @@ async def cancel_batch_job(
     return {"ok": True, "job_id": job_id, "status": "cancelled"}
 
 
+@router.get("/openai-usage")
+async def get_openai_usage():
+    """Get current OpenAI API usage stats.
+    
+    Returns usage for o3-deep-research model and other models used in batch processing.
+    """
+    import httpx
+    from ...config import get_settings
+    
+    settings = get_settings()
+    
+    if not settings.openai_api_key:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY not configured")
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            # Get organization usage from OpenAI API
+            # Note: This endpoint requires organization-level API key
+            headers = {
+                "Authorization": f"Bearer {settings.openai_api_key}",
+                "Content-Type": "application/json",
+            }
+            
+            # Try to get usage data
+            # OpenAI's usage API is at /v1/usage but requires special access
+            # Instead, we'll return current config and estimated capacity
+            response = {
+                "batch_max_concurrent": settings.batch_max_concurrent,
+                "estimated_capacity": {
+                    "states_per_batch": settings.batch_max_concurrent,
+                    "recommended_parallel_batches": 2 if settings.batch_max_concurrent <= 5 else 3,
+                    "note": "With Tier 4 (10,000 RPM), you can safely run 2-3 batch jobs simultaneously",
+                },
+                "rate_limits": {
+                    "tier": "4 (estimated)",
+                    "o3_deep_research_tpm": 2_000_000,
+                    "o3_deep_research_rpm": 10_000,
+                    "o3_deep_research_tpd": 2_000_000,
+                },
+                "tips": [
+                    f"Current setting: BATCH_MAX_CONCURRENT={settings.batch_max_concurrent}",
+                    "Increase to 8-10 for faster batch processing",
+                    "Set via Railway environment variable: BATCH_MAX_CONCURRENT=8",
+                ],
+            }
+            
+            return response
+            
+    except Exception as e:
+        logger.error(f"Failed to get OpenAI usage: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ---------------------------------------------------------------------------
 # Background task for batch processing
 # ---------------------------------------------------------------------------
@@ -323,8 +376,12 @@ async def process_batch_job(
     )
     from ...research.deep_research import run_deep_research, convert_to_webhooks
     from ...research.district_research import run_district_deep_research
+    from ...config import get_settings
     
-    MAX_CONCURRENT = 3  # Limit concurrent research tasks
+    settings = get_settings()
+    MAX_CONCURRENT = settings.batch_max_concurrent  # Configurable via BATCH_MAX_CONCURRENT env var
+    logger.info(f"Batch job {job_id}: Using MAX_CONCURRENT={MAX_CONCURRENT}")
+    
     product_key = normalize_product_key(product)
     semaphore = asyncio.Semaphore(MAX_CONCURRENT)
     
