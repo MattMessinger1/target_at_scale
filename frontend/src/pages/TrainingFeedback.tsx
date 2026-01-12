@@ -8,7 +8,6 @@ import {
   Edit3,
   CheckCircle2,
   ChevronRight,
-  ChevronDown,
   Loader2,
   Mail,
   Clock,
