@@ -1454,6 +1454,61 @@ function EmailGeneratorPipeline() {
     return () => { cancelled = true }
   }, []) // Only run once on mount
 
+  // Auto-load saved run from sessionStorage (from SavedRuns page navigation)
+  useEffect(() => {
+    const savedRunJson = sessionStorage.getItem('loadSavedRun')
+    if (!savedRunJson) return
+    
+    sessionStorage.removeItem('loadSavedRun')
+    
+    try {
+      const full = JSON.parse(savedRunJson)
+      
+      // Restore all state (same as loadSavedRun function)
+      setSelectedProducts([full.product])
+      setSelectedStates([{ code: full.state_code, name: full.state_full || full.state_code }])
+      setSelectedAudiences(full.audiences || [])
+      setDistrictName(full.district_name || '')
+      
+      // Restore pipeline result
+      setResult(full.pipeline_response)
+      setActiveAudience(full.pipeline_response?.variants?.[0]?.audience || null)
+      
+      // Restore hook selection
+      setSelectedHookLinks(full.selected_hook_links || [])
+      setPrimaryHookLink(full.primary_hook_link || null)
+      setHookReasonTags(full.hook_reason_tags || {})
+      setHookReasonNotes(full.hook_reason_notes || {})
+      
+      // Extract prep data from pipeline response
+      const resp = full.pipeline_response || {}
+      if (resp.evidence_pack) {
+        setPrep({
+          evidence_pack: resp.evidence_pack,
+          treasure_hooks: resp.treasure_hooks || resp.hooks || [],
+          filtered_requirements: resp.filtered_requirements || [],
+          warnings: resp.warnings || [],
+        })
+      }
+      
+      // Navigate to appropriate step
+      if (full.run_type === 'research') {
+        setWizardStep(3)  // Curation step for research runs
+      } else {
+        setWizardStep(5)  // Review step for email runs
+      }
+      
+      setCurrentSavedRunId(full.id)
+      
+      toast({
+        title: 'Run loaded',
+        description: full.name || `Loaded ${full.product} / ${full.state_code}`,
+      })
+    } catch (err) {
+      console.error('Failed to load saved run from session:', err)
+    }
+  }, [])
+
   const toggleReasonTag = (link: string, tag: string) => {
     setHookReasonTags((prev) => {
       const existing = prev[link] || []
