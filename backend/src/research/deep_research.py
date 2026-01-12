@@ -27,7 +27,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
 from ..db.models import DeepResearchCache
-from .quality_gate import filter_items
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -575,18 +574,8 @@ async def run_deep_research(
         logger.info(f"Using cached research for {state_code}/{product_key} (age: {cache_age.days} days)")
         if on_progress:
             on_progress(f"Using cached results from {cache_age.days} days ago", 100.0)
-        
-        # Filter cached results to remove expired deadlines
-        cached_results = dict(cached.results_json)
-        cached_results["funding_items"] = filter_items(
-            cached_results.get("funding_items", []), "funding", product_key, is_kb=False
-        )
-        cached_results["compliance_items"] = filter_items(
-            cached_results.get("compliance_items", []), "compliance", product_key, is_kb=False
-        )
-        
         return {
-            **cached_results,
+            **cached.results_json,
             "_cache": {
                 "cached": True,
                 "cache_age_days": cache_age.days,
@@ -771,22 +760,6 @@ Remember: Return ONLY a valid JSON object, no other text."""
         # Get the final output
         raw_content = response.output_text or "{}"
         results = _parse_research_response(raw_content)
-        
-        # Filter out expired deadlines and low-quality items
-        original_funding = len(results.get("funding_items", []))
-        original_compliance = len(results.get("compliance_items", []))
-        
-        results["funding_items"] = filter_items(
-            results.get("funding_items", []), "funding", product_key, is_kb=False
-        )
-        results["compliance_items"] = filter_items(
-            results.get("compliance_items", []), "compliance", product_key, is_kb=False
-        )
-        
-        logger.info(
-            f"Quality gate filtered: funding {original_funding} -> {len(results['funding_items'])}, "
-            f"compliance {original_compliance} -> {len(results['compliance_items'])}"
-        )
         
         # Add metadata
         response_id = getattr(response, "id", None) or "unknown"

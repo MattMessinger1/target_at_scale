@@ -472,8 +472,8 @@ def score_item(
 
     # Hard rules
     
-    # Check for expired deadlines (applies to all item types)
-    if _is_deadline_expired(item, text):
+    # Check for expired deadlines (applies to funding and compliance_funding)
+    if item_type in ("funding", "compliance_funding") and _is_deadline_expired(item, text):
         return GateResult(False, {}, ["Excluded: deadline has passed"])
     
     if item_type in ("compliance", "compliance_funding") and _is_wida_access(text):

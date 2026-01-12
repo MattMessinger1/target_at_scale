@@ -43,19 +43,11 @@ export default function SavedRuns() {
     enabled: viewMode === 'list',
   })
   
-  // Fetch batch jobs - with auto-polling when jobs are running
+  // Fetch batch jobs
   const { data: batchJobs, isLoading: batchLoading } = useQuery({
     queryKey: ['batch-jobs'],
     queryFn: () => api.batch.list(20),
     enabled: viewMode === 'batch',
-    // Auto-refresh every 3s when there are running/pending jobs
-    refetchInterval: (query) => {
-      const jobs = query.state.data
-      const hasActiveJobs = jobs?.some((j: { status: string }) => 
-        j.status === 'running' || j.status === 'pending'
-      )
-      return hasActiveJobs ? 3000 : false
-    },
   })
   
   // Delete mutation
@@ -328,18 +320,8 @@ export default function SavedRuns() {
       )
     }
     
-    const hasActiveJobs = batchJobs.some(j => j.status === 'running' || j.status === 'pending')
-    
     return (
       <div className="space-y-4">
-        {/* Auto-refresh indicator */}
-        {hasActiveJobs && (
-          <div className="flex items-center gap-2 text-xs text-blue-400 bg-blue-900/20 border border-blue-800/50 rounded-lg px-3 py-2">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            <span>Auto-refreshing every 3 seconds while jobs are running...</span>
-          </div>
-        )}
-        
         {batchJobs.map((job) => (
           <div key={job.id} className="rounded-xl border border-slate-700 bg-slate-800/30 p-4">
             <div className="flex items-start justify-between mb-3">

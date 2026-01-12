@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <!-- WCEPS Logo - Double Chevron "W" Mark -->
-  <!-- Top smaller chevron -->
-  <path fill="#E31B54" d="M50 8 L72 30 L62 30 L50 18 L38 30 L28 30 Z"/>
-  <!-- Bottom larger chevron -->
-  <path fill="#E31B54" d="M50 32 L90 72 L75 72 L50 47 L25 72 L10 72 Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="4" fill="#1e3a5f"/>
+  <path d="M16 8 L8 16 L16 24 M16 8 L24 16 L16 24" 
+        fill="none" stroke="#e8a0a0" stroke-width="3" 
+        stroke-linecap="round" stroke-linejoin="round"
+        transform="rotate(-90 16 16)"/>
 </svg>
