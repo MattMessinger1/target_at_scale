@@ -18,14 +18,236 @@ import time
 from typing import Callable, List, Optional, Tuple
 
 from openai import AsyncOpenAI
+from sqlalchemy import select, or_
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config import get_settings
+from ...db.models import GoldenEmail
 from ..schemas import ClaimsMapEntry, EmailDraft, EvidencePack, SelectedHook
 from .validator import extract_bullets, word_count
 
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+
+async def get_golden_examples(
+    db: AsyncSession,
+    product_key: str,
+    state_code: str,
+    audience: str,
+    limit: int = 2,
+) -> List[GoldenEmail]:
+    """Retrieve similar approved emails for few-shot learning.
+    
+    Priority:
+    1. Same product + same state + same audience (exact match)
+    2. Same product + same audience (any state) 
+    3. Same product (any state/audience)
+    
+    Returns up to `limit` golden examples.
+    """
+    product_key_clean = (product_key or "").strip().lower()
+    state_code_clean = (state_code or "").strip().upper()
+    audience_clean = (audience or "").strip()
+    
+    if not product_key_clean:
+        return []
+    
+    # Try exact match first: same product + state + audience
+    result = await db.execute(
+        select(GoldenEmail)
+        .where(GoldenEmail.product_key == product_key_clean)
+        .where(GoldenEmail.state_code == state_code_clean)
+        .where(GoldenEmail.audience == audience_clean)
+        .order_by(GoldenEmail.created_at.desc())
+        .limit(limit)
+    )
+    examples = list(result.scalars().all())
+    
+    if len(examples) >= limit:
+        logger.info(
+            "GoldenExamples: Found %d exact matches for %s/%s/%s",
+            len(examples), product_key_clean, state_code_clean, audience_clean
+        )
+        return examples
+    
+    # Fallback: same product + same audience (any state)
+    remaining = limit - len(examples)
+    existing_ids = [e.id for e in examples]
+    
+    result = await db.execute(
+        select(GoldenEmail)
+        .where(GoldenEmail.product_key == product_key_clean)
+        .where(GoldenEmail.audience == audience_clean)
+        .where(~GoldenEmail.id.in_(existing_ids) if existing_ids else True)
+        .order_by(GoldenEmail.created_at.desc())
+        .limit(remaining)
+    )
+    examples.extend(result.scalars().all())
+    
+    if len(examples) >= limit:
+        logger.info(
+            "GoldenExamples: Found %d matches (product+audience) for %s/%s",
+            len(examples), product_key_clean, audience_clean
+        )
+        return examples
+    
+    # Final fallback: same product only
+    remaining = limit - len(examples)
+    existing_ids = [e.id for e in examples]
+    
+    result = await db.execute(
+        select(GoldenEmail)
+        .where(GoldenEmail.product_key == product_key_clean)
+        .where(~GoldenEmail.id.in_(existing_ids) if existing_ids else True)
+        .order_by(GoldenEmail.created_at.desc())
+        .limit(remaining)
+    )
+    examples.extend(result.scalars().all())
+    
+    logger.info(
+        "GoldenExamples: Found %d total matches for product=%s",
+        len(examples), product_key_clean
+    )
+    return examples
+
+
+def format_golden_examples(examples: List[GoldenEmail]) -> str:
+    """Format golden examples as few-shot prompt text."""
+    if not examples:
+        return ""
+    
+    parts = ["\n\n--- APPROVED EXAMPLES FROM YOUR TEAM ---"]
+    parts.append("These emails were approved by your team. Match their style and quality:\n")
+    
+    for i, ex in enumerate(examples, 1):
+        context_parts = []
+        if ex.product:
+            context_parts.append(ex.product)
+        if ex.state_code:
+            context_parts.append(ex.state_code)
+        if ex.audience:
+            context_parts.append(ex.audience)
+        context = " / ".join(context_parts) if context_parts else "General"
+        
+        parts.append(f"EXAMPLE {i} ({context}):")
+        parts.append(f"Subject: {ex.subject_line}")
+        parts.append(ex.email_body)
+        parts.append("---\n")
+    
+    return "\n".join(parts)
+
+
+async def analyze_golden_patterns(
+    db: AsyncSession,
+    product_key: str,
+    min_examples: int = 5,
+) -> dict:
+    """Analyze golden emails to detect style patterns.
+    
+    Returns a dict of learned patterns/statistics:
+    - avg_subject_length: Average subject line character count
+    - avg_body_word_count: Average email body word count  
+    - avg_bullet_count: Average number of bullets
+    - opening_style: Most common opening style (question vs statement)
+    - avg_rubric_scores: Average scores by rubric dimension
+    """
+    # Fetch all golden emails for this product
+    result = await db.execute(
+        select(GoldenEmail)
+        .where(GoldenEmail.product_key == product_key)
+        .order_by(GoldenEmail.created_at.desc())
+        .limit(50)  # Analyze last 50 at most
+    )
+    examples = list(result.scalars().all())
+    
+    if len(examples) < min_examples:
+        logger.info(
+            "GoldenPatterns: Not enough examples for %s (%d < %d min)",
+            product_key, len(examples), min_examples
+        )
+        return {}
+    
+    # Analyze patterns
+    subject_lengths = [len(ex.subject_line) for ex in examples]
+    body_word_counts = [len(ex.email_body.split()) for ex in examples]
+    
+    # Count bullets (lines starting with - or •)
+    bullet_counts = []
+    for ex in examples:
+        bullets = len([line for line in ex.email_body.split('\n') if line.strip().startswith(('-', '•', '*'))])
+        bullet_counts.append(bullets)
+    
+    # Detect opening style (question = ends with ?, statement = doesn't)
+    question_openings = 0
+    for ex in examples:
+        first_para = ex.email_body.split('\n\n')[0] if ex.email_body else ""
+        if first_para.strip().endswith('?'):
+            question_openings += 1
+    
+    # Aggregate rubric scores
+    rubric_totals: dict[str, list] = {}
+    for ex in examples:
+        if ex.rubric_scores:
+            for key, score in ex.rubric_scores.items():
+                if key not in rubric_totals:
+                    rubric_totals[key] = []
+                rubric_totals[key].append(score)
+    
+    avg_rubric = {k: sum(v) / len(v) for k, v in rubric_totals.items() if v}
+    
+    patterns = {
+        "sample_count": len(examples),
+        "avg_subject_length": round(sum(subject_lengths) / len(subject_lengths)),
+        "avg_body_word_count": round(sum(body_word_counts) / len(body_word_counts)),
+        "avg_bullet_count": round(sum(bullet_counts) / len(bullet_counts), 1),
+        "question_opening_pct": round(question_openings / len(examples) * 100),
+        "avg_rubric_scores": avg_rubric,
+    }
+    
+    logger.info(
+        "GoldenPatterns: Analyzed %d examples for %s: subj=%d chars, body=%d words, bullets=%.1f",
+        len(examples), product_key,
+        patterns["avg_subject_length"],
+        patterns["avg_body_word_count"],
+        patterns["avg_bullet_count"]
+    )
+    
+    return patterns
+
+
+def format_learned_rules(patterns: dict) -> str:
+    """Format learned patterns as prompt instructions."""
+    if not patterns or patterns.get("sample_count", 0) < 5:
+        return ""
+    
+    rules = ["\n\n--- LEARNED FROM YOUR APPROVED EMAILS ---"]
+    rules.append(f"Based on {patterns['sample_count']} emails approved by your team:\n")
+    
+    # Subject line guidance
+    avg_subj = patterns.get("avg_subject_length", 0)
+    if avg_subj:
+        rules.append(f"- Subject lines: ~{avg_subj} characters works well")
+    
+    # Body length guidance
+    avg_words = patterns.get("avg_body_word_count", 0)
+    if avg_words:
+        rules.append(f"- Email body: ~{avg_words} words preferred")
+    
+    # Bullet guidance
+    avg_bullets = patterns.get("avg_bullet_count", 0)
+    if avg_bullets:
+        rules.append(f"- Bullets: {round(avg_bullets)} bullets per email")
+    
+    # Opening style
+    q_pct = patterns.get("question_opening_pct", 50)
+    if q_pct >= 70:
+        rules.append("- Opening: Questions work better than statements")
+    elif q_pct <= 30:
+        rules.append("- Opening: Direct statements work better than questions")
+    
+    return "\n".join(rules)
 
 
 def _normalize_calendly_url(url: str) -> str:
@@ -684,8 +906,14 @@ async def write_email_variant(
     repair_instructions: Optional[List[str]] = None,
     prior_email_body: Optional[str] = None,
     on_progress: Optional[Callable[[str, float], None]] = None,
+    golden_examples_text: Optional[str] = None,
 ) -> Tuple[EmailDraft, List[ClaimsMapEntry]]:
-    """Write or minimally repair an email variant."""
+    """Write or minimally repair an email variant.
+    
+    Args:
+        golden_examples_text: Optional formatted text of approved emails to use as few-shot examples.
+                              Retrieved via get_golden_examples() and formatted via format_golden_examples().
+    """
     if not settings.openai_api_key:
         raise RuntimeError("OPENAI_API_KEY is not set")
 
@@ -722,10 +950,14 @@ async def write_email_variant(
     if prior_email_body:
         prior_block = "\nPRIOR EMAIL (minimally edit):\n" + prior_email_body.strip()
 
+    # Include golden examples (approved by user's team) if available
+    golden_section = golden_examples_text or ""
+    
     prompt = f"""Write a K–12 outreach email as WCEPS.
 
 Here are examples of the quality, tone, and style we want:
 {EMAIL_EXAMPLES}
+{golden_section}
 
 Now write an email for THIS specific situation. Follow the constraints below.
 

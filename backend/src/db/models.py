@@ -330,6 +330,43 @@ class EmailImprovementReview(Base):
     rubric: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
 
+class GoldenEmail(Base):
+    """Human-approved emails used as few-shot examples for self-improving generation.
+    
+    Emails qualify as 'golden' when:
+    - User edited the email (corrections = good examples)
+    - All rubric scores >= 4 (high quality)
+    
+    These are retrieved at generation time to provide few-shot examples.
+    """
+    
+    __tablename__ = "golden_emails"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Context for retrieval matching
+    product: Mapped[str] = mapped_column(String(200), nullable=False)
+    product_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    state_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    audience: Mapped[str] = mapped_column(String(200), nullable=False)
+    
+    # The approved email content
+    subject_line: Mapped[str] = mapped_column(String(400), nullable=False)
+    email_body: Mapped[str] = mapped_column(Text, nullable=False)
+    
+    # Why it's golden
+    source: Mapped[str] = mapped_column(String(20), nullable=False)  # "edited" | "rubric_qualified"
+    rubric_scores: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # {subject_line: 5, tone: 4, ...}
+    
+    # Additional context for smarter retrieval
+    hook_types_used: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # ["state_funding", "compliance"]
+    district_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    
+    # Reference back to the review that created this
+    review_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
 class DeepResearchCache(Base):
     """Cache for OpenAI Deep Research results (14-day TTL).
     

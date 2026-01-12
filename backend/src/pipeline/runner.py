@@ -31,8 +31,15 @@ from .schemas import (
 )
 from .stages.evidence_pack import build_product_evidence_pack
 from .stages.hook_selector import select_primary_hooks
-from .stages.email_writer import write_email_variant
+from .stages.email_writer import (
+    write_email_variant,
+    get_golden_examples,
+    format_golden_examples,
+    analyze_golden_patterns,
+    format_learned_rules,
+)
 from .stages.validator import validate_email_draft
+from ..research.product_briefs import normalize_product_key
 from .stages.repair import MAX_REPAIR_ITERATIONS, failures_to_instructions, should_stop_repair
 from .stages.treasure_hunter import run_treasure_hunter
 from .hook_gate import gate_treasure_hooks
@@ -93,6 +100,7 @@ async def _run_variant(
     district_name: Optional[str],
     district_url: Optional[str],
     on_progress: Optional[Callable[[str, float], None]] = None,
+    golden_examples_text: Optional[str] = None,
 ) -> AudienceVariantResult:
     logger.info(
         "Pipeline: Starting email generation for %s/%s (audience=%s)",
@@ -119,6 +127,7 @@ async def _run_variant(
         repair_instructions=None,
         prior_email_body=None,
         on_progress=on_progress,
+        golden_examples_text=golden_examples_text,
     )
     variant_trace.stage_ms["email_writer_0"] = int((time.perf_counter() - t0) * 1000)
 
@@ -158,6 +167,7 @@ async def _run_variant(
             repair_instructions=instructions,
             prior_email_body=prev_email,
             on_progress=on_progress,
+            golden_examples_text=golden_examples_text,
         )
         variant_trace.stage_ms[f"email_writer_{it}"] = int((time.perf_counter() - t1) * 1000)
 
@@ -400,6 +410,18 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
     # Stage 4–6: Write + validate + repair per audience
     logger.info("Pipeline: Stage 4-6 - Generating emails for %d audiences", len(audiences))
     variants: List[AudienceVariantResult] = []
+    
+    # Fetch golden examples (approved emails from user's team) for few-shot learning
+    product_key = normalize_product_key(product)
+    golden_examples_cache: dict[str, str] = {}  # audience -> formatted examples
+    
+    # Analyze patterns from golden emails (product-level, computed once)
+    learned_rules_text = ""
+    try:
+        patterns = await analyze_golden_patterns(db=db, product_key=product_key or "", min_examples=5)
+        learned_rules_text = format_learned_rules(patterns)
+    except Exception as e:
+        logger.warning("Failed to analyze golden patterns for %s: %s", product_key, e)
 
     for aud in audiences:
         sel = selected.get(aud)
@@ -409,6 +431,23 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
                 sel = select_primary_hooks(hooks=treasure_hooks, audiences=[aud]).get(aud)
         if not sel:
             raise RuntimeError("No hooks available to generate an email (TreasureHunter returned none).")
+
+        # Get golden examples for this audience (cached per audience)
+        if aud not in golden_examples_cache:
+            try:
+                golden_list = await get_golden_examples(
+                    db=db,
+                    product_key=product_key or "",
+                    state_code=state_code,
+                    audience=aud,
+                    limit=2,
+                )
+                examples_text = format_golden_examples(golden_list) if golden_list else ""
+                # Combine examples + learned rules
+                golden_examples_cache[aud] = examples_text + learned_rules_text
+            except Exception as e:
+                logger.warning("Failed to fetch golden examples for %s: %s", aud, e)
+                golden_examples_cache[aud] = learned_rules_text  # Still use rules even if examples fail
 
         try:
             variant = await _run_variant(
@@ -421,6 +460,7 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
                 treasure_hooks=treasure_hooks,
                 district_name=request.district_name,
                 district_url=request.district_url,
+                golden_examples_text=golden_examples_cache.get(aud, ""),
             )
             variants.append(variant)
         except Exception as e:

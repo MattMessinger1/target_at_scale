@@ -11,6 +11,7 @@ from .models import (
     ProductBrief,
     ExtractedSnippet,
     DeepResearchCache,
+    GoldenEmail,
 )
 
 __all__ = [
@@ -27,4 +28,5 @@ __all__ = [
     "ProductBrief",
     "ExtractedSnippet",
     "DeepResearchCache",
+    "GoldenEmail",
 ]

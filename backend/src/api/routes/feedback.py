@@ -13,9 +13,39 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...db import get_db
-from ...db.models import EmailImprovementReview, TreasureHookFeedback
+from ...db.models import EmailImprovementReview, TreasureHookFeedback, GoldenEmail
 from ...research.product_briefs import normalize_product_key
 from ...pipeline.schemas import WebHook
+
+
+def _qualifies_as_golden(
+    orig_subj: str,
+    orig_body: str, 
+    edited_subj: str,
+    edited_body: str,
+    rubric: dict,
+) -> tuple[bool, str]:
+    """Check if an email qualifies as a golden example.
+    
+    Returns (qualifies, source) where source is "edited" or "rubric_qualified".
+    """
+    # Check if email was edited (corrections = good examples)
+    was_edited = (orig_subj != edited_subj) or (orig_body != edited_body)
+    if was_edited:
+        return True, "edited"
+    
+    # Check if all rubric scores >= 4
+    rubric_scores = []
+    for key in ["subject_line", "product_relevance", "tone", "flow", "cta"]:
+        item = rubric.get(key, {})
+        score = item.get("score") if isinstance(item, dict) else None
+        if score is not None:
+            rubric_scores.append(score)
+    
+    if rubric_scores and all(s >= 4 for s in rubric_scores):
+        return True, "rubric_qualified"
+    
+    return False, ""
 
 router = APIRouter()
 
@@ -231,10 +261,13 @@ async def submit_email_review(
     if not orig_subj or not orig_body or not edited_subj or not edited_body:
         raise HTTPException(status_code=422, detail="original and edited subject/body are required.")
 
+    product_key = normalize_product_key(product) or None
+    rubric_dict = req.rubric.model_dump()
+    
     row = EmailImprovementReview(
         run_id=(req.run_id or "").strip() or None,
         product=product,
-        product_key=normalize_product_key(product) or None,
+        product_key=product_key,
         state_code=state_code,
         audience=audience,
         district_name=(req.district_name or "").strip() or None,
@@ -245,10 +278,38 @@ async def submit_email_review(
         original_email_body=orig_body,
         edited_subject_line=edited_subj,
         edited_email_body=edited_body,
-        rubric=req.rubric.model_dump(),
+        rubric=rubric_dict,
         created_at=_utcnow(),
     )
     db.add(row)
+    await db.flush()  # Get the ID before commit
+    
+    # Auto-save as golden email if qualifies
+    qualifies, source = _qualifies_as_golden(orig_subj, orig_body, edited_subj, edited_body, rubric_dict)
+    if qualifies:
+        # Extract rubric scores for storage
+        rubric_scores = {}
+        for key in ["subject_line", "product_relevance", "tone", "flow", "cta"]:
+            item = rubric_dict.get(key, {})
+            score = item.get("score") if isinstance(item, dict) else None
+            if score is not None:
+                rubric_scores[key] = score
+        
+        golden = GoldenEmail(
+            product=product,
+            product_key=product_key,
+            state_code=state_code,
+            audience=audience,
+            subject_line=edited_subj,  # Always use the final (edited) version
+            email_body=edited_body,
+            source=source,
+            rubric_scores=rubric_scores if rubric_scores else None,
+            district_name=(req.district_name or "").strip() or None,
+            review_id=row.id,
+            created_at=_utcnow(),
+        )
+        db.add(golden)
+    
     await db.commit()
     await db.refresh(row)
     return EmailReviewResponse(id=row.id)
