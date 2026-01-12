@@ -1788,9 +1788,11 @@ function EmailGeneratorPipeline() {
         req.selected_hook_ids = selectedHookLinks  // selectedHookLinks now contains hook_id or link
         req.primary_hook_id = (primaryHookLink || selectedHookLinks[0] || '').trim() || undefined
         // Also send legacy links for backwards compatibility (convert keys back to links if needed)
-        const selectedLinks = prep?.treasure_hooks
+        const filteredLinks = prep?.treasure_hooks
           .filter(h => selectedHookLinks.includes(getHookKey(h)))
-          .map(h => h.link) || selectedHookLinks
+          .map(h => h.link)
+        // Only set selected_hook_links if we have matches (avoid empty array failing min_length=1)
+        const selectedLinks = filteredLinks && filteredLinks.length > 0 ? filteredLinks : selectedHookLinks
         req.selected_hook_links = selectedLinks
         req.primary_hook_link = prep?.treasure_hooks.find(h => getHookKey(h) === primaryHookLink)?.link || primaryHookLink || undefined
       }
