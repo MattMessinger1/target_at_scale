@@ -6,7 +6,7 @@ For example: WIDA MODEL across all 40 WIDA states.
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
@@ -435,6 +435,23 @@ async def process_batch_job(
                         passed_count = len(district_result.get("passed_hooks", []))
                         logger.info(f"Batch job {job_id}: {state_code} district research found {passed_count} district hooks")
                     
+                    # Check for existing run to avoid duplicates
+                    existing = await _check_existing_batch_run(state_db, product, state_code)
+                    if existing:
+                        age = datetime.utcnow() - existing.created_at
+                        if age < timedelta(hours=48):
+                            # Skip - recent run exists
+                            logger.info(f"Batch job {job_id}: Skipping save for {state_code} - recent run exists ({age.total_seconds()/3600:.1f}h old)")
+                            completed_count += 1
+                            newly_completed_codes.append(state_code)
+                            await _checkpoint_progress(job_id, state_code)
+                            return True
+                        else:
+                            # Delete old run before creating new one
+                            logger.info(f"Batch job {job_id}: Replacing old run for {state_code} ({age.days}d old)")
+                            await state_db.delete(existing)
+                            await state_db.flush()  # Ensure delete is processed before insert
+                    
                     # Save as research run with proper format
                     # Note: hooks are already dicts, no need for .model_dump()
                     run = SavedEmailRun(
@@ -583,3 +600,32 @@ async def resume_interrupted_jobs():
                 
     except Exception as e:
         logger.error(f"Failed to resume interrupted batch jobs: {e}")
+
+
+# ---------------------------------------------------------------------------
+# De-duplication helper
+# ---------------------------------------------------------------------------
+
+async def _check_existing_batch_run(
+    db: AsyncSession,
+    product: str,
+    state_code: str,
+) -> Optional[SavedEmailRun]:
+    """Check for existing batch research run for this state/product.
+    
+    Returns the most recent batch run (if any) for de-duplication.
+    """
+    stmt = (
+        select(SavedEmailRun)
+        .where(
+            SavedEmailRun.product == product,
+            SavedEmailRun.state_code == state_code,
+            SavedEmailRun.run_type == "research",
+            SavedEmailRun.batch_job_id.isnot(None),  # Only batch runs
+        )
+        .order_by(desc(SavedEmailRun.created_at))
+        .limit(1)
+    )
+    
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
