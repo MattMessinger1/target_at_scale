@@ -2,9 +2,13 @@
 
 Enables running research across multiple states in parallel.
 For example: WIDA MODEL across all 40 WIDA states.
+
+This uses the SAME pipeline as single-state research to ensure consistent
+quality filtering, hook gating, and conference research.
 """
 
 import asyncio
+import dataclasses
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -18,6 +22,19 @@ from ...db import get_db
 from ...db.models import BatchJob, SavedEmailRun
 
 logger = logging.getLogger(__name__)
+
+
+def _dump_model(obj: Any) -> Any:
+    """Serialize a model/dataclass to a dict for JSON storage."""
+    if obj is None:
+        return None
+    if dataclasses.is_dataclass(obj):
+        return dataclasses.asdict(obj)
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if hasattr(obj, "dict"):
+        return obj.dict()
+    return obj
 
 router = APIRouter(prefix="/batch", tags=["batch"])
 
@@ -303,21 +320,31 @@ async def process_batch_job(
 ):
     """Background task to process a batch job.
     
-    Runs research for each state and saves results.
+    Runs research for each state using the SAME pipeline as single-state research:
+    1. build_product_evidence_pack() - KB chunks + product briefs
+    2. run_treasure_hunter() - Deep research with product context
+    3. gate_treasure_hooks() - Filter table stakes, consolidate hooks
+    4. run_district_deep_research() - District-level opportunities (optional)
+    5. run_conference_research() - Conference opportunities
+    
     Uses concurrent processing with rate limiting.
     """
     from ...db.database import AsyncSessionLocal
     from ...research.product_briefs import normalize_product_key
     
-    # Import research functions - these may not exist yet
+    # Import full pipeline stages (same as single-state research)
     try:
-        from ...research.deep_research import run_deep_research
-        from ...research.district_research import run_district_research
-    except ImportError:
-        logger.error("Research modules not available for batch processing")
+        from ...pipeline.stages.evidence_pack import build_product_evidence_pack
+        from ...pipeline.stages.treasure_hunter import run_treasure_hunter
+        from ...pipeline.hook_gate import gate_treasure_hooks
+        from ...research.district_research import run_district_deep_research
+        from ...research.deep_research import run_conference_research
+        from ...research.quality_gate import filter_conferences
+    except ImportError as e:
+        logger.error(f"Pipeline modules not available for batch processing: {e}")
         return
     
-    MAX_CONCURRENT = 3  # Limit concurrent research tasks
+    MAX_CONCURRENT = 2  # Limit concurrent research tasks (deep research is expensive)
     
     async with AsyncSessionLocal() as db:
         try:
@@ -337,7 +364,7 @@ async def process_batch_job(
             semaphore = asyncio.Semaphore(MAX_CONCURRENT)
             
             async def process_state(state: Dict[str, str]):
-                """Process a single state."""
+                """Process a single state using full pipeline."""
                 async with semaphore:
                     state_code = state["code"]
                     state_name = state["name"]
@@ -350,28 +377,100 @@ async def process_batch_job(
                         if current_job and current_job.status == "cancelled":
                             return
                         
-                        logger.info(f"Batch job {job_id}: Processing {state_code}")
+                        logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 1: Evidence Pack")
                         
-                        # Run deep research
-                        research_result = await run_deep_research(
+                        # =====================================================
+                        # Stage 1: Build Evidence Pack (KB chunks + product briefs)
+                        # =====================================================
+                        evidence_pack = await build_product_evidence_pack(
+                            db=db,
+                            product=product,
                             state_code=state_code,
                             state_full=state_name,
-                            product_key=product_key,
-                            product_display_name=product,
-                            db=db,
                         )
                         
-                        # Optionally run district research
-                        district_result = None
-                        if include_district_research:
-                            district_result = await run_district_research(
-                                state_code=state_code,
-                                product_key=product_key,
-                                product_display_name=product,
-                                db=db,
-                            )
+                        logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 2: Treasure Hunter")
                         
-                        # Save as research run
+                        # =====================================================
+                        # Stage 2: Treasure Hunter (Deep Research)
+                        # =====================================================
+                        treasure_hooks = await run_treasure_hunter(
+                            db=db,
+                            product=product,
+                            state_code=state_code,
+                            state_full=state_name,
+                            evidence_pack=evidence_pack,
+                        )
+                        
+                        logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 3: Hook Gate (found {len(treasure_hooks or [])} hooks)")
+                        
+                        # =====================================================
+                        # Stage 3: Hook Gate (Filter & Consolidate)
+                        # =====================================================
+                        gated_hooks, filtered_reqs, report = gate_treasure_hooks(
+                            treasure_hooks, 
+                            evidence_pack=evidence_pack
+                        )
+                        
+                        logger.info(f"Batch job {job_id}: Processing {state_code} - Hook gate kept {len(gated_hooks)}/{len(treasure_hooks or [])} hooks")
+                        
+                        # =====================================================
+                        # Stage 4: District Research (Optional)
+                        # =====================================================
+                        district_result = None
+                        if include_district_research and len(gated_hooks) > 0:
+                            logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 4: District Research")
+                            try:
+                                district_result = await run_district_deep_research(
+                                    db=db,
+                                    state_code=state_code,
+                                    state_full=state_name,
+                                    product_key=product_key,
+                                    product_display_name=product,
+                                )
+                            except Exception as e:
+                                logger.warning(f"Batch job {job_id}: District research failed for {state_code}: {e}")
+                        
+                        # =====================================================
+                        # Stage 5: Conference Research
+                        # =====================================================
+                        conferences = []
+                        try:
+                            logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 5: Conference Research")
+                            conf_results = await run_conference_research(
+                                db=db,
+                                state_code=state_code,
+                                state_full=state_name,
+                                product_key=product_key,
+                                audience=audiences[0] if audiences else "Decision Makers",
+                            )
+                            
+                            # Filter conferences for quality
+                            raw_conferences = conf_results.get("conferences", [])
+                            if raw_conferences:
+                                passed_conferences, _ = filter_conferences(raw_conferences, product_key)
+                                
+                                # Convert to serializable dicts (limit to top 5)
+                                for conf in passed_conferences[:5]:
+                                    conferences.append({
+                                        "conference_name": conf.get("conference_name", ""),
+                                        "organization": conf.get("organization", ""),
+                                        "location": conf.get("location", ""),
+                                        "dates": conf.get("dates", ""),
+                                        "relevance": conf.get("relevance", ""),
+                                        "presentation_deadline": conf.get("presentation_deadline"),
+                                        "sponsorship_info": conf.get("sponsorship_info"),
+                                        "website": conf.get("website", ""),
+                                        "confidence": conf.get("confidence", "medium"),
+                                    })
+                                
+                                logger.info(f"Batch job {job_id}: {state_code} - Found {len(conferences)} conference opportunities")
+                        except Exception as e:
+                            logger.warning(f"Batch job {job_id}: Conference research failed for {state_code}: {e}")
+                        
+                        # =====================================================
+                        # Save results (same format as single-state)
+                        # =====================================================
                         run = SavedEmailRun(
                             run_type="research",
                             name=f"{product} - {state_name}",
@@ -381,10 +480,11 @@ async def process_batch_job(
                             audiences=audiences,
                             district_name=None,
                             pipeline_response={
-                                "evidence_pack": research_result.get("evidence_pack", {}),
-                                "hooks": research_result.get("hooks", []),
-                                "filtered_requirements": research_result.get("filtered_requirements", []),
-                                "district_research": district_result,
+                                "evidence_pack": _dump_model(evidence_pack),
+                                "hooks": [_dump_model(h) for h in gated_hooks],
+                                "filtered_requirements": [_dump_model(fr) for fr in filtered_reqs],
+                                "district_research": _dump_model(district_result) if district_result else None,
+                                "conferences": conferences,
                             },
                             selected_hook_links=[],
                             primary_hook_link=None,
@@ -402,10 +502,10 @@ async def process_batch_job(
                             job_to_update.completed_states += 1
                         
                         await db.commit()
-                        logger.info(f"Batch job {job_id}: Completed {state_code}")
+                        logger.info(f"Batch job {job_id}: Completed {state_code} with {len(gated_hooks)} hooks, {len(conferences)} conferences")
                         
                     except Exception as e:
-                        logger.error(f"Batch job {job_id}: Failed {state_code}: {e}")
+                        logger.error(f"Batch job {job_id}: Failed {state_code}: {e}", exc_info=True)
                         
                         # Update failed count
                         fail_stmt = select(BatchJob).where(BatchJob.id == job_id)
@@ -430,7 +530,7 @@ async def process_batch_job(
             logger.info(f"Batch job {job_id}: Completed all states")
             
         except Exception as e:
-            logger.error(f"Batch job {job_id} failed: {e}")
+            logger.error(f"Batch job {job_id} failed: {e}", exc_info=True)
             
             error_stmt = select(BatchJob).where(BatchJob.id == job_id)
             error_result = await db.execute(error_stmt)
