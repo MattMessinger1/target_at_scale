@@ -375,7 +375,7 @@ _MONTH_MAP = {
 }
 
 
-def _parse_date_from_text(text: str) -> Optional[date]:
+def _parse_date_from_text(text: str, *, check_expired_only: bool = False) -> Optional[date]:
     """Extract the earliest actionable date from deadline text.
     
     Handles patterns like:
@@ -385,21 +385,18 @@ def _parse_date_from_text(text: str) -> Optional[date]:
     - "FY2025" (interpreted as end of fiscal year: September 30, 2025)
     - "obligated by September 30, 2025"
     
-    Returns None if no parseable date found or if text indicates ongoing/recurring.
+    Args:
+        text: Text to parse for dates
+        check_expired_only: If True, we're specifically checking for expired dates
+            and should be more aggressive (don't skip due to "ongoing" markers if
+            there's a specific past date mentioned)
+    
+    Returns None if no parseable date found.
     """
     if not text:
         return None
     
     text_lower = text.lower()
-    
-    # Skip if text indicates ongoing/recurring (these don't expire)
-    ongoing_markers = [
-        "annually", "annual", "recurring", "ongoing", "continuous",
-        "each year", "every year", "rolling", "open enrollment",
-        "no deadline", "tbd", "to be determined", "dates tbd",
-    ]
-    if any(marker in text_lower for marker in ongoing_markers):
-        return None
     
     dates_found: List[date] = []
     
@@ -515,6 +512,10 @@ def _is_deadline_expired(item: Dict[str, Any], combined_text: str) -> bool:
     
     Returns True if a deadline date is found and it's before today.
     Returns False if no date found, date is in the future, or text indicates ongoing.
+    
+    Note: "ongoing annual cycles" does NOT exempt an item if there's a specific
+    past date like "was due July 31, 2023". If the last cycle's deadline passed,
+    the item is stale until we see the NEW cycle's deadline.
     """
     today = date.today()
     
@@ -522,12 +523,36 @@ def _is_deadline_expired(item: Dict[str, Any], combined_text: str) -> bool:
     deadline_fields = [
         item.get("deadline"),
         item.get("deadline_or_frequency"),
+        item.get("trigger"),  # Also check trigger field
     ]
     
     for field in deadline_fields:
         if field and isinstance(field, str):
-            parsed = _parse_date_from_text(field)
+            parsed = _parse_date_from_text(field, check_expired_only=True)
             if parsed and parsed < today:
+                return True
+    
+    # AGGRESSIVE: Check for explicit "was due" language (indicates past deadline)
+    # "Intent to Participate was due July 31, 2023" - clearly expired!
+    was_due_pattern = re.compile(r"was\s+due\s+(.{5,50})", re.I)
+    for m in was_due_pattern.finditer(combined_text):
+        context = m.group(1)
+        parsed = _parse_date_from_text(context, check_expired_only=True)
+        if parsed:  # Any date with "was due" is past by definition
+            return True
+    
+    # Check for specific date patterns in the text that are clearly in the past
+    # Even if text says "ongoing" - a 2023 date is stale in 2026
+    year_pattern = re.compile(r"\b(202[0-4]|201\d)\b")  # Years before current year
+    current_year = today.year
+    for m in year_pattern.finditer(combined_text):
+        year = int(m.group(1))
+        if year < current_year - 1:  # More than 1 year old
+            # Check if this year appears with a deadline context
+            context_start = max(0, m.start() - 30)
+            context_end = min(len(combined_text), m.end() + 30)
+            context = combined_text[context_start:context_end].lower()
+            if any(kw in context for kw in ["due", "deadline", "by", "submit", "application"]):
                 return True
     
     # Also check combined text for deadline patterns with action language
@@ -540,13 +565,15 @@ def _is_deadline_expired(item: Dict[str, Any], combined_text: str) -> bool:
         r"expires?\s+(?:on\s+)?",
         r"ends?\s+(?:on\s+)?",
         r"closes?\s+(?:on\s+)?",
+        r"submit(?:ted)?\s+by",
+        r"application\s+(?:due|deadline)",
     ]
     
     for phrase in action_phrases:
         pattern = re.compile(phrase + r"(.{5,50})", re.I)
         for m in pattern.finditer(combined_text):
             context = m.group(1)
-            parsed = _parse_date_from_text(context)
+            parsed = _parse_date_from_text(context, check_expired_only=True)
             if parsed and parsed < today:
                 return True
     

@@ -323,5 +323,206 @@ def gate_treasure_hooks(
         kept.append(h)
 
     report = HookGateReport(total=len(hooks or []), kept=len(kept), dropped_by_reason=dropped)
+    
+    # Consolidate similar hooks (e.g., multiple districts under monitoring)
+    kept = _consolidate_similar_hooks(kept)
+    
     return kept, filtered, report
+
+
+# ---------------------------------------------------------------------------
+# Hook Consolidation: Merge redundant hooks for cleaner results
+# ---------------------------------------------------------------------------
+
+# Keywords that indicate school improvement/monitoring status
+_IMPROVEMENT_STATUS_KEYWORDS = [
+    "csi", "tsi", "atsi", "rad",
+    "comprehensive support", "targeted support", "additional targeted support",
+    "required action district", "receivership",
+    "state monitoring", "under monitoring", "improvement status",
+    "school improvement", "low performing", "underperforming",
+    "state intervention", "takeover",
+]
+
+# Authority ranking for sources (higher = more authoritative)
+_SOURCE_AUTHORITY: Dict[str, int] = {
+    "k12": 5,  # State education department
+    ".gov": 4,  # Government source
+    "ed.gov": 4,
+    "justice.gov": 5,  # DOJ - very authoritative for consent decrees
+    ".state": 3,
+    ".org": 2,
+    "medium.com": 1,  # Lower authority
+    "": 0,
+}
+
+
+def _get_source_authority(link: str) -> int:
+    """Score the authority of a source link."""
+    link_lower = (link or "").lower()
+    for pattern, score in _SOURCE_AUTHORITY.items():
+        if pattern and pattern in link_lower:
+            return score
+    return 0
+
+
+def _extract_districts_from_hook(hook: WebHook) -> List[str]:
+    """Extract district names mentioned in a hook."""
+    districts: List[str] = []
+    
+    # Combine all text fields
+    text = " ".join([
+        hook.eligibility_excerpt or "",
+        hook.trigger_excerpt or "",
+        hook.why_relevant or "",
+        hook.quote or "",
+    ])
+    
+    # Look for district patterns:
+    # "Toppenish School District", "Seattle Public Schools", "Yakima SD", etc.
+    district_patterns = [
+        re.compile(r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:School\s+)?District", re.I),
+        re.compile(r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+Public\s+Schools", re.I),
+        re.compile(r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:ISD|USD|SD)\b", re.I),
+    ]
+    
+    for pat in district_patterns:
+        for m in pat.finditer(text):
+            district_name = m.group(1).strip()
+            if district_name and len(district_name) > 2 and district_name not in districts:
+                # Skip common false positives
+                if district_name.lower() not in ["the", "a", "an", "this", "that", "all", "any"]:
+                    districts.append(district_name)
+    
+    return districts
+
+
+def _is_improvement_status_hook(hook: WebHook) -> bool:
+    """Check if this hook is about school improvement/monitoring status."""
+    text = " ".join([
+        hook.hook_type or "",
+        hook.trigger_excerpt or "",
+        hook.eligibility_excerpt or "",
+        hook.why_relevant or "",
+        hook.quote or "",
+    ]).lower()
+    
+    return any(kw in text for kw in _IMPROVEMENT_STATUS_KEYWORDS)
+
+
+def _consolidate_similar_hooks(hooks: List[WebHook]) -> List[WebHook]:
+    """Consolidate similar hooks to reduce redundancy.
+    
+    Groups hooks that are about the same topic (e.g., multiple districts under
+    state monitoring) and merges them into a single consolidated hook.
+    
+    This prevents results like:
+    - "Toppenish is under monitoring..."
+    - "Yakima is under monitoring..."
+    - "Seattle CSI status..."
+    
+    And instead produces:
+    - "Multiple WA districts under improvement status: Toppenish (RAD), Yakima (CSI), Seattle (CSI)..."
+    """
+    if not hooks or len(hooks) <= 1:
+        return hooks
+    
+    # Group hooks into: improvement_status_hooks and other_hooks
+    improvement_hooks: List[WebHook] = []
+    other_hooks: List[WebHook] = []
+    
+    for hook in hooks:
+        if _is_improvement_status_hook(hook):
+            improvement_hooks.append(hook)
+        else:
+            other_hooks.append(hook)
+    
+    # If we have multiple improvement status hooks, consolidate them
+    consolidated_hooks: List[WebHook] = []
+    
+    if len(improvement_hooks) >= 2:
+        # Consolidate into a single hook
+        consolidated = _merge_improvement_hooks(improvement_hooks)
+        if consolidated:
+            consolidated_hooks.append(consolidated)
+    else:
+        # Not enough to consolidate, keep as-is
+        consolidated_hooks.extend(improvement_hooks)
+    
+    # Add non-improvement hooks as-is
+    consolidated_hooks.extend(other_hooks)
+    
+    return consolidated_hooks
+
+
+def _merge_improvement_hooks(hooks: List[WebHook]) -> Optional[WebHook]:
+    """Merge multiple improvement status hooks into one consolidated hook."""
+    if not hooks:
+        return None
+    
+    # Collect all districts mentioned
+    all_districts: List[str] = []
+    for hook in hooks:
+        districts = _extract_districts_from_hook(hook)
+        for d in districts:
+            if d not in all_districts:
+                all_districts.append(d)
+    
+    # Find the most authoritative source
+    best_hook = max(hooks, key=lambda h: _get_source_authority(h.link or ""))
+    
+    # Build consolidated quote
+    if all_districts:
+        district_list = ", ".join(all_districts[:5])  # Limit to 5 for readability
+        if len(all_districts) > 5:
+            district_list += f", and {len(all_districts) - 5} more"
+        consolidated_quote = f"Multiple districts are under state improvement monitoring or intervention status. Affected districts include: {district_list}. These schools must implement state-approved improvement plans and demonstrate progress."
+    else:
+        consolidated_quote = best_hook.quote or "Multiple schools in the state are under improvement monitoring status."
+    
+    # Build consolidated trigger
+    unique_triggers = set()
+    for hook in hooks:
+        if hook.trigger_excerpt:
+            # Extract key status terms
+            trigger_lower = hook.trigger_excerpt.lower()
+            if "csi" in trigger_lower:
+                unique_triggers.add("CSI (Comprehensive Support)")
+            if "tsi" in trigger_lower:
+                unique_triggers.add("TSI (Targeted Support)")
+            if "atsi" in trigger_lower:
+                unique_triggers.add("ATSI (Additional Targeted Support)")
+            if "rad" in trigger_lower or "required action" in trigger_lower:
+                unique_triggers.add("RAD (Required Action District)")
+            if "monitoring" in trigger_lower:
+                unique_triggers.add("state monitoring")
+            if "consent decree" in trigger_lower or "doj" in trigger_lower:
+                unique_triggers.add("DOJ/consent decree")
+    
+    consolidated_trigger = "; ".join(unique_triggers) if unique_triggers else best_hook.trigger_excerpt
+    
+    # Build consolidated eligibility
+    consolidated_eligibility = f"Districts affected: {district_list}" if all_districts else best_hook.eligibility_excerpt
+    
+    # Build consolidated why_relevant
+    consolidated_why = (
+        "Schools under improvement status face mandated requirements for evidence-based interventions, "
+        "professional development, and documented progress. Our products provide the coaching, "
+        "assessment tools, and compliance documentation these districts need to meet state requirements "
+        "and exit improvement status."
+    )
+    
+    # Create consolidated hook using the best source
+    # We need to create a new WebHook - import the class
+    return WebHook(
+        hook_type="monitoring",
+        confidence="high",
+        link=best_hook.link,
+        quote=consolidated_quote,
+        trigger_excerpt=consolidated_trigger,
+        eligibility_excerpt=consolidated_eligibility,
+        why_relevant=consolidated_why,
+        source_quality_reason=f"Consolidated from {len(hooks)} sources; primary source: {best_hook.link}",
+        hook_id=f"consolidated_{best_hook.hook_id or 'monitoring'}",
+    )
 
