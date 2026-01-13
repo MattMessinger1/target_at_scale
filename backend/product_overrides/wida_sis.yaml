@@ -41,6 +41,14 @@ safe_claims:
   - "WIDA SIS integrates with WIDA assessment data for comprehensive EL program management."
   - "WIDA SIS helps districts meet state and federal EL reporting requirements."
 
+differentiators:
+  - "Native integration with WIDA ACCESS and MODEL assessment data - no manual data imports or crosswalking"
+  - "Built specifically for EL program management - not a generic SIS with EL features bolted on"
+  - "Automated compliance alerts and deadline tracking prevent missed reporting requirements"
+  - "ESSA and Title III reporting templates pre-built for federal accountability"
+  - "Parent notification workflows with documentation audit trails for OCR compliance"
+  - "Reclassification tracking aligned to WIDA proficiency levels and state exit criteria"
+
 compliance_hooks:
   - "Title III reporting requirements"
   - "ESSA EL data collection mandates"

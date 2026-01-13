@@ -36,6 +36,14 @@ safe_claims:
   - "WebbAlign helps districts document assessment quality for compliance purposes."
   - "WebbAlign supports equitable assessment practices for all learners including ELs."
 
+differentiators:
+  - "Based on Webb's original Depth of Knowledge framework - the gold standard for cognitive rigor analysis"
+  - "Provides item-level DOK analysis, not just test-level summaries - actionable data for improvement"
+  - "Standards alignment verification ensures assessments measure what they claim to measure"
+  - "Specific analysis for EL accessibility and linguistic complexity - equity-focused assessment review"
+  - "Professional development component builds teacher capacity to create rigorous assessments independently"
+  - "Documentation and reports suitable for state assessment quality audits and monitoring reviews"
+
 compliance_hooks:
   - "assessment quality audits"
   - "state assessment alignment requirements"

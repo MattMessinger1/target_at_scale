@@ -61,11 +61,15 @@ PRODUCT_KEYWORDS: Dict[str, List[str]] = {
         "benchmark",
     ],
     "CALL": [
-        "academic language",
-        "language assessment",
-        "intervention",
-        "diagnostic",
-        "progress monitoring",
+        "leadership",
+        "leadership assessment",
+        "distributed leadership",
+        "school improvement",
+        "school improvement planning",
+        "principal development",
+        "principal professional development",
+        "leadership evaluation",
+        "leadership practices",
     ],
     "The Discussion Project": [
         "discussion",
@@ -161,15 +165,75 @@ def _looks_non_government(text: str) -> bool:
 
 
 def _is_table_stakes_title_i_iii(text: str) -> bool:
-    # Exclude obvious Title I/III mentions unless it's specifically a set-aside / school improvement trigger.
+    """Exclude generic Title I/III mentions that every district already knows about.
+    
+    Title I/III are "table stakes" - standard federal allocations that every district
+    gets and knows about. We only want to include them when there's a SPECIFIC
+    compliance trigger that creates urgency (CSI/TSI designation, consent decree, etc.)
+    """
     has_title_i = "title i" in text or "title 1" in text
     has_title_iii = "title iii" in text or "title 3" in text
     if not (has_title_i or has_title_iii):
         return False
-    # Allow cases where it's clearly a compliance-linked set-aside / school improvement.
-    if any(kw in text for kw in ["set-aside", "set aside", "school improvement", "csi", "tsi", "atsi"]):
+    
+    # STRICT: Only allow Title I/III through if there's a SPECIFIC compliance trigger.
+    # Generic "school improvement" is too broad - needs to be a specific designation.
+    specific_triggers = [
+        # Specific school improvement designations
+        "csi", "tsi", "atsi",
+        "comprehensive support", "targeted support", "additional targeted support",
+        # Specific set-aside requirements
+        "set-aside", "set aside", "1003 grant", "1003(a)", "1003(g)",
+        # Legal/enforcement triggers
+        "consent decree", "doj", "ocr", "corrective action",
+        "state intervention", "state takeover", "receivership",
+        # Specific competitive grants (not standard allocations)
+        "competitive grant", "rfp", "rfa", "application deadline",
+    ]
+    
+    if any(trigger in text for trigger in specific_triggers):
         return False
+    
+    # Filter out generic Title I/III mentions
     return True
+
+
+def _is_table_stakes_compliance(text: str) -> bool:
+    """Filter out generic compliance information that every district already knows.
+    
+    These are standard federal/state requirements that don't create urgency or
+    differentiate opportunities for sales.
+    """
+    # Generic compliance that every district knows
+    table_stakes_patterns = [
+        # Generic EL identification/reclassification (standard process)
+        "home language survey",
+        "initial identification",
+        "annual assessment",  # Every district knows about ACCESS
+        "reclassification criteria",  # Standard process
+        # Generic parent notification (standard requirement)
+        "parent notification requirement",
+        "annual notification",
+        # Generic Title III requirements without specific trigger
+        "title iii allocation",
+        "title iii formula",
+        "supplement not supplant",  # Standard requirement
+    ]
+    
+    # Check if this is generic table stakes
+    for pattern in table_stakes_patterns:
+        if pattern in text:
+            # Make sure there's no specific urgency trigger
+            urgency_triggers = [
+                "violation", "finding", "citation", "audit",
+                "corrective action", "monitoring", "consent decree",
+                "doj", "ocr", "investigation", "complaint",
+                "deadline", "penalty", "sanction",
+            ]
+            if not any(trigger in text for trigger in urgency_triggers):
+                return True
+    
+    return False
 
 
 def _has_source(item: Dict[str, Any], *, is_kb: bool) -> bool:
@@ -484,6 +548,13 @@ def score_item(
             return GateResult(False, {}, ["Excluded: non-government/private funding"])
         if _is_table_stakes_title_i_iii(text):
             return GateResult(False, {}, ["Excluded: table-stakes Title I/III"])
+    
+    if item_type == "compliance":
+        if _is_table_stakes_compliance(text):
+            return GateResult(False, {}, ["Excluded: table-stakes compliance (generic requirements)"])
+        # Also filter Title I/III from compliance unless specific trigger
+        if _is_table_stakes_title_i_iii(text):
+            return GateResult(False, {}, ["Excluded: table-stakes Title I/III compliance"])
 
     if item_type == "compliance_funding":
         # Must have an explicit trigger (field or text)

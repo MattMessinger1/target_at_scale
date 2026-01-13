@@ -37,6 +37,14 @@ safe_claims:
   - "CALL assesses distributed leadership practices across five research-validated domains."
   - "CALL provides automated, actionable feedback to support leadership development and school improvement."
 
+differentiators:
+  - "Research-validated by UW-Madison - not a generic survey but a peer-reviewed leadership assessment"
+  - "Focuses on distributed leadership across the school - not just principal evaluation"
+  - "Multi-source feedback from teachers, staff, and leadership - comprehensive 360-degree view"
+  - "Five research-based domains provide specific, actionable areas for leadership development"
+  - "Automated reporting delivers instant insights - no waiting for manual analysis"
+  - "Directly connects to school improvement planning requirements - evidence-based leadership data"
+
 compliance_hooks:
   - "Title II-A funds can support principal professional development and leadership assessments like CALL."
   - "School improvement planning requirements often call for evidence-based leadership evaluation."

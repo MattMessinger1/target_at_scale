@@ -1,0 +1,78 @@
+elevator_pitch: "WIDA Professional Learning provides comprehensive, research-based training for educators working with multilingual learners, offering flexible online and in-person options aligned to WIDA standards and frameworks."
+
+offerings:
+  - "Online self-paced courses for WIDA framework foundations"
+  - "Live virtual and in-person workshops facilitated by WIDA experts"
+  - "Customized district-level professional learning programs"
+  - "WIDA ELD Standards Framework training"
+  - "Can Do Descriptors implementation support"
+  - "Academic language development strategies"
+  - "Assessment literacy for ELP assessment data"
+  - "Train-the-trainer programs for sustainability"
+
+who_its_for:
+  - "EL/ESL/ESOL teachers"
+  - "Classroom teachers with ELs in mainstream settings"
+  - "EL/Multilingual program directors"
+  - "Instructional coaches"
+  - "District curriculum coordinators"
+  - "Building principals with EL populations"
+  - "Title III coordinators"
+
+problems_solved:
+  - "Meeting state-mandated ESOL/EL professional development hour requirements"
+  - "Building teacher capacity to support multilingual learners in content classrooms"
+  - "Understanding and implementing WIDA ELD Standards Framework"
+  - "Using WIDA assessment data (ACCESS, MODEL) to inform instruction"
+  - "Developing academic language across content areas"
+  - "Supporting newcomer and SLIFE students"
+  - "Building sustainable internal PD capacity through train-the-trainer models"
+  - "Preparing teachers for ESL/ESOL endorsement requirements"
+
+implementation:
+  what_wceps_does:
+    - "Provides access to online learning platform and courses"
+    - "Facilitates live workshops (virtual or in-person)"
+    - "Customizes content to district priorities and state requirements"
+    - "Delivers ongoing coaching and implementation support"
+  what_district_does:
+    - "Identifies teachers and staff for training"
+    - "Schedules professional learning time"
+    - "Aligns training to district EL program goals"
+    - "Provides follow-up opportunities for implementation"
+  timeline: "Flexible; courses range from 2-hour workshops to multi-day institutes to year-long programs."
+
+safe_claims:
+  - "WIDA Professional Learning is developed by the creators of the WIDA ELD Standards Framework."
+  - "WIDA courses are designed to directly support implementation of WIDA standards and assessments."
+  - "WIDA Professional Learning can be aligned to state-mandated PD requirements for ESL endorsement."
+
+differentiators:
+  - "Developed by WIDA itself - the source of the standards, not a third-party interpretation"
+  - "Directly aligned to WIDA ELD Standards Framework used by 40+ states and territories"
+  - "Research-based content from UW-Madison's Wisconsin Center for Education Research"
+  - "Flexible delivery options: self-paced online, live virtual, and in-person workshops"
+  - "Content designed for both EL specialists AND mainstream classroom teachers"
+  - "Train-the-trainer options to build sustainable internal district capacity"
+
+compliance_hooks:
+  - "State-mandated ESOL/EL professional development hours"
+  - "ESL/ESOL teacher endorsement requirements"
+  - "Title III professional development requirements"
+  - "School improvement plan PD components"
+  - "Corrective action plan evidence of quality PD"
+  - "State monitoring review preparation"
+  - "New teacher induction EL training requirements"
+
+case_studies:
+  - state: null
+    district: null
+    context: "Districts implementing WIDA Professional Learning can document PD hours that count toward state ESL endorsement requirements while building practical instructional capacity for multilingual learners."
+    proof_snippet: "WIDA courses provide certificates of completion that document PD hours for compliance reporting."
+    outcomes: null
+
+avoid_phrases:
+  - "Are you maximizing"
+  - "Did you know"
+  - "If you aren't"
+  - "You should have"
