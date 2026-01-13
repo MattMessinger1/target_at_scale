@@ -182,10 +182,10 @@ function EmailGeneratorV1() {
   // Step state
   const [currentStep, setCurrentStep] = useState<Step>('select')
   
-  // Selection state - now arrays for multi-select
+  // Selection state - products/states are multi-select, audience is single
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   const [selectedStates, setSelectedStates] = useState<SelectedState[]>([])
-  const [selectedAudiences, setSelectedAudiences] = useState<string[]>([])
+  const [selectedAudience, setSelectedAudience] = useState<string>('Decision Makers')
   
   // Research results
   const [researchResults, setResearchResults] = useState<ResearchResponse | null>(null)
@@ -219,11 +219,10 @@ function EmailGeneratorV1() {
     mutationFn: () => api.research.research({
       product: selectedProducts[0], // Primary product
       state: selectedStates[0]?.code || '', // Primary state
-      audience: selectedAudiences[0], // Primary audience
+      audience: selectedAudience, // Single audience
       // Additional selections are passed as context
       additional_products: selectedProducts.slice(1),
       additional_states: selectedStates.slice(1).map(s => s.code),
-      additional_audiences: selectedAudiences.slice(1),
     }),
     onSuccess: (data) => {
       setResearchResults(data)
@@ -234,7 +233,7 @@ function EmailGeneratorV1() {
         criteria: {
           products: selectedProducts,
           states: selectedStates,
-          audiences: selectedAudiences,
+          audience: selectedAudience,
         },
         // Avoid persisting large raw debug fields in localStorage
         results: {
@@ -271,7 +270,7 @@ function EmailGeneratorV1() {
       product: selectedProducts.join(', '),
       state: selectedStates.map(s => s.code).join(', '),
       state_full: selectedStates.map(s => s.name).join(', '),
-      audience: selectedAudiences.join(', '),
+      audience: selectedAudience,
       selected_funding: selectedFunding.map(f => ({
         title: f.title,
         description: f.description,
@@ -312,7 +311,7 @@ function EmailGeneratorV1() {
     // Prefill metadata from current selections
     setModelProduct(selectedProducts[0] || '')
     setModelStatesInput(selectedStates.map((s) => s.code).join(', '))
-    setModelAudience(selectedAudiences[0] || '')
+    setModelAudience(selectedAudience)
 
     if (prefillFromGenerated && generatedEmail) {
       setModelSubjectLine(generatedEmail.subject_line || '')
@@ -351,7 +350,7 @@ function EmailGeneratorV1() {
     },
   })
 
-  const canResearch = selectedProducts.length > 0 && selectedStates.length > 0 && selectedAudiences.length > 0
+  const canResearch = selectedProducts.length > 0 && selectedStates.length > 0 && selectedAudience !== ''
   const canGenerate = selectedFunding.length > 0 || selectedComplianceFunding.length > 0 || selectedCompliance.length > 0
 
   const handleStartResearch = () => {
@@ -376,7 +375,7 @@ function EmailGeneratorV1() {
     setCurrentStep('select')
     setSelectedProducts([])
     setSelectedStates([])
-    setSelectedAudiences([])
+    setSelectedAudience('Decision Makers')
     setResearchResults(null)
     setActiveRunId(null)
     setSelectedFunding([])
@@ -388,13 +387,13 @@ function EmailGeneratorV1() {
   const handleExportCSV = () => {
     if (!generatedEmail) return
     
-    const headers = ['Subject Line', 'Email Body', 'Products', 'States', 'Audiences', 'Word Count']
+    const headers = ['Subject Line', 'Email Body', 'Products', 'States', 'Audience', 'Word Count']
     const row = [
       `"${generatedEmail.subject_line.replace(/"/g, '""')}"`,
       `"${generatedEmail.email_body.replace(/"/g, '""')}"`,
       `"${selectedProducts.join(', ')}"`,
       `"${selectedStates.map(s => s.name).join(', ')}"`,
-      `"${selectedAudiences.join(', ')}"`,
+      `"${selectedAudience}"`,
       generatedEmail.word_count.toString(),
     ]
     
@@ -436,10 +435,32 @@ function EmailGeneratorV1() {
     })
   }, [activeRunId, selectedFunding, selectedComplianceFunding, selectedCompliance])
 
+  // Map old audiences to new simplified format
+  const mapOldAudience = (audience: string): string => {
+    const mapping: Record<string, string> = {
+      'District Leadership': 'Decision Makers',
+      'Curriculum Directors': 'Decision Makers',
+      'ELL/Multilingual Directors': 'Decision Makers',
+      'Principals': 'Decision Makers',
+      'Teachers': 'Users',
+      'Title III Coordinators': 'Decision Makers',
+    }
+    return mapping[audience] || audience
+  }
+
   const resumeRun = (run: ResearchRunSnapshot) => {
     setSelectedProducts(run.criteria.products || [])
     setSelectedStates(run.criteria.states || [])
-    setSelectedAudiences(run.criteria.audiences || [])
+    // Handle both old array format and new single format
+    const oldAudiences = (run.criteria as { audiences?: string[] }).audiences
+    const newAudience = (run.criteria as { audience?: string }).audience
+    if (newAudience) {
+      setSelectedAudience(mapOldAudience(newAudience))
+    } else if (oldAudiences && oldAudiences.length > 0) {
+      setSelectedAudience(mapOldAudience(oldAudiences[0]))
+    } else {
+      setSelectedAudience('Decision Makers')
+    }
     setResearchResults(run.results)
     setSelectedFunding(run.selections.selectedFunding || [])
     setSelectedComplianceFunding(run.selections.selectedComplianceFunding || [])
@@ -803,14 +824,14 @@ function EmailGeneratorV1() {
               
               <div className="lg:col-span-1">
                 <AudienceSelector
-                  selectedAudiences={selectedAudiences}
-                  onSelect={setSelectedAudiences}
+                  selectedAudience={selectedAudience}
+                  onSelect={setSelectedAudience}
                 />
               </div>
             </div>
 
             {/* Selection Summary */}
-            {(selectedProducts.length > 0 || selectedStates.length > 0 || selectedAudiences.length > 0) && (
+            {(selectedProducts.length > 0 || selectedStates.length > 0 || selectedAudience) && (
               <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
                 <h3 className="text-sm font-medium text-slate-300 mb-3">Selection Summary</h3>
                 <div className="flex flex-wrap gap-2">
@@ -824,11 +845,11 @@ function EmailGeneratorV1() {
                       {s.name}
                     </span>
                   ))}
-                  {selectedAudiences.map(a => (
-                    <span key={a} className="px-2 py-1 bg-purple-900/50 text-purple-400 rounded text-sm">
-                      {a}
+                  {selectedAudience && (
+                    <span className="px-2 py-1 bg-purple-900/50 text-purple-400 rounded text-sm">
+                      {selectedAudience}
                     </span>
-                  ))}
+                  )}
                 </div>
               </div>
             )}
@@ -947,7 +968,7 @@ function EmailGeneratorV1() {
                 onClick={() => setCurrentStep('select')}
                 className="flex items-center gap-2 px-3 py-1 bg-purple-900/50 text-purple-400 rounded-full hover:bg-purple-900/70 transition-colors"
               >
-                {selectedAudiences.join(', ')}
+                {selectedAudience}
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                 </svg>
@@ -1001,7 +1022,7 @@ function EmailGeneratorV1() {
               Generating Email...
             </h2>
             <p className="text-slate-400">
-              Crafting a personalized email for {selectedAudiences.join(', ')}
+              Crafting a personalized email for {selectedAudience}
             </p>
           </div>
         )}
@@ -1034,9 +1055,9 @@ function EmailGeneratorV1() {
               <button 
                 onClick={() => setCurrentStep('select')}
                 className="flex items-center gap-2 px-3 py-1 bg-purple-900/50 text-purple-400 rounded-full hover:bg-purple-900/70 transition-colors"
-                title="Click to edit audiences"
+                title="Click to edit audience"
               >
-                {selectedAudiences.join(', ')}
+                {selectedAudience}
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                 </svg>
@@ -1255,7 +1276,7 @@ function EmailGeneratorPipeline() {
   const [wizardStep, setWizardStep] = useState<WizardStep>(1)
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   const [selectedStates, setSelectedStates] = useState<SelectedState[]>([])
-  const [selectedAudiences, setSelectedAudiences] = useState<string[]>([])
+  const [selectedAudience, setSelectedAudience] = useState<string>('Decision Makers')
 
   const [districtName, setDistrictName] = useState('')
   const [districtUrl, setDistrictUrl] = useState('')
@@ -1339,7 +1360,17 @@ function EmailGeneratorPipeline() {
       // Restore all state from the saved run
       setSelectedProducts([full.product])
       setSelectedStates([{ code: full.state_code, name: full.state_full || full.state_code }])
-      setSelectedAudiences(full.audiences)
+      // Handle both old array format and new single format with mapping
+      const oldAudienceMap: Record<string, string> = {
+        'District Leadership': 'Decision Makers',
+        'Curriculum Directors': 'Decision Makers',
+        'ELL/Multilingual Directors': 'Decision Makers',
+        'Principals': 'Decision Makers',
+        'Teachers': 'Users',
+        'Title III Coordinators': 'Decision Makers',
+      }
+      const savedAudience = full.audiences?.[0] || 'Decision Makers'
+      setSelectedAudience(oldAudienceMap[savedAudience] || savedAudience)
       setDistrictName(full.district_name || '')
       
       // Restore pipeline result
@@ -1578,7 +1609,7 @@ function EmailGeneratorPipeline() {
         product: selectedProducts[0] || '',
         state_code: selectedStates[0]?.code || '',
         state_full: selectedStates[0]?.name || undefined,
-        audiences: selectedAudiences.length ? selectedAudiences : ['Title III Coordinators', 'ELL/Multilingual Directors', 'Curriculum Directors'],
+        audiences: [selectedAudience],
         district_name: districtName.trim() || undefined,
         pipeline_response: result,
         selected_hook_links: selectedHookLinks,
@@ -1618,7 +1649,7 @@ function EmailGeneratorPipeline() {
         product,
         state_code: state?.code || '',
         state_full: state?.name || undefined,
-        audiences: selectedAudiences.length ? selectedAudiences : ['Title III Coordinators', 'ELL/Multilingual Directors', 'Curriculum Directors'],
+        audiences: [selectedAudience],
         district_name: districtName.trim() || undefined,
         evidence_pack: prep.evidence_pack,
         hooks: prep.treasure_hooks || [],
@@ -1724,7 +1755,7 @@ function EmailGeneratorPipeline() {
         product: selectedProducts[0] || '',
         state: selectedStates[0]?.code || '',
         state_full: selectedStates[0]?.name || undefined,
-        audiences: selectedAudiences.length ? selectedAudiences : undefined,
+        audiences: [selectedAudience],
         district_name: districtName.trim() || undefined,
         district_url: districtUrl.trim() || undefined,
         include_district_research: includeDistrictResearch,
@@ -1799,7 +1830,7 @@ function EmailGeneratorPipeline() {
         product: selectedProducts[0] || '',
         state: selectedStates[0]?.code || '',
         state_full: selectedStates[0]?.name || undefined,
-        audiences: selectedAudiences.length ? selectedAudiences : undefined,
+        audiences: [selectedAudience],
         district_name: districtName.trim() || undefined,
         district_url: districtUrl.trim() || undefined,
       }
@@ -2872,7 +2903,7 @@ function EmailGeneratorPipeline() {
                         name: `${selectedProducts[0]} - ${batchStates.length} states`,
                         product: selectedProducts[0],
                         states: batchStates,
-                        audiences: selectedAudiences,
+                        audiences: [selectedAudience],
                         include_district_research: false,
                       })
                       toast({
@@ -2928,10 +2959,7 @@ function EmailGeneratorPipeline() {
               </div>
 
               <div>
-                <AudienceSelector selectedAudiences={selectedAudiences} onSelect={setSelectedAudiences} />
-                <div className="mt-2 text-xs text-slate-500">
-                  Leave audiences empty to use the default 3 (Title III, ELL, Curriculum).
-                </div>
+                <AudienceSelector selectedAudience={selectedAudience} onSelect={setSelectedAudience} />
               </div>
 
               {/* District Research Toggle */}

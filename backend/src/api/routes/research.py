@@ -81,15 +81,23 @@ WCEPS_PRODUCTS = [
     "WIDA SIS",
 ]
 
-# Target audiences
+# Target audiences - simplified to 2 categories
+# Decision Makers: Those who approve/purchase (Superintendents, ESOL Directors, Curriculum Directors, Title III Coordinators)
+# Users: Those who use/attend (Teachers, Instructional Coaches)
 AUDIENCES = [
-    "District Leadership",
-    "Curriculum Directors",
-    "ELL/Multilingual Directors",
-    "Principals",
-    "Teachers",
-    "Title III Coordinators",
+    "Decision Makers",
+    "Users",
 ]
+
+# Mapping from old audiences to new (for backward compatibility)
+OLD_AUDIENCE_MAP = {
+    "District Leadership": "Decision Makers",
+    "Curriculum Directors": "Decision Makers",
+    "ELL/Multilingual Directors": "Decision Makers",
+    "Principals": "Decision Makers",
+    "Teachers": "Users",
+    "Title III Coordinators": "Decision Makers",
+}
 
 
 class ResearchRequest(BaseModel):

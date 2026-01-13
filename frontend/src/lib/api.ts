@@ -212,13 +212,12 @@ export interface ComplianceFundingItem {
 export interface ResearchRequest {
   product: string
   state: string
-  audience: string
+  audience: string  // 'Decision Makers' or 'Users'
   top_n?: number
   min_score?: number
-  // Multi-select support - additional selections beyond the primary
+  // Multi-select support for products/states only
   additional_products?: string[]
   additional_states?: string[]
-  additional_audiences?: string[]
 }
 
 export interface ResearchResponse {

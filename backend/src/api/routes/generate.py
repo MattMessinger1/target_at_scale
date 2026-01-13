@@ -59,43 +59,21 @@ except Exception:
     DistrictResearchResult = None  # type: ignore
 
 
-# Email style guides by audience
+# Email style guides by audience - simplified to 2 categories
 STYLE_GUIDES = {
-    "District Leadership": """
-TONE: Executive, strategic, ROI-focused
-LENGTH: 120-150 words
-FOCUS: District-wide impact, strategic alignment, funding leverage
-OPENING: Address a strategic challenge
+    "Decision Makers": """
+TONE: Strategic, ROI-focused, compliance-aware, peer-to-peer
+LENGTH: 130-160 words
+FOCUS: District-wide impact, funding leverage, compliance alignment, program effectiveness
+OPENING: Address a strategic challenge or compliance opportunity
+NOTE: Recipients include Superintendents, ESOL/ELL Directors, Curriculum Directors, Title III Coordinators
 """,
-    "Curriculum Directors": """
-TONE: Collaborative, instructional, data-informed
-LENGTH: 150-180 words
-FOCUS: Curriculum alignment, student outcomes, implementation
-OPENING: Connect to instructional priorities
-""",
-    "ELL/Multilingual Directors": """
-TONE: Expert peer, practical, compliance-aware
-LENGTH: 150-180 words
-FOCUS: EL student outcomes, compliance requirements, program effectiveness
-OPENING: Acknowledge their expertise and challenges
-""",
-    "Principals": """
-TONE: Supportive, action-oriented, teacher-focused
-LENGTH: 120-150 words
-FOCUS: Teacher support, building-level implementation, quick wins
-OPENING: Address teacher capacity building
-""",
-    "Teachers": """
-TONE: Empathetic, practical, student-focused
+    "Users": """
+TONE: Practical, supportive, student-focused, empathetic
 LENGTH: 100-130 words
-FOCUS: Classroom strategies, student engagement, immediate applicability
-OPENING: Connect to daily classroom challenges
-""",
-    "Title III Coordinators": """
-TONE: Compliance-expert, practical, funding-aware
-LENGTH: 150-180 words
-FOCUS: Title III requirements, allowable uses, documentation
-OPENING: Reference Title III compliance or reporting
+FOCUS: Classroom strategies, professional growth, immediate applicability, student outcomes
+OPENING: Connect to daily instructional challenges
+NOTE: Recipients include Teachers and Instructional Coaches attending trainings
 """,
 }
 
