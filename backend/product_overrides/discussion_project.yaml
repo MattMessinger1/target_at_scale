@@ -1,0 +1,71 @@
+elevator_pitch: "The Discussion Project is a professional development program that helps educators design, implement, and facilitate high-quality classroom discussions that deepen student learning and engagement."
+
+offerings:
+  - "Professional development series on discussion facilitation"
+  - "Structured Academic Controversy (SAC) training"
+  - "Talk moves and discussion strategies workshops"
+  - "Discussion-based learning curriculum design support"
+  - "Classroom discussion observation and coaching"
+  - "Train-the-trainer programs for sustainability"
+
+who_its_for:
+  - "K-12 classroom teachers across content areas"
+  - "Higher education instructors"
+  - "Instructional coaches"
+  - "Curriculum coordinators"
+  - "Professional development coordinators"
+  - "EL/ESL teachers seeking engagement strategies"
+
+problems_solved:
+  - "Low student engagement and participation in class"
+  - "Students struggling to articulate thinking and reasoning"
+  - "Lack of academic discourse skills among students"
+  - "Teachers needing strategies to facilitate productive discussions"
+  - "Preparing students for collaborative learning and democratic participation"
+  - "Building speaking and listening skills across content areas"
+  - "Creating equitable and inclusive classroom environments"
+
+implementation:
+  what_wceps_does:
+    - "Provides professional development workshops (virtual or in-person)"
+    - "Delivers ongoing coaching and implementation support"
+    - "Offers train-the-trainer certification for sustainability"
+  what_district_does:
+    - "Identifies teachers and staff for training"
+    - "Schedules professional learning time"
+    - "Provides follow-up opportunities for practice and reflection"
+  timeline: "Workshops range from half-day introductions to multi-session series; ongoing coaching available."
+
+safe_claims:
+  - "The Discussion Project is developed by researchers at the University of Wisconsin-Madison."
+  - "The Discussion Project provides research-based strategies for facilitating classroom discussion."
+  - "The Discussion Project helps educators create more equitable and inclusive learning environments."
+
+differentiators:
+  - "Developed by UW-Madison researchers - research-based, not generic tips"
+  - "Focuses entirely on discussion facilitation - deep expertise, not a side topic in broader PD"
+  - "Includes Structured Academic Controversy (SAC) - a proven method for engaging students in complex issues"
+  - "Applicable across K-12 and higher education - flexible for different contexts"
+  - "Talk moves framework provides concrete, actionable strategies teachers can use immediately"
+  - "Emphasizes equity and inclusion - discussion as a tool for all students to participate"
+
+compliance_hooks:
+  - "Professional development requirements"
+  - "School improvement plan PD components"
+  - "Speaking and listening standards alignment"
+  - "Student engagement improvement initiatives"
+  - "Equity and inclusion professional development"
+  - "Teacher evaluation growth goals"
+
+case_studies:
+  - state: null
+    district: null
+    context: "Teachers implementing Discussion Project strategies report increased student engagement and deeper understanding of complex topics through structured classroom discussions."
+    proof_snippet: "The Structured Academic Controversy (SAC) method engages students in ethical and political issues through scaffolded small-group discussion based on cooperative learning principles."
+    outcomes: null
+
+avoid_phrases:
+  - "Are you maximizing"
+  - "Did you know"
+  - "If you aren't"
+  - "You should have"

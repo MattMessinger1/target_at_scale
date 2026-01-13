@@ -60,6 +60,13 @@ compliance_hooks:
   - "audit documentation"
   - "corrective action plan tracking"
 
+case_studies:
+  - state: null
+    district: null
+    context: "Districts using WIDA SIS can automate Title III reporting and track parent notifications with audit-ready documentation."
+    proof_snippet: "WIDA SIS provides automated compliance alerts that prevent missed reporting deadlines."
+    outcomes: null
+
 avoid_phrases:
   - "Are you maximizing"
   - "Did you know"

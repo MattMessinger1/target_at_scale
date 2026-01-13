@@ -40,14 +40,16 @@ PRODUCT_KEYWORDS: Dict[str, List[str]] = {
     "WIDA Professional Learning": [
         "professional learning",
         "professional development",
-        "pd",
-        "wida",
-        "el",
-        "ell",
-        "multilingual",
-        "language development",
-        "instructional strategies",
-        "implementation",
+        "pd hours",
+        "wida training",
+        "wida standards",
+        "wida framework",
+        "eld standards",
+        "can do descriptors",
+        "teacher training",
+        "pd requirement",
+        "endorsement",
+        "certification hours",
     ],
     "WebbAlign": [
         "assessment",
@@ -80,20 +82,28 @@ PRODUCT_KEYWORDS: Dict[str, List[str]] = {
         "talk moves",
     ],
     "WIDA MODEL Online": [
-        "assessment",
-        "elp",
+        "interim assessment",
+        "progress monitoring",
+        "elp assessment",
         "english language proficiency",
-        "model",
-        "online assessment",
+        "wida model",
+        "predictive assessment",
+        "formative assessment",
+        "access prediction",
+        "benchmark assessment",
+        "domain-level assessment",
     ],
     "WIDA SIS": [
-        "sis",
         "student information system",
-        "student information",
-        "data system",
-        "reporting",
-        "compliance reporting",
-        "tracking",
+        "el data management",
+        "compliance tracking",
+        "title iii reporting",
+        "essa reporting",
+        "accountability reporting",
+        "parent notification tracking",
+        "reclassification tracking",
+        "exit criteria",
+        "el program management",
     ],
 }
 
@@ -313,10 +323,37 @@ def _has_specificity(item: Dict[str, Any], text: str, item_type: ItemType) -> bo
     return any(m in title or m in text for m in markers)
 
 
+def get_product_keyword_status(product: str) -> Dict[str, Any]:
+    """Check if a product has keywords defined.
+    
+    Returns dict with:
+    - has_keywords: bool
+    - keyword_count: int
+    - product: str
+    """
+    keywords = PRODUCT_KEYWORDS.get(product, [])
+    return {
+        "has_keywords": len(keywords) > 0,
+        "keyword_count": len(keywords),
+        "product": product,
+    }
+
+
+# Cache for products we've already warned about (to avoid log spam)
+_warned_products: set = set()
+
+
 def _has_product_fit(product: str, text: str) -> bool:
     keywords = PRODUCT_KEYWORDS.get(product, [])
     if not keywords:
-        # Unknown product: be conservative (no signal)
+        # Log warning for unknown product (only once per product)
+        if product not in _warned_products:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Product '{product}' has no keywords defined in PRODUCT_KEYWORDS - "
+                f"product_fit signal will always be False"
+            )
+            _warned_products.add(product)
         return False
     return any(re.search(rf"\b{re.escape(kw)}\b", text, re.I) for kw in keywords)
 
@@ -536,8 +573,10 @@ def score_item(
 
     # Hard rules
     
-    # Check for expired deadlines (applies to funding and compliance_funding)
-    if item_type in ("funding", "compliance_funding") and _is_deadline_expired(item, text):
+    # Check for expired deadlines (applies to all item types)
+    # Note: _is_deadline_expired returns False if no date found, so ongoing
+    # requirements (like "teachers must have endorsement") won't be excluded
+    if _is_deadline_expired(item, text):
         return GateResult(False, {}, ["Excluded: deadline has passed"])
     
     if item_type in ("compliance", "compliance_funding") and _is_wida_access(text):

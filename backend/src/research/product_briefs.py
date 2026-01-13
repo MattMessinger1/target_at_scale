@@ -121,6 +121,59 @@ _COMPLEX_LIST_FIELDS = {
     "testimonials",
 }
 
+# Validation: fields required for product to work properly in research pipeline
+REQUIRED_YAML_FIELDS = [
+    "elevator_pitch",
+    "offerings",
+    "problems_solved",
+    "compliance_hooks",
+]
+
+# Validation: recommended fields for optimal research quality
+RECOMMENDED_YAML_FIELDS = [
+    "differentiators",
+    "case_studies",
+    "safe_claims",
+]
+
+
+def validate_product_brief(brief: Dict[str, Any], product_key: str) -> Dict[str, Any]:
+    """Validate a product brief has required fields.
+    
+    Use this to check if a product is ready for research pipeline.
+    
+    Args:
+        brief: The product brief dict (from YAML or merged)
+        product_key: Product identifier for logging
+    
+    Returns:
+        dict with:
+        - valid: bool - True if all required fields present
+        - missing_required: List[str] - Required fields that are missing/empty
+        - missing_recommended: List[str] - Recommended fields that are missing/empty
+        - warnings: List[str] - Human-readable warnings
+    """
+    missing_required = [f for f in REQUIRED_YAML_FIELDS if not brief.get(f)]
+    missing_recommended = [f for f in RECOMMENDED_YAML_FIELDS if not brief.get(f)]
+    
+    warnings = []
+    if missing_required:
+        warnings.append(f"Product '{product_key}' missing required fields: {missing_required}")
+    if missing_recommended:
+        warnings.append(f"Product '{product_key}' missing recommended fields: {missing_recommended}")
+    
+    # Log warnings
+    if warnings:
+        for warning in warnings:
+            logger.warning(warning)
+    
+    return {
+        "valid": len(missing_required) == 0,
+        "missing_required": missing_required,
+        "missing_recommended": missing_recommended,
+        "warnings": warnings,
+    }
+
 
 def _normalize_for_dedup(s: str) -> str:
     """Normalize a string for deduplication comparison."""

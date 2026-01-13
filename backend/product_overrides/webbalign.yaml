@@ -52,6 +52,13 @@ compliance_hooks:
   - "school improvement plan assessment components"
   - "DOK compliance for state standards"
 
+case_studies:
+  - state: null
+    district: null
+    context: "Districts use WebbAlign DOK analysis to ensure assessments match the cognitive rigor of state standards."
+    proof_snippet: "WebbAlign provides item-level DOK ratings with actionable recommendations for assessment improvement."
+    outcomes: null
+
 avoid_phrases:
   - "Are you maximizing"
   - "Did you know"

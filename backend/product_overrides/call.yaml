@@ -45,10 +45,19 @@ differentiators:
   - "Automated reporting delivers instant insights - no waiting for manual analysis"
   - "Directly connects to school improvement planning requirements - evidence-based leadership data"
 
+case_studies:
+  - state: null
+    district: null
+    context: "Schools use CALL to assess distributed leadership practices and ground improvement plans in evidence-based data."
+    proof_snippet: "CALL provides multi-source feedback across five research-validated leadership domains."
+    outcomes: null
+
 compliance_hooks:
-  - "Title II-A funds can support principal professional development and leadership assessments like CALL."
-  - "School improvement planning requirements often call for evidence-based leadership evaluation."
-  - "CSI/TSI schools may use CALL to assess and strengthen distributed leadership practices."
+  - "Title II-A principal professional development funding"
+  - "School improvement planning requirements"
+  - "CSI/TSI evidence-based leadership assessment"
+  - "Principal evaluation and growth planning"
+  - "Distributed leadership documentation"
 
 avoid_phrases:
   - "Are you maximizing"
