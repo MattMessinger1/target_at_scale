@@ -59,16 +59,17 @@ STATE_NAMES = {
     "WI": "Wisconsin", "WY": "Wyoming", "DC": "District of Columbia",
 }
 
-# WIDA states (40 states + DC + territories)
+# WIDA states (37 states + DC = 38 members)
+# Updated January 2026: Added NY (joined Oct 2025), WA; Removed IA, LA, MS, NE, OH
 WIDA_STATES = [
     "AL", "AK", "CO", "DE", "FL", "GA", "HI", "ID", "IL", "IN",
-    "IA", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO",
-    "MT", "NE", "NV", "NH", "NJ", "NM", "NC", "ND", "OH", "OK",
-    "PA", "RI", "SC", "SD", "TN", "UT", "VT", "VA", "WI", "WY", "DC",
+    "KY", "ME", "MD", "MA", "MI", "MN", "MO", "MT", "NV", "NH",
+    "NJ", "NM", "NY", "NC", "ND", "OK", "PA", "RI", "SC", "SD",
+    "TN", "UT", "VT", "VA", "WA", "WI", "WY", "DC",
 ]
 
-# Non-WIDA states
-NON_WIDA_STATES = ["AZ", "AR", "CA", "CT", "KS", "NY", "OR", "TX", "WA", "WV"]
+# Non-WIDA states (13 states)
+NON_WIDA_STATES = ["AZ", "AR", "CA", "CT", "IA", "KS", "LA", "MS", "NE", "OH", "OR", "TX", "WV"]
 
 # WCEPS Products
 WCEPS_PRODUCTS = [
