@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
 from sqlalchemy import select, func, delete
 
-from ..db import init_db, AsyncSessionLocal
+from ..db import init_db, run_migrations, AsyncSessionLocal
 from ..config import get_settings
 from ..db.models import KnowledgeBaseItem, SavedEmailRun, BatchJob
 
@@ -32,6 +32,14 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     await init_db()
+    
+    # Run schema migrations (adds missing columns to existing tables)
+    try:
+        await run_migrations()
+        logger.info("Database migrations completed")
+    except Exception as e:
+        logger.error(f"Database migrations failed (startup will continue): {e}", exc_info=True)
+    
     # Auto-index KB if empty (safety net for fresh DBs / new Postgres instances)
     try:
         async with AsyncSessionLocal() as db:
