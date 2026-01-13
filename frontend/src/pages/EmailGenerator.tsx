@@ -183,6 +183,14 @@ function EmailGeneratorV1() {
   // Step state
   const [currentStep, setCurrentStep] = useState<Step>('select')
   
+  // User identification (persisted to localStorage for team attribution)
+  const [createdBy, setCreatedBy] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('wceps_created_by') || ''
+    }
+    return ''
+  })
+  
   // Selection state - products/states are multi-select, audience is single
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   const [selectedStates, setSelectedStates] = useState<SelectedState[]>([])
@@ -224,6 +232,7 @@ function EmailGeneratorV1() {
       // Additional selections are passed as context
       additional_products: selectedProducts.slice(1),
       additional_states: selectedStates.slice(1).map(s => s.code),
+      created_by: createdBy || undefined,
     }),
     onSuccess: (data) => {
       setResearchResults(data)
@@ -808,6 +817,24 @@ function EmailGeneratorV1() {
               </div>
             )}
 
+            {/* Your Name (for team attribution) */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Your Name <span className="text-slate-500">(for team attribution)</span>
+              </label>
+              <input
+                type="text"
+                value={createdBy}
+                onChange={(e) => {
+                  const name = e.target.value
+                  setCreatedBy(name)
+                  localStorage.setItem('wceps_created_by', name)
+                }}
+                placeholder="e.g., Sarah Martinez"
+                className="w-full max-w-xs px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
+              />
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-1">
                 <ProductSelector
@@ -1278,6 +1305,14 @@ function EmailGeneratorPipeline() {
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   const [selectedStates, setSelectedStates] = useState<SelectedState[]>([])
   const [selectedAudience, setSelectedAudience] = useState<string>('Decision Makers')
+
+  // User identification (persisted to localStorage for team attribution)
+  const [createdBy, setCreatedBy] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('wceps_created_by') || ''
+    }
+    return ''
+  })
 
   const [districtName, setDistrictName] = useState('')
   const [districtUrl, setDistrictUrl] = useState('')
@@ -1770,6 +1805,7 @@ function EmailGeneratorPipeline() {
         district_name: districtName.trim() || undefined,
         district_url: districtUrl.trim() || undefined,
         include_district_research: includeDistrictResearch,
+        created_by: createdBy.trim() || undefined,
       }
       
       // Use polling-based research (more robust than streaming)
@@ -2950,6 +2986,24 @@ function EmailGeneratorPipeline() {
           <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
             <h2 className="text-lg font-medium text-slate-200 mb-6">Choose Product & Audience</h2>
             <div className="space-y-6">
+              {/* Your Name (for team attribution) */}
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-2">
+                  Your Name <span className="text-slate-500">(for team attribution)</span>
+                </label>
+                <input
+                  type="text"
+                  value={createdBy}
+                  onChange={(e) => {
+                    const name = e.target.value
+                    setCreatedBy(name)
+                    localStorage.setItem('wceps_created_by', name)
+                  }}
+                  placeholder="e.g., Sarah Martinez"
+                  className="w-full max-w-xs px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
+                />
+              </div>
+              
               <ProductSelector selectedProducts={selectedProducts} onSelect={setSelectedProducts} />
               <StateSelector selectedStates={selectedStates} onSelect={setSelectedStates} />
 

@@ -200,6 +200,12 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             default=False,
             description="If true, run district-level research after state research completes."
         )
+        
+        # Optional: who started this research (for team attribution)
+        created_by: Optional[str] = Field(
+            default=None,
+            description="Name or identifier of the person starting this research"
+        )
     
     class PipelineRunStreamRequest(PipelineRequest):
         """V3-compatible run request (allows optional human-selected hooks)."""
@@ -592,8 +598,96 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
     # Polling-based research prep (avoids long-running HTTP connections)
     # ---------------------------------------------------------------------------
     
-    # In-memory task storage for research tasks (mirrors _email_tasks pattern)
+    # In-memory task storage for research tasks (fast polling, synced to DB)
     _research_tasks: Dict[str, Dict[str, Any]] = {}
+
+    async def _sync_task_to_db(db: AsyncSession, task_id: str, task_data: Dict[str, Any]):
+        """Sync task state from memory to database for persistence.
+        
+        This ensures research results survive browser disconnects and server restarts.
+        """
+        from ...db.models import ResearchTask
+        try:
+            result = await db.execute(
+                select(ResearchTask).where(ResearchTask.id == task_id)
+            )
+            db_task = result.scalar_one_or_none()
+            if db_task:
+                db_task.status = task_data.get("status", db_task.status)
+                db_task.phase = task_data.get("phase", db_task.phase)
+                db_task.progress = task_data.get("progress", db_task.progress)
+                db_task.message = task_data.get("message", db_task.message)
+                db_task.error = task_data.get("error")
+                
+                # Store results if completed
+                if task_data.get("status") == "completed" and task_data.get("result"):
+                    result_data = task_data["result"]
+                    db_task.evidence_pack_json = result_data.get("evidence_pack")
+                    db_task.treasure_hooks_json = result_data.get("treasure_hooks")
+                    db_task.filtered_requirements_json = result_data.get("filtered_requirements")
+                    db_task.district_research_json = result_data.get("district_research")
+                    db_task.warnings_json = result_data.get("warnings")
+                    db_task.completed_at = datetime.utcnow()
+                
+                await db.commit()
+                logger.debug(f"Synced task {task_id} to database: status={db_task.status}")
+        except Exception as e:
+            logger.warning(f"Failed to sync task {task_id} to database: {e}")
+            # Don't raise - this is best-effort persistence
+
+    async def _auto_save_research_run(
+        db: AsyncSession, 
+        task_id: str, 
+        task_data: Dict[str, Any],
+        result_data: Dict[str, Any]
+    ) -> Optional[int]:
+        """Auto-save completed research to SavedEmailRun for retrieval.
+        
+        Returns the saved run ID, or None if save failed.
+        """
+        from ...db.models import SavedEmailRun, ResearchTask
+        
+        try:
+            # Create SavedEmailRun with research results
+            saved_run = SavedEmailRun(
+                run_type="research",
+                name=f"{task_data.get('product_display_name', 'Research')} - {task_data.get('state_full') or task_data.get('state_code', 'Unknown')} (auto-saved)",
+                created_by=task_data.get("created_by"),
+                product=task_data.get("product_display_name", ""),
+                state_code=task_data.get("state_code", ""),
+                state_full=task_data.get("state_full"),
+                audiences=task_data.get("audiences") or ["Decision Makers"],
+                district_name=task_data.get("district_name"),
+                pipeline_response={
+                    "evidence_pack": result_data.get("evidence_pack"),
+                    "hooks": result_data.get("treasure_hooks"),
+                    "filtered_requirements": result_data.get("filtered_requirements"),
+                    "district_research": result_data.get("district_research"),
+                },
+                selected_hook_links=[],
+                primary_hook_link=None,
+                hook_reason_tags={},
+                hook_reason_notes={},
+            )
+            db.add(saved_run)
+            await db.commit()
+            await db.refresh(saved_run)
+            
+            # Update task with saved_run_id
+            db_result = await db.execute(
+                select(ResearchTask).where(ResearchTask.id == task_id)
+            )
+            db_task = db_result.scalar_one_or_none()
+            if db_task:
+                db_task.saved_run_id = saved_run.id
+                await db.commit()
+            
+            logger.info(f"Auto-saved research task {task_id} as SavedEmailRun {saved_run.id}")
+            return saved_run.id
+            
+        except Exception as e:
+            logger.error(f"Failed to auto-save research task {task_id}: {e}")
+            return None
 
     @router.post("/pipeline/prep/start")
     async def start_research_pipeline(
@@ -647,6 +741,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 }
         
         # Initialize task state in memory
+        created_by = (request.created_by or "").strip() or None
         _research_tasks[task_id] = {
             "status": "queued",
             "phase": "state",
@@ -657,7 +752,10 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             "product_key": product_key,
             "product_display_name": product,
             "state_full": state_full,
+            "audiences": request.audiences or ["Decision Makers"],
             "include_district_research": request.include_district_research or False,
+            "created_by": created_by,
+            "district_name": request.district_name,
             "result": None,
             "error": None,
         }
@@ -667,6 +765,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             expires_at = datetime.utcnow() + timedelta(hours=1)
             db_task = ResearchTask(
                 id=task_id,
+                created_by=created_by,
                 state_code=state_code,
                 product_key=product_key,
                 product_display_name=product,
@@ -908,6 +1007,17 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 except Exception as cache_err:
                     logger.warning(f"Research task {task_id}: Failed to cache full prep: {cache_err}")
                 
+                # Sync completed state to database
+                await _sync_task_to_db(db, task_id, _research_tasks[task_id])
+                
+                # Auto-save to SavedEmailRun so user can find results even if they disconnected
+                saved_run_id = await _auto_save_research_run(
+                    db, task_id, _research_tasks[task_id], result
+                )
+                if saved_run_id:
+                    _research_tasks[task_id]["saved_run_id"] = saved_run_id
+                    logger.info(f"Research task {task_id}: Auto-saved as run {saved_run_id}")
+                
                 logger.info(f"Research task {task_id} completed successfully")
                 
             except Exception as e:
@@ -915,6 +1025,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 _research_tasks[task_id]["status"] = "failed"
                 _research_tasks[task_id]["error"] = str(e)
                 _research_tasks[task_id]["message"] = f"Failed: {str(e)}"
+                # Sync failed state to database
+                await _sync_task_to_db(db, task_id, _research_tasks[task_id])
 
         # Start background task
         asyncio.create_task(run_research_task())
@@ -959,6 +1071,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             if task["status"] == "completed" and task["result"]:
                 response["result"] = task["result"]
                 response["completed_at"] = task.get("completed_at")
+                if task.get("saved_run_id"):
+                    response["saved_run_id"] = task["saved_run_id"]
             
             if task["status"] == "failed" and task["error"]:
                 response["error"] = task["error"]
@@ -994,6 +1108,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         "warnings": db_task.warnings_json or [],
                     }
                     response["completed_at"] = db_task.completed_at.isoformat() if db_task.completed_at else None
+                    if db_task.saved_run_id:
+                        response["saved_run_id"] = db_task.saved_run_id
                 if db_task.status == "failed":
                     response["error"] = db_task.error
                 return response

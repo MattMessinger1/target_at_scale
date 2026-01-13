@@ -460,11 +460,15 @@ class ResearchTask(Base):
     """Track research tasks for polling-based progress.
     
     This enables robust research that survives browser tab sleep,
-    network hiccups, and page refreshes.
+    network hiccups, and page refreshes. Results are auto-saved to SavedEmailRun
+    on completion.
     """
     __tablename__ = "research_tasks"
     
     id: Mapped[str] = mapped_column(String(50), primary_key=True)  # UUID
+    
+    # Who started this task (for team attribution)
+    created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     
     # Request context
     state_code: Mapped[str] = mapped_column(String(2), nullable=False)
@@ -501,6 +505,9 @@ class ResearchTask(Base):
     # Timestamps
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    
+    # Auto-save reference (when research completes, it's auto-saved here)
+    saved_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     
     # Cleanup: auto-delete old tasks after 1 hour
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
@@ -545,6 +552,9 @@ class SavedEmailRun(Base):
     
     # User-provided name (optional)
     name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    
+    # Who created this run (for team attribution)
+    created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     
     # Generation context
     product: Mapped[str] = mapped_column(String(200), nullable=False)

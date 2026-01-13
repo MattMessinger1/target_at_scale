@@ -150,6 +150,9 @@ export default function SavedRuns() {
           </div>
           <div className="text-xs text-slate-500 flex items-center gap-3">
             <span>{formatDate(run.created_at)}</span>
+            {run.created_by && (
+              <span className="text-slate-400">by {run.created_by}</span>
+            )}
             {/* State vs District indicator */}
             <Badge variant="outline" className={run.district_name ? 'border-amber-600 text-amber-300' : 'border-slate-600 text-slate-400'}>
               {run.district_name ? 'District' : 'State'}

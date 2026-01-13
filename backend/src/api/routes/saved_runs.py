@@ -27,6 +27,7 @@ router = APIRouter(prefix="/saved-runs", tags=["saved-runs"])
 class SaveRunRequest(BaseModel):
     """Request to save an email run (full pipeline)."""
     name: Optional[str] = Field(None, max_length=200)
+    created_by: Optional[str] = Field(None, max_length=100, description="Who created this run")
     
     # Context
     product: str
@@ -48,6 +49,7 @@ class SaveRunRequest(BaseModel):
 class SaveResearchRequest(BaseModel):
     """Request to save research results BEFORE email generation."""
     name: Optional[str] = Field(None, max_length=200)
+    created_by: Optional[str] = Field(None, max_length=100, description="Who created this run")
     
     # Context
     product: str
@@ -71,6 +73,7 @@ class SavedRunSummary(BaseModel):
     id: int
     run_type: str = "email"  # "research" or "email"
     name: Optional[str]
+    created_by: Optional[str] = None
     product: str
     state_code: str
     state_full: Optional[str]
@@ -89,6 +92,7 @@ class SavedRunFull(BaseModel):
     id: int
     run_type: str = "email"
     name: Optional[str]
+    created_by: Optional[str] = None
     product: str
     state_code: str
     state_full: Optional[str]
@@ -133,6 +137,7 @@ async def save_run(
     run = SavedEmailRun(
         run_type="email",
         name=request.name,
+        created_by=request.created_by,
         product=request.product,
         state_code=request.state_code,
         state_full=request.state_full,
@@ -152,6 +157,7 @@ async def save_run(
         id=run.id,
         run_type=run.run_type,
         name=run.name,
+        created_by=run.created_by,
         product=run.product,
         state_code=run.state_code,
         state_full=run.state_full,
@@ -189,6 +195,7 @@ async def save_research_run(
     run = SavedEmailRun(
         run_type="research",
         name=request.name,
+        created_by=request.created_by,
         product=request.product,
         state_code=request.state_code,
         state_full=request.state_full,
@@ -209,6 +216,7 @@ async def save_research_run(
         id=run.id,
         run_type=run.run_type,
         name=run.name,
+        created_by=run.created_by,
         product=run.product,
         state_code=run.state_code,
         state_full=run.state_full,
@@ -277,6 +285,7 @@ async def list_runs(
             id=run.id,
             run_type=run_type_val,
             name=run.name,
+            created_by=getattr(run, 'created_by', None),
             product=run.product,
             state_code=run.state_code,
             state_full=run.state_full,
@@ -345,6 +354,7 @@ async def list_runs_grouped(
             id=run.id,
             run_type=run_type_val,
             name=run.name,
+            created_by=getattr(run, 'created_by', None),
             product=run.product,
             state_code=run.state_code,
             state_full=run.state_full,
@@ -404,6 +414,7 @@ async def get_run(
         id=run.id,
         run_type=getattr(run, 'run_type', 'email') or 'email',
         name=run.name,
+        created_by=getattr(run, 'created_by', None),
         product=run.product,
         state_code=run.state_code,
         state_full=run.state_full,
@@ -459,6 +470,7 @@ async def rename_run(
         id=run.id,
         run_type=run_type_val,
         name=run.name,
+        created_by=getattr(run, 'created_by', None),
         product=run.product,
         state_code=run.state_code,
         state_full=run.state_full,

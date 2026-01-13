@@ -218,6 +218,7 @@ export interface ResearchRequest {
   // Multi-select support for products/states only
   additional_products?: string[]
   additional_states?: string[]
+  created_by?: string | null
 }
 
 export interface ResearchResponse {
@@ -317,6 +318,7 @@ export interface PipelineRequest {
   district_name?: string | null
   district_url?: string | null
   include_district_research?: boolean
+  created_by?: string | null
 }
 
 export interface PipelineRunStreamRequest extends PipelineRequest {
@@ -617,6 +619,7 @@ export interface SavedRunSummary {
   id: number
   run_type: 'research' | 'email'
   name?: string | null
+  created_by?: string | null
   product: string
   state_code: string
   state_full?: string | null
@@ -632,6 +635,7 @@ export interface SavedRunFull {
   id: number
   run_type: 'research' | 'email'
   name?: string | null
+  created_by?: string | null
   product: string
   state_code: string
   state_full?: string | null
@@ -648,6 +652,7 @@ export interface SavedRunFull {
 
 export interface SaveResearchRequest {
   name?: string
+  created_by?: string | null
   product: string
   state_code: string
   state_full?: string
@@ -1246,6 +1251,7 @@ export const api = {
         product_key?: string
         product_display_name?: string
         include_district_research?: boolean
+        saved_run_id?: number  // Auto-saved run ID (when completed)
         result?: {
           evidence_pack: EvidencePack
           treasure_hooks: WebHook[]
