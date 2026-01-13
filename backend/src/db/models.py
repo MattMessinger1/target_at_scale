@@ -497,6 +497,7 @@ class ResearchTask(Base):
     treasure_hooks_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     filtered_requirements_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     district_research_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    conferences_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     warnings_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     
     # Error details (when failed)

@@ -41,6 +41,7 @@ router = APIRouter()
 
 try:
     from ...pipeline.schemas import (
+        ConferenceOpportunity,
         EvidencePack,
         FilteredRequirement,
         FilteredDistrictHook,
@@ -57,6 +58,7 @@ except Exception:
     FilteredRequirement = None  # type: ignore
     FilteredDistrictHook = None  # type: ignore
     DistrictResearchResult = None  # type: ignore
+    ConferenceOpportunity = None  # type: ignore
 
 
 # Email style guides by audience - simplified to 2 categories
@@ -981,6 +983,60 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         logger.error(f"District research failed: {e}")
                         warnings.append(f"District research failed: {str(e)}")
                 
+                # Stage 5: Conference Research (parallel opportunity)
+                conferences = []
+                try:
+                    _research_tasks[task_id]["message"] = "Searching for relevant conferences..."
+                    _research_tasks[task_id]["progress"] = 96
+                    
+                    from ...research.deep_research import run_conference_research
+                    from ...research.quality_gate import filter_conferences
+                    
+                    def conf_progress_callback(message: str, percent: float):
+                        """Update task progress during conference research."""
+                        _research_tasks[task_id]["message"] = message
+                        # Scale progress: conference research is 96-99%
+                        scaled = 96 + int(percent * 0.03)
+                        _research_tasks[task_id]["progress"] = min(99, scaled)
+                    
+                    t4 = time.perf_counter()
+                    conf_results = await run_conference_research(
+                        db=db,
+                        state_code=state_code,
+                        state_full=state_full,
+                        product_key=product_key,
+                        audience=audiences[0] if audiences else "Decision Makers",
+                        on_progress=conf_progress_callback,
+                    )
+                    ms4 = int((time.perf_counter() - t4) * 1000)
+                    
+                    # Filter conferences for quality
+                    raw_conferences = conf_results.get("conferences", [])
+                    passed_conferences, _ = filter_conferences(raw_conferences, product_key)
+                    
+                    # Convert to ConferenceOpportunity models
+                    for conf in passed_conferences[:5]:  # Limit to top 5
+                        try:
+                            conferences.append(ConferenceOpportunity(
+                                conference_name=conf.get("conference_name", ""),
+                                organization=conf.get("organization", ""),
+                                location=conf.get("location", ""),
+                                dates=conf.get("dates", ""),
+                                relevance=conf.get("relevance", ""),
+                                presentation_deadline=conf.get("presentation_deadline"),
+                                sponsorship_info=conf.get("sponsorship_info"),
+                                website=conf.get("website", ""),
+                                confidence=conf.get("confidence", "medium"),
+                            ))
+                        except Exception as e:
+                            logger.warning(f"Failed to convert conference: {e}")
+                    
+                    logger.info(f"Research task {task_id}: Conference research completed in {ms4}ms, found {len(conferences)} opportunities")
+                    
+                except Exception as e:
+                    logger.warning(f"Conference research failed (non-critical): {e}")
+                    # Non-critical - continue without conferences
+                
                 # Build result
                 _research_tasks[task_id]["message"] = "Research complete!"
                 _research_tasks[task_id]["progress"] = 100
@@ -992,6 +1048,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     "treasure_hooks": [_dump_model(h) for h in gated],
                     "filtered_requirements": [_dump_model(fr) for fr in filtered_requirements_models],
                     "district_research": _dump_model(district_research_result) if district_research_result else None,
+                    "conferences": [_dump_model(c) for c in conferences],
                     "warnings": warnings,
                 }
                 _research_tasks[task_id]["result"] = result

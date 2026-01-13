@@ -671,3 +671,170 @@ def filter_items(
             passed.append(item)
     return passed
 
+
+# ---------------------------------------------------------------------------
+# Conference Quality Filter
+# ---------------------------------------------------------------------------
+
+# Known high-quality conference organizations (case-insensitive matching)
+HIGH_CONFIDENCE_ORGS = [
+    "tesol",
+    "wida",
+    "ascd",
+    "learning forward",
+    "nassp",
+    "naesp",
+    "ncte",
+    "nctm",
+    "iste",
+    "catesol",
+    "waesol",
+    "njtesol",
+    "nystesol",
+    "gotesol",
+    "tntesol",
+    "midtesol",
+    "tesol international",
+    "department of education",
+    "state doe",
+    "ospi",
+    "dpi",
+]
+
+
+def _parse_conference_date(dates_str: str) -> Optional[date]:
+    """Parse conference dates and return the start date.
+    
+    Handles formats like:
+    - "October 15-17, 2026"
+    - "October 15, 2026"
+    - "Fall 2026"
+    """
+    if not dates_str:
+        return None
+    
+    dates_lower = dates_str.lower()
+    
+    # Pattern 1: "Month DD-DD, YYYY" or "Month DD, YYYY"
+    pat1 = re.compile(
+        r"(january|february|march|april|may|june|july|august|september|october|november|december|"
+        r"jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+(\d{1,2})(?:-\d{1,2})?,?\s*(\d{4})",
+        re.I
+    )
+    m = pat1.search(dates_str)
+    if m:
+        month_str, day_str, year_str = m.groups()
+        month = _MONTH_MAP.get(month_str.lower())
+        if month:
+            try:
+                return date(int(year_str), month, int(day_str))
+            except ValueError:
+                pass
+    
+    # Pattern 2: Season YYYY (e.g., "Fall 2026")
+    season_pat = re.compile(r"(spring|summer|fall|winter)\s+(\d{4})", re.I)
+    m = season_pat.search(dates_str)
+    if m:
+        season, year_str = m.groups()
+        year = int(year_str)
+        season_dates = {
+            "spring": (3, 15),
+            "summer": (6, 15),
+            "fall": (10, 1),
+            "winter": (1, 15),
+        }
+        month, day = season_dates.get(season.lower(), (6, 1))
+        try:
+            return date(year, month, day)
+        except ValueError:
+            pass
+    
+    # Pattern 3: Just year
+    year_pat = re.compile(r"\b(202[5-9]|203\d)\b")
+    m = year_pat.search(dates_str)
+    if m:
+        try:
+            return date(int(m.group(1)), 6, 1)  # Assume mid-year
+        except ValueError:
+            pass
+    
+    return None
+
+
+def _is_high_confidence_org(org: str) -> bool:
+    """Check if the organization is a known high-quality conference host."""
+    org_lower = org.lower()
+    return any(known in org_lower for known in HIGH_CONFIDENCE_ORGS)
+
+
+def filter_conferences(
+    conferences: List[Dict[str, Any]],
+    product_key: str,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Filter conference results for quality and relevance.
+    
+    Args:
+        conferences: List of conference dictionaries from research
+        product_key: Product key for relevance matching
+    
+    Returns:
+        Tuple of (passed_conferences, filtered_conferences)
+    """
+    today = date.today()
+    passed: List[Dict[str, Any]] = []
+    filtered: List[Dict[str, Any]] = []
+    
+    for conf in conferences or []:
+        if not isinstance(conf, dict):
+            continue
+        
+        filter_reason = None
+        
+        # 1. Must have conference name
+        name = conf.get("conference_name", "").strip()
+        if not name:
+            filter_reason = "Missing conference name"
+        
+        # 2. Must have website
+        website = conf.get("website", "").strip()
+        if not filter_reason and not website:
+            filter_reason = "Missing website URL"
+        
+        # 3. Must have dates
+        dates_str = conf.get("dates", "").strip()
+        if not filter_reason and not dates_str:
+            filter_reason = "Missing conference dates"
+        
+        # 4. Conference must be upcoming (not in the past)
+        if not filter_reason:
+            conf_date = _parse_conference_date(dates_str)
+            if conf_date and conf_date < today:
+                filter_reason = f"Conference date is in the past ({dates_str})"
+        
+        # 5. Must have location (in-person)
+        location = conf.get("location", "").strip()
+        if not filter_reason and not location:
+            filter_reason = "Missing location (may be virtual-only)"
+        
+        # If passed all checks, add to passed list
+        if filter_reason:
+            filtered.append({**conf, "_filter_reason": filter_reason})
+        else:
+            # Set confidence level based on organization
+            org = conf.get("organization", "")
+            if _is_high_confidence_org(org):
+                conf["confidence"] = "high"
+            else:
+                conf["confidence"] = "medium"
+            
+            passed.append(conf)
+    
+    # Sort by date (soonest first)
+    def sort_key(c: Dict[str, Any]) -> date:
+        d = _parse_conference_date(c.get("dates", ""))
+        return d if d else date(2099, 12, 31)
+    
+    passed.sort(key=sort_key)
+    
+    return passed, filtered
+

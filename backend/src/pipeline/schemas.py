@@ -193,6 +193,47 @@ class FilteredRequirement(BaseModel):
     reason_label: str = Field(..., description="Human-readable explanation.")
 
 
+# ---------------------------------------------------------------------------
+# Conference Opportunities (for in-person relationship building)
+# ---------------------------------------------------------------------------
+
+
+ConferenceConfidence = Literal["high", "medium"]
+
+
+class ConferenceOpportunity(BaseModel):
+    """A relevant professional conference for in-person relationship building.
+    
+    Examples: State TESOL affiliates (WAESOL, CATESOL), WIDA Annual Conference,
+    state EL director summits, regional assessment conferences.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    conference_name: str = Field(..., description="Full conference name, e.g. 'WAESOL 2026 Annual Conference'")
+    organization: str = Field(..., description="Organizing body, e.g. 'Washington Association for ESL'")
+    location: str = Field(..., description="Location, e.g. 'Seattle, WA'")
+    dates: str = Field(..., description="Conference dates, e.g. 'October 15-17, 2026'")
+    
+    relevance: str = Field(..., description="Why this conference is relevant for the product")
+    
+    presentation_deadline: Optional[str] = Field(
+        default=None,
+        description="Deadline for presentation proposals, e.g. 'June 30, 2026'"
+    )
+    sponsorship_info: Optional[str] = Field(
+        default=None,
+        description="Sponsorship/exhibitor info, e.g. 'Exhibitor booths available, $500-$2000'"
+    )
+    
+    website: str = Field(..., description="Direct link to conference website")
+    
+    confidence: ConferenceConfidence = Field(
+        default="medium",
+        description="Confidence level: 'high' for known organizations, 'medium' for others"
+    )
+
+
 class FilteredDistrictHook(BaseModel):
     """A district hook that was filtered out, with reason for transparency display."""
 
@@ -358,10 +399,16 @@ class PipelineRunResponse(BaseModel):
     evidence_pack: EvidencePack
     treasure_hooks: List[WebHook] = Field(default_factory=list)
     
-    # District-level research results (NEW)
+    # District-level research results
     district_research: Optional[DistrictResearchResult] = Field(
         default=None,
         description="Results from district-level deep research, if enabled."
+    )
+    
+    # Conference opportunities for in-person relationship building
+    conferences: List[ConferenceOpportunity] = Field(
+        default_factory=list,
+        description="Relevant professional conferences (TESOL affiliates, EL summits, etc.)"
     )
 
     variants: List[AudienceVariantResult] = Field(default_factory=list)

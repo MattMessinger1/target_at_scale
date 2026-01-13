@@ -24,6 +24,7 @@ import {
   WebHook,
   FilteredRequirement,
   DistrictResearchResult,
+  ConferenceOpportunity,
   PipelineRequest,
   PipelineRunStreamRequest,
   PipelineRunResponse,
@@ -1340,7 +1341,7 @@ function EmailGeneratorPipeline() {
   const [traceEvents, setTraceEvents] = useState<PipelineStreamEvent[]>([])
   const [researchStartTime, setResearchStartTime] = useState<Date | null>(null)
   const [emailProgress, setEmailProgress] = useState<{ progress: number; message: string } | null>(null)
-  const [prep, setPrep] = useState<{ evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; district_research?: DistrictResearchResult | null; warnings: string[] } | null>(null)
+  const [prep, setPrep] = useState<{ evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; district_research?: DistrictResearchResult | null; conferences?: ConferenceOpportunity[]; warnings: string[] } | null>(null)
   const [blockedFilteredRequirements, setBlockedFilteredRequirements] = useState<FilteredRequirement[]>([])
   // Use hook_id for reliable selection (handles multiple hooks with same URL)
   const [selectedHookKeys, setSelectedHookKeys] = useState<string[]>([])  // hook_id or link fallback
@@ -1428,6 +1429,7 @@ function EmailGeneratorPipeline() {
           treasure_hooks: hooks,
           filtered_requirements: full.pipeline_response.filtered_requirements || [],
           district_research: full.pipeline_response.district_research || null,
+          conferences: full.pipeline_response.conferences || [],
           warnings: full.pipeline_response.warnings || [],
         })
         setDistrictResearchStatus(full.pipeline_response.district_research ? 'complete' : 'idle')
@@ -1691,6 +1693,7 @@ function EmailGeneratorPipeline() {
         hooks: prep.treasure_hooks || [],
         filtered_requirements: prep.filtered_requirements || [],
         district_research: prep.district_research || null,
+        conferences: prep.conferences || [],
       })
       toast({
         title: 'Research saved',
@@ -1748,6 +1751,7 @@ function EmailGeneratorPipeline() {
           treasure_hooks: hooks,
           filtered_requirements: full.pipeline_response.filtered_requirements || [],
           district_research: full.pipeline_response.district_research || null,
+          conferences: full.pipeline_response.conferences || [],
           warnings: full.pipeline_response.warnings || [],
         })
         // Set district research status if data exists
@@ -3591,6 +3595,80 @@ function EmailGeneratorPipeline() {
                         Run District Research
                       </button>
                     </div>
+                  </div>
+                )}
+                
+                {/* Conference Opportunities Section */}
+                {prep.conferences && prep.conferences.length > 0 && (
+                  <div className="p-4 bg-indigo-900/20 rounded-lg border border-indigo-700/50">
+                    <h4 className="text-sm font-medium text-indigo-400 flex items-center gap-2 mb-3">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      Conference Opportunities
+                      <span className="text-xs text-slate-500 font-normal ml-2">
+                        (for in-person relationship building)
+                      </span>
+                    </h4>
+                    
+                    <div className="space-y-3">
+                      {prep.conferences.map((conf, idx) => (
+                        <div 
+                          key={idx} 
+                          className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50 hover:border-indigo-600/50 transition-colors"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h5 className="text-sm font-medium text-slate-200 truncate">
+                                  {conf.conference_name}
+                                </h5>
+                                {conf.confidence === 'high' && (
+                                  <span className="shrink-0 px-1.5 py-0.5 text-[10px] font-medium bg-emerald-900/50 text-emerald-400 rounded">
+                                    HIGH QUALITY
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-400 mb-2">
+                                {conf.organization} • {conf.location}
+                              </p>
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                                <span className="text-indigo-400">
+                                  📅 {conf.dates}
+                                </span>
+                                {conf.presentation_deadline && (
+                                  <span className="text-amber-400">
+                                    ✍️ Proposals due: {conf.presentation_deadline}
+                                  </span>
+                                )}
+                                {conf.sponsorship_info && (
+                                  <span className="text-emerald-400">
+                                    💼 {conf.sponsorship_info}
+                                  </span>
+                                )}
+                              </div>
+                              {conf.relevance && (
+                                <p className="text-xs text-slate-500 mt-2 italic">
+                                  {conf.relevance}
+                                </p>
+                              )}
+                            </div>
+                            <a
+                              href={conf.website}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="shrink-0 px-3 py-1.5 text-xs font-medium bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 rounded-lg transition-colors"
+                            >
+                              Visit →
+                            </a>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <p className="text-[11px] text-slate-500 mt-3">
+                      💡 Tip: Presenting or sponsoring at these conferences is a great way to build relationships with {selectedAudience === 'Users' ? 'educators' : 'decision makers'} in {selectedStates[0]?.name || 'this state'}.
+                    </p>
                   </div>
                 )}
               </div>

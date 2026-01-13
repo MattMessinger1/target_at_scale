@@ -850,6 +850,263 @@ def _generate_hook_id(hook_type: str, quote: str, link: str, trigger_excerpt: st
     return hashlib.sha256(content.encode('utf-8')).hexdigest()[:16]
 
 
+# ---------------------------------------------------------------------------
+# Conference Research
+# ---------------------------------------------------------------------------
+
+# Product category mapping for conference search
+PRODUCT_CONFERENCE_CATEGORIES = {
+    "care_coaching": {
+        "primary": "English learner/ESOL/ELL",
+        "conference_types": ["TESOL affiliate", "EL director summit", "instructional coaching"],
+        "keywords": ["ESL", "ELL", "multilingual learner", "bilingual education", "coaching"],
+    },
+    "wida_model": {
+        "primary": "English learner assessment",
+        "conference_types": ["TESOL affiliate", "EL assessment", "WIDA"],
+        "keywords": ["WIDA", "ELP assessment", "ACCESS", "EL assessment"],
+    },
+    "wida_professional_learning": {
+        "primary": "English learner professional development",
+        "conference_types": ["TESOL affiliate", "WIDA", "teacher professional development"],
+        "keywords": ["WIDA", "EL PD", "ESL training", "multilingual learner"],
+    },
+    "wida_sis": {
+        "primary": "English learner data systems",
+        "conference_types": ["TESOL affiliate", "education data", "EL director summit"],
+        "keywords": ["EL data", "student information", "compliance tracking"],
+    },
+    "webbalign": {
+        "primary": "curriculum and instruction",
+        "conference_types": ["curriculum director", "instruction", "standards alignment"],
+        "keywords": ["curriculum", "standards", "Depth of Knowledge", "assessment"],
+    },
+    "call": {
+        "primary": "school leadership",
+        "conference_types": ["principal", "school leadership", "administrator"],
+        "keywords": ["leadership", "principal", "school improvement", "administration"],
+    },
+    "discussion_project": {
+        "primary": "social studies education",
+        "conference_types": ["social studies", "civic education", "EL education"],
+        "keywords": ["discussion", "civic", "social studies", "discourse"],
+    },
+    "depth_of_knowledge": {
+        "primary": "assessment and curriculum",
+        "conference_types": ["assessment", "curriculum director", "instruction"],
+        "keywords": ["DOK", "assessment", "rigor", "cognitive demand"],
+    },
+}
+
+CONFERENCE_RESEARCH_PROMPT = """You are an expert at finding professional development conferences for K-12 educators.
+
+Your task is to find UPCOMING professional conferences in {state_full} ({state_code}) and the surrounding region 
+that would be relevant for marketing {product_category} products and services to educators.
+
+## Target Audience
+{audience_type} educators who work with {product_focus}
+
+## Conference Types to Search For
+{conference_types}
+
+## Specific Search Terms
+- "{state_full} {primary_category} conference 2026"
+- "{state_code} TESOL affiliate conference"
+- "{state_full} EL director summit"
+- "{state_full} education conference {keywords}"
+- "Regional {primary_category} conference {region}"
+
+## FOR EACH CONFERENCE, PROVIDE:
+1. **Conference Name**: Full official name with year
+2. **Organization**: Who hosts it (e.g., "WAESOL", "State DOE", "Regional TESOL")
+3. **Location**: City and state
+4. **Dates**: Specific dates (e.g., "October 15-17, 2026")
+5. **Presentation Deadline**: When proposals are due (if available)
+6. **Sponsorship Info**: Cost and availability for exhibiting/sponsoring (if available)
+7. **Website**: Direct link to conference page
+8. **Relevance**: Why this is a good opportunity for {product_category}
+
+## QUALITY REQUIREMENTS
+- ONLY include conferences in 2026 or later
+- ONLY include state or regional conferences (not national unless hosted in {state_code} this year)
+- ONLY include in-person conferences (not webinar-only events)
+- MUST have a verifiable website link
+- Prefer conferences hosted by established organizations (TESOL affiliates, state DOE, professional associations)
+
+## OUTPUT FORMAT
+Return your findings as a JSON object:
+{{
+  "conferences": [
+    {{
+      "conference_name": "Full conference name with year",
+      "organization": "Hosting organization",
+      "location": "City, State",
+      "dates": "Month DD-DD, YYYY",
+      "presentation_deadline": "Month DD, YYYY or null",
+      "sponsorship_info": "Exhibitor info or null",
+      "website": "https://...",
+      "relevance": "Why relevant for our product"
+    }}
+  ],
+  "research_notes": "Any caveats or notes about the search"
+}}
+
+## IMPORTANT
+- Quality over quantity: 3-5 highly relevant conferences is better than 10 marginal ones
+- Focus on conferences where decision-makers attend (not just classroom teachers)
+- State/regional TESOL affiliates are HIGH PRIORITY for EL products
+- If a deadline has passed, note the next year's expected dates
+"""
+
+
+def _get_product_conference_config(product_key: str) -> Dict[str, Any]:
+    """Get conference search configuration for a product."""
+    # Normalize product key
+    normalized = product_key.lower().replace(" ", "_").replace("-", "_")
+    
+    # Look up or use default
+    config = PRODUCT_CONFERENCE_CATEGORIES.get(normalized, {
+        "primary": "English learner education",
+        "conference_types": ["TESOL affiliate", "EL director", "education"],
+        "keywords": ["EL", "ESL", "multilingual"],
+    })
+    
+    return config
+
+
+def _get_region_for_state(state_code: str) -> str:
+    """Get regional identifier for a state (for regional conference searches)."""
+    regions = {
+        # Pacific
+        "WA": "Pacific Northwest", "OR": "Pacific Northwest", "ID": "Pacific Northwest",
+        "CA": "Western", "NV": "Western", "AZ": "Southwest",
+        "AK": "Pacific", "HI": "Pacific",
+        # Mountain
+        "MT": "Mountain West", "WY": "Mountain West", "CO": "Mountain West", "UT": "Mountain West", "NM": "Southwest",
+        # Midwest
+        "ND": "Upper Midwest", "SD": "Upper Midwest", "MN": "Upper Midwest", "WI": "Upper Midwest",
+        "NE": "Midwest", "KS": "Midwest", "IA": "Midwest", "MO": "Midwest",
+        "IL": "Great Lakes", "IN": "Great Lakes", "MI": "Great Lakes", "OH": "Great Lakes",
+        # South
+        "TX": "Texas/Southwest", "OK": "South Central", "AR": "South Central", "LA": "Gulf Coast",
+        "FL": "Southeast", "GA": "Southeast", "SC": "Southeast", "NC": "Southeast",
+        "TN": "Southeast", "AL": "Southeast", "MS": "Gulf Coast",
+        "KY": "Mid-South", "WV": "Appalachian", "VA": "Mid-Atlantic",
+        # Northeast
+        "MD": "Mid-Atlantic", "DE": "Mid-Atlantic", "NJ": "Mid-Atlantic", "PA": "Mid-Atlantic",
+        "NY": "Northeast", "CT": "New England", "RI": "New England", "MA": "New England",
+        "VT": "New England", "NH": "New England", "ME": "New England",
+        "DC": "Mid-Atlantic",
+    }
+    return regions.get(state_code, "Regional")
+
+
+async def run_conference_research(
+    db: AsyncSession,
+    state_code: str,
+    state_full: str,
+    product_key: str,
+    audience: str = "Decision Makers",
+    on_progress: Optional[Callable[[str, float], None]] = None,
+) -> Dict[str, Any]:
+    """Run conference research for a state/product combination.
+    
+    Finds relevant professional conferences (TESOL affiliates, EL summits,
+    assessment conferences, etc.) that would be opportunities for WCEPS to
+    present or sponsor.
+    
+    Args:
+        db: Database session
+        state_code: Two-letter state code
+        state_full: Full state name
+        product_key: Normalized product key
+        audience: Target audience (Decision Makers or Users)
+        on_progress: Optional callback for progress updates
+    
+    Returns:
+        Dict with conferences list
+    """
+    if on_progress:
+        on_progress("Searching for relevant conferences...", 10.0)
+    
+    # Get product-specific conference configuration
+    config = _get_product_conference_config(product_key)
+    region = _get_region_for_state(state_code)
+    
+    # Build the prompt
+    prompt = CONFERENCE_RESEARCH_PROMPT.format(
+        state_code=state_code,
+        state_full=state_full,
+        product_category=config.get("primary", "education"),
+        primary_category=config.get("primary", "education"),
+        audience_type=audience,
+        product_focus=config.get("primary", "education"),
+        conference_types=", ".join(config.get("conference_types", ["education"])),
+        keywords=" ".join(config.get("keywords", ["education"])[:3]),
+        region=region,
+    )
+    
+    # Use a shorter timeout since this is a simpler query
+    client = AsyncOpenAI(
+        api_key=settings.openai_api_key,
+        timeout=300.0,  # 5 minutes should be plenty
+    )
+    
+    try:
+        if on_progress:
+            on_progress("Researching conferences (this may take 1-2 minutes)...", 20.0)
+        
+        # Use o3-deep-research for thorough conference searching
+        response = await client.responses.create(
+            model="o3-deep-research",
+            input=prompt,
+            tools=[{"type": "web_search_preview"}],
+            background=True,
+            reasoning={"effort": "medium"},
+        )
+        
+        # Poll for completion (conferences should be faster than full research)
+        poll_interval = 15  # seconds
+        max_polls = 20  # 5 minutes max
+        
+        for poll_count in range(max_polls):
+            if response.status == "completed":
+                break
+            
+            if response.status in ("failed", "cancelled"):
+                logger.warning(f"Conference research failed: {response.status}")
+                return {"conferences": [], "_error": f"Research {response.status}"}
+            
+            if on_progress:
+                elapsed = poll_count * poll_interval
+                on_progress(f"Searching conferences ({elapsed}s)...", min(20 + poll_count * 3, 80))
+            
+            await asyncio.sleep(poll_interval)
+            response = await client.responses.retrieve(response.id)
+        
+        else:
+            logger.warning("Conference research timed out")
+            return {"conferences": [], "_error": "Research timed out"}
+        
+        if on_progress:
+            on_progress("Processing conference results...", 90.0)
+        
+        # Parse the response
+        raw_content = response.output_text or "{}"
+        results = _parse_research_response(raw_content)
+        
+        if on_progress:
+            on_progress("Conference research complete!", 100.0)
+        
+        logger.info(f"Found {len(results.get('conferences', []))} conferences for {state_code}/{product_key}")
+        
+        return results
+        
+    except Exception as e:
+        logger.error(f"Conference research failed for {state_code}/{product_key}: {e}")
+        return {"conferences": [], "_error": str(e)}
+
+
 async def convert_to_webhooks(
     research_results: Dict[str, Any],
     product_key: str,

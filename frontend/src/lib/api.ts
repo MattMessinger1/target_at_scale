@@ -403,6 +403,21 @@ export interface DistrictResearchResult {
   research_summary?: string | null
 }
 
+// Conference opportunity for in-person relationship building
+export type ConferenceConfidence = 'high' | 'medium'
+
+export interface ConferenceOpportunity {
+  conference_name: string          // "WAESOL 2026 Annual Conference"
+  organization: string             // "Washington Association for ESL"
+  location: string                 // "Seattle, WA"
+  dates: string                    // "October 15-17, 2026"
+  relevance: string                // Why this conference is relevant
+  presentation_deadline?: string | null  // "June 30, 2026"
+  sponsorship_info?: string | null       // "Exhibitor booths available, $500-$2000"
+  website: string                  // Conference website link
+  confidence: ConferenceConfidence
+}
+
 export interface EmailDraft {
   subject_line: string
   email_body: string
@@ -473,6 +488,7 @@ export interface PipelineRunResponse {
   hooks?: WebHook[]  // Alias used in saved research runs
   filtered_requirements?: FilteredRequirement[]  // Stored for research runs
   district_research?: DistrictResearchResult | null
+  conferences?: ConferenceOpportunity[]  // Conference opportunities for in-person relationship building
   variants: AudienceVariantResult[]
   trace: PipelineTrace
   warnings: string[]
@@ -662,6 +678,7 @@ export interface SaveResearchRequest {
   hooks: WebHook[]
   filtered_requirements?: FilteredRequirement[]
   district_research?: DistrictResearchResult | null
+  conferences?: ConferenceOpportunity[]
   batch_job_id?: number
 }
 
@@ -1257,6 +1274,7 @@ export const api = {
           treasure_hooks: WebHook[]
           filtered_requirements: FilteredRequirement[]
           district_research?: DistrictResearchResult | null
+          conferences?: ConferenceOpportunity[]
           warnings: string[]
         }
         error?: string
@@ -1289,6 +1307,7 @@ export const api = {
       treasure_hooks: WebHook[]
       filtered_requirements: FilteredRequirement[]
       district_research?: DistrictResearchResult | null
+      conferences?: ConferenceOpportunity[]
       warnings: string[]
     }> => {
       // Start the task
@@ -1326,6 +1345,7 @@ export const api = {
             treasure_hooks: WebHook[]
             filtered_requirements: FilteredRequirement[]
             district_research?: DistrictResearchResult | null
+            conferences?: ConferenceOpportunity[]
             warnings: string[]
           }
           error?: string
