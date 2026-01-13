@@ -120,7 +120,8 @@ function ResearchProgressStep({
 type ResearchRunCriteria = {
   products: string[]
   states: SelectedState[]
-  audiences: string[]
+  audience: string  // Single audience: 'Decision Makers' or 'Users'
+  audiences?: string[]  // Legacy support for old saved runs
 }
 
 type ResearchRunSelections = {
@@ -1680,7 +1681,17 @@ function EmailGeneratorPipeline() {
       // Restore all state
       setSelectedProducts([full.product])
       setSelectedStates([{ code: full.state_code, name: full.state_full || full.state_code }])
-      setSelectedAudiences(full.audiences)
+      // Handle both old array format and new single format with mapping
+      const oldAudienceMap: Record<string, string> = {
+        'District Leadership': 'Decision Makers',
+        'Curriculum Directors': 'Decision Makers',
+        'ELL/Multilingual Directors': 'Decision Makers',
+        'Principals': 'Decision Makers',
+        'Teachers': 'Users',
+        'Title III Coordinators': 'Decision Makers',
+      }
+      const savedAudience = full.audiences?.[0] || 'Decision Makers'
+      setSelectedAudience(oldAudienceMap[savedAudience] || savedAudience)
       setDistrictName(full.district_name || '')
       
       // Restore pipeline result
