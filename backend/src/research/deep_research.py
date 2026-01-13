@@ -1065,9 +1065,9 @@ async def run_conference_research(
             reasoning={"effort": "medium"},
         )
         
-        # Poll for completion (conferences should be faster than full research)
+        # Poll for completion (conferences can take a while with deep research)
         poll_interval = 15  # seconds
-        max_polls = 20  # 5 minutes max
+        max_polls = 40  # 10 minutes max
         
         for poll_count in range(max_polls):
             if response.status == "completed":
