@@ -1248,7 +1248,7 @@ export const api = {
       fetchApi<{
         task_id: string
         status: string
-        phase: 'state' | 'district'
+        phase: 'state' | 'district' | 'conferences'
         message: string
         existing: boolean
       }>('/generate/pipeline/prep/start', {
@@ -1259,7 +1259,7 @@ export const api = {
       fetchApi<{
         task_id: string
         status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled'
-        phase: 'state' | 'district'
+        phase: 'state' | 'district' | 'conferences'
         progress: number
         message: string
         started_at?: string
@@ -1288,7 +1288,7 @@ export const api = {
       fetchApi<{
         task_id: string | null
         status?: string
-        phase?: 'state' | 'district'
+        phase?: 'state' | 'district' | 'conferences'
         progress?: number
         message?: string
         state_code?: string
@@ -1299,7 +1299,7 @@ export const api = {
     // Polling wrapper that handles the full research prep flow
     pipelinePrepPolling: async (
       data: PipelineRequest,
-      onProgress: (phase: 'state' | 'district', progress: number, message: string) => void,
+      onProgress: (phase: 'state' | 'district' | 'conferences', progress: number, message: string) => void,
       pollInterval = 3000,
       maxPolls = 1200, // ~60 minutes max (state + district research)
     ): Promise<{
@@ -1314,7 +1314,7 @@ export const api = {
       const startResult = await fetchApi<{
         task_id: string
         status: string
-        phase: 'state' | 'district'
+        phase: 'state' | 'district' | 'conferences'
         message: string
         existing: boolean
       }>('/generate/pipeline/prep/start', {
@@ -1337,7 +1337,7 @@ export const api = {
         const status = await fetchApi<{
           task_id: string
           status: 'queued' | 'in_progress' | 'completed' | 'failed' | 'cancelled'
-          phase: 'state' | 'district'
+          phase: 'state' | 'district' | 'conferences'
           progress: number
           message: string
           result?: {

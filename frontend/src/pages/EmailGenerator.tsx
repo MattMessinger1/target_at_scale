@@ -184,7 +184,7 @@ function EmailGeneratorV1() {
   // Step state
   const [currentStep, setCurrentStep] = useState<Step>('select')
   
-  // User identification (persisted to localStorage for team attribution)
+  // User identification (persisted to localStorage so you can find your info later)
   const [createdBy, setCreatedBy] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('wceps_created_by') || ''
@@ -818,10 +818,10 @@ function EmailGeneratorV1() {
               </div>
             )}
 
-            {/* Your Name (for team attribution) */}
+            {/* Your Name (so you can find your info later) */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-slate-300 mb-2">
-                Your Name <span className="text-slate-500">(for team attribution)</span>
+                Your Name <span className="text-slate-500">(so you can find your info later)</span>
               </label>
               <input
                 type="text"
@@ -1307,7 +1307,7 @@ function EmailGeneratorPipeline() {
   const [selectedStates, setSelectedStates] = useState<SelectedState[]>([])
   const [selectedAudience, setSelectedAudience] = useState<string>('Decision Makers')
 
-  // User identification (persisted to localStorage for team attribution)
+  // User identification (persisted to localStorage so you can find your info later)
   const [createdBy, setCreatedBy] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('wceps_created_by') || ''
@@ -1325,7 +1325,7 @@ function EmailGeneratorPipeline() {
   const [districtResearchMessage, setDistrictResearchMessage] = useState('')
   
   // Polling-based research state (robust against browser sleep/network issues)
-  const [researchPhase, setResearchPhase] = useState<'idle' | 'state' | 'district'>('idle')
+  const [researchPhase, setResearchPhase] = useState<'idle' | 'state' | 'district' | 'conferences'>('idle')
   const [researchTaskId, setResearchTaskId] = useState<string | null>(null)
   const [researchProgress, setResearchProgress] = useState(0)
   const [researchMessage, setResearchMessage] = useState('')
@@ -2990,10 +2990,10 @@ function EmailGeneratorPipeline() {
           <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
             <h2 className="text-lg font-medium text-slate-200 mb-6">Choose Product & Audience</h2>
             <div className="space-y-6">
-              {/* Your Name (for team attribution) */}
+              {/* Your Name (so you can find your info later) */}
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Your Name <span className="text-slate-500">(for team attribution)</span>
+                  Your Name <span className="text-slate-500">(so you can find your info later)</span>
                 </label>
                 <input
                   type="text"
@@ -3174,18 +3174,26 @@ function EmailGeneratorPipeline() {
             
             {/* Phase Indicator Banner - Prominent display of current phase */}
             <div className={`mb-6 p-4 rounded-lg border ${
-              researchPhase === 'district' 
-                ? 'border-amber-600/50 bg-amber-900/20' 
-                : 'border-emerald-600/50 bg-emerald-900/20'
+              researchPhase === 'conferences' 
+                ? 'border-indigo-600/50 bg-indigo-900/20'
+                : researchPhase === 'district' 
+                  ? 'border-amber-600/50 bg-amber-900/20' 
+                  : 'border-emerald-600/50 bg-emerald-900/20'
             }`}>
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    researchPhase === 'district' 
-                      ? 'bg-amber-600/30' 
-                      : 'bg-emerald-600/30'
+                    researchPhase === 'conferences'
+                      ? 'bg-indigo-600/30'
+                      : researchPhase === 'district' 
+                        ? 'bg-amber-600/30' 
+                        : 'bg-emerald-600/30'
                   }`}>
-                    {researchPhase === 'district' ? (
+                    {researchPhase === 'conferences' ? (
+                      <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    ) : researchPhase === 'district' ? (
                       <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                       </svg>
@@ -3197,13 +3205,13 @@ function EmailGeneratorPipeline() {
                   </div>
                   <div>
                     <div className={`text-lg font-semibold ${
-                      researchPhase === 'district' ? 'text-amber-300' : 'text-emerald-300'
+                      researchPhase === 'conferences' ? 'text-indigo-300' : researchPhase === 'district' ? 'text-amber-300' : 'text-emerald-300'
                     }`}>
-                      {researchPhase === 'district' 
-                        ? `Phase 2 of 2: District Research` 
-                        : includeDistrictResearch 
-                          ? `Phase 1 of 2: State Research`
-                          : `State Research`
+                      {researchPhase === 'conferences'
+                        ? `Phase 3 of 3: Conferences`
+                        : researchPhase === 'district' 
+                          ? `Phase 2 of 3: District Research` 
+                          : `Phase 1 of 3: State Research`
                       }
                     </div>
                     <div className="text-sm text-slate-400">
@@ -3244,7 +3252,7 @@ function EmailGeneratorPipeline() {
                 <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
                   <div 
                     className={`h-full transition-all duration-500 ${
-                      researchPhase === 'district' ? 'bg-amber-500' : 'bg-emerald-500'
+                      researchPhase === 'conferences' ? 'bg-indigo-500' : researchPhase === 'district' ? 'bg-amber-500' : 'bg-emerald-500'
                     }`}
                     style={{ width: `${researchProgress}%` }}
                   />
@@ -3252,7 +3260,7 @@ function EmailGeneratorPipeline() {
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-300">{researchMessage || 'Starting research...'}</span>
                   <span className={`font-medium ${
-                    researchPhase === 'district' ? 'text-amber-400' : 'text-emerald-400'
+                    researchPhase === 'conferences' ? 'text-indigo-400' : researchPhase === 'district' ? 'text-amber-400' : 'text-emerald-400'
                   }`}>{Math.round(researchProgress)}%</span>
                 </div>
               </div>
@@ -3261,7 +3269,9 @@ function EmailGeneratorPipeline() {
             {/* Additional info */}
             <div className="mb-6 p-3 rounded-lg border border-slate-700 bg-slate-900/30">
               <div className="text-sm text-slate-400">
-                {researchPhase === 'district' ? (
+                {researchPhase === 'conferences' ? (
+                  <>Searching for relevant professional conferences in {selectedStates[0]?.name || 'your state'} and the surrounding region...</>
+                ) : researchPhase === 'district' ? (
                   <>Surveying top districts in {selectedStates[0]?.name || 'your state'} for additional funding opportunities...</>
                 ) : (
                   <>This thorough research typically takes <span className="font-medium text-slate-300">5-30 minutes</span>. 

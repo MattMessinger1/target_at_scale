@@ -986,6 +986,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 # Stage 5: Conference Research (parallel opportunity)
                 conferences = []
                 try:
+                    _research_tasks[task_id]["phase"] = "conferences"
                     _research_tasks[task_id]["message"] = "Searching for relevant conferences..."
                     _research_tasks[task_id]["progress"] = 96
                     
