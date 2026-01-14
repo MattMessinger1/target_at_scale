@@ -614,7 +614,7 @@ export interface GoldenEmailDetail {
 }
 
 // ----------------------------------------------------------------------------
-// Saved Runs Types
+// Saved Research Types
 // ----------------------------------------------------------------------------
 
 export interface SaveRunRequest {

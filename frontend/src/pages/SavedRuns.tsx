@@ -379,7 +379,7 @@ export default function SavedRuns() {
                   // For now, switch to list view filtered by this batch
                   toast({
                     title: 'View batch results',
-                    description: 'Feature coming soon - check Saved Runs list for results.',
+                    description: 'Feature coming soon - check Saved Research list for results.',
                   })
                 }}
               >
@@ -418,7 +418,7 @@ export default function SavedRuns() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Saved Runs</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Saved Research</h1>
           <p className="text-muted-foreground">
             View and manage your saved research and email runs (30-day retention)
           </p>
