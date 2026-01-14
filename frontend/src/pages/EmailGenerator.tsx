@@ -1574,6 +1574,10 @@ function EmailGeneratorPipeline() {
       setHookReasonTags(full.hook_reason_tags)
       setHookReasonNotes(full.hook_reason_notes)
       
+      // Restore research options (so Re-research remembers original settings)
+      setIncludeDistrictResearch(full.include_district_research ?? false)
+      setIncludeConferenceResearch(full.include_conference_research ?? false)
+      
       // Extract prep data from pipeline response
       // Handle both field names: treasure_hooks (email runs) and hooks (research runs)
       const hooks = full.pipeline_response.treasure_hooks || full.pipeline_response.hooks || []

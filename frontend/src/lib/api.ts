@@ -690,6 +690,8 @@ export interface SavedRunFull {
   state_full?: string | null
   audiences: string[]
   district_name?: string | null
+  include_district_research?: boolean
+  include_conference_research?: boolean
   pipeline_response: PipelineRunResponse
   selected_hook_links: string[]
   primary_hook_link?: string | null

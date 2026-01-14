@@ -84,6 +84,9 @@ async def run_migrations():
         ("district_research_cache", "is_archived", "BOOLEAN DEFAULT FALSE NOT NULL"),
         # Add saved_run_id to research_tasks for linking to saved runs
         ("research_tasks", "saved_run_id", "INTEGER"),
+        # Add research options to saved_email_runs for re-research to remember settings
+        ("saved_email_runs", "include_district_research", "BOOLEAN DEFAULT FALSE NOT NULL"),
+        ("saved_email_runs", "include_conference_research", "BOOLEAN DEFAULT FALSE NOT NULL"),
     ]
     
     async with engine.begin() as conn:

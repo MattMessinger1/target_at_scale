@@ -58,6 +58,10 @@ class SaveResearchRequest(BaseModel):
     audiences: List[str] = Field(default_factory=list)
     district_name: Optional[str] = None
     
+    # Research options (for re-research to remember original settings)
+    include_district_research: bool = False
+    include_conference_research: bool = False
+    
     # Research results (pre-email)
     evidence_pack: Dict[str, Any]
     hooks: List[Dict[str, Any]]
@@ -99,6 +103,8 @@ class SavedRunFull(BaseModel):
     state_full: Optional[str]
     audiences: List[str]
     district_name: Optional[str]
+    include_district_research: bool = False
+    include_conference_research: bool = False
     pipeline_response: Dict[str, Any]
     selected_hook_links: List[str]
     primary_hook_link: Optional[str]
@@ -164,6 +170,8 @@ async def save_run(
         state_full=run.state_full,
         audiences=run.audiences,
         district_name=run.district_name,
+        include_district_research=getattr(run, 'include_district_research', False),
+        include_conference_research=getattr(run, 'include_conference_research', False),
         pipeline_response=run.pipeline_response,
         selected_hook_links=run.selected_hook_links,
         primary_hook_link=run.primary_hook_link,
@@ -203,6 +211,8 @@ async def save_research_run(
         state_full=request.state_full,
         audiences=request.audiences,
         district_name=request.district_name,
+        include_district_research=request.include_district_research,
+        include_conference_research=request.include_conference_research,
         pipeline_response=pipeline_response,
         selected_hook_links=[],
         primary_hook_link=None,
@@ -224,6 +234,8 @@ async def save_research_run(
         state_full=run.state_full,
         audiences=run.audiences,
         district_name=run.district_name,
+        include_district_research=run.include_district_research,
+        include_conference_research=run.include_conference_research,
         pipeline_response=run.pipeline_response,
         selected_hook_links=run.selected_hook_links,
         primary_hook_link=run.primary_hook_link,
@@ -422,6 +434,8 @@ async def get_run(
         state_full=run.state_full,
         audiences=run.audiences,
         district_name=run.district_name,
+        include_district_research=getattr(run, 'include_district_research', False),
+        include_conference_research=getattr(run, 'include_conference_research', False),
         pipeline_response=run.pipeline_response,
         selected_hook_links=run.selected_hook_links,
         primary_hook_link=run.primary_hook_link,

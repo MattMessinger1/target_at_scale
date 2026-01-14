@@ -575,6 +575,10 @@ class SavedEmailRun(Base):
     audiences: Mapped[list] = mapped_column(JSON, nullable=False)
     district_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     
+    # Research options (for re-research to remember original settings)
+    include_district_research: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    include_conference_research: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    
     # Full pipeline response (variants, evidence_pack, hooks)
     # For run_type="research": contains evidence_pack and hooks only
     # For run_type="email": contains full pipeline response with variants

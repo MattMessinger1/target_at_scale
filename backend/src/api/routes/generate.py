@@ -711,6 +711,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 state_full=task_data.get("state_full"),
                 audiences=task_data.get("audiences") or ["Decision Makers"],
                 district_name=task_data.get("district_name"),
+                include_district_research=task_data.get("include_district_research", False),
+                include_conference_research=task_data.get("include_conference_research", False),
                 pipeline_response={
                     "evidence_pack": result_data.get("evidence_pack"),
                     "hooks": result_data.get("treasure_hooks"),
