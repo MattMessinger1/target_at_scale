@@ -440,6 +440,8 @@ async def get_cache_status(
         .where(DeepResearchCache.state_code == state_code)
         .where(DeepResearchCache.product_key == product_key)
         .where(DeepResearchCache.is_archived.is_(False))
+        .order_by(DeepResearchCache.created_at.desc())
+        .limit(1)
     )
     entry = result.scalar_one_or_none()
     
