@@ -5,7 +5,7 @@
  * to fill only the missing research efficiently.
  */
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { Link } from 'react-router-dom'
 import { 
@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   Play,
   RefreshCw,
+  Archive,
 } from 'lucide-react'
 
 // Products to show in dropdown
@@ -33,11 +34,27 @@ export default function ResearchCoverage() {
   const [selectedProduct, setSelectedProduct] = useState(PRODUCTS[0])
   const [selectedStates, setSelectedStates] = useState<Set<string>>(new Set())
   const [widaOnly, setWidaOnly] = useState(true)
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
+  const queryClient = useQueryClient()
 
   // Fetch coverage data
   const { data: coverage, isLoading, refetch } = useQuery({
     queryKey: ['research-coverage', selectedProduct, widaOnly],
     queryFn: () => api.research.getCoverage(selectedProduct, widaOnly),
+  })
+
+  // Archive mutation
+  const archiveMutation = useMutation({
+    mutationFn: () => api.research.archiveAllCache(),
+    onSuccess: (data) => {
+      // Refetch coverage to show clean slate
+      queryClient.invalidateQueries({ queryKey: ['research-coverage'] })
+      setShowArchiveConfirm(false)
+      alert(`Archived ${data.deep_research_archived} state research + ${data.district_research_archived} district research entries`)
+    },
+    onError: (error) => {
+      alert(`Failed to archive: ${error}`)
+    }
   })
 
   // Toggle state selection
@@ -146,13 +163,22 @@ export default function ResearchCoverage() {
               </Link>
             </div>
             <h1 className="text-xl font-semibold text-slate-100">Research Coverage Matrix</h1>
-            <button
-              onClick={() => refetch()}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Refresh
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowArchiveConfirm(true)}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm text-amber-400 hover:text-amber-300 hover:bg-amber-900/30 rounded-lg transition-colors"
+              >
+                <Archive className="w-4 h-4" />
+                Archive All Cache
+              </button>
+              <button
+                onClick={() => refetch()}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Refresh
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -382,6 +408,37 @@ export default function ResearchCoverage() {
           </div>
         </div>
       </main>
+
+      {/* Archive Confirmation Modal */}
+      {showArchiveConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 max-w-md mx-4 shadow-2xl">
+            <h3 className="text-lg font-semibold text-slate-100 mb-2">Archive All Research Cache?</h3>
+            <p className="text-slate-400 text-sm mb-4">
+              This will mark all existing research cache entries as archived. They won't appear in the coverage matrix 
+              or be used for cache lookups. New research runs will create fresh entries.
+            </p>
+            <p className="text-amber-400 text-sm mb-6">
+              The data is preserved and can be restored later if needed.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowArchiveConfirm(false)}
+                className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200 hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => archiveMutation.mutate()}
+                disabled={archiveMutation.isPending}
+                className="px-4 py-2 text-sm bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-colors disabled:opacity-50"
+              >
+                {archiveMutation.isPending ? 'Archiving...' : 'Archive All'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

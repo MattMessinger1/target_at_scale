@@ -1112,6 +1112,12 @@ export const api = {
       params.set('wida_only', String(widaOnly))
       return fetchApi<CoverageResponse>(`/research/coverage?${params.toString()}`)
     },
+    archiveAllCache: () => {
+      return fetchApi<{ deep_research_archived: number; district_research_archived: number }>(
+        '/research/cache/archive',
+        { method: 'POST' }
+      )
+    },
   },
 
   generate: {
