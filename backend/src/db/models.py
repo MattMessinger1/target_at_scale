@@ -407,6 +407,9 @@ class DeepResearchCache(Base):
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     
+    # Archive flag for hiding old data without deletion
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    
     # Timestamps for cache invalidation (30-day TTL)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -450,6 +453,9 @@ class DistrictResearchCache(Base):
     # Timing
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    
+    # Archive flag for hiding old data without deletion
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     
     # Timestamps for cache invalidation (30-day TTL)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

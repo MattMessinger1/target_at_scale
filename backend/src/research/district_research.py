@@ -142,7 +142,7 @@ async def get_cached_district_research(
     state_code: str,
     product_key: str,
 ) -> Optional[DistrictResearchCache]:
-    """Get cached district research if still valid (within TTL)."""
+    """Get cached district research if still valid (within TTL) and not archived."""
     cutoff = datetime.utcnow() - timedelta(days=CACHE_TTL_DAYS)
     
     result = await db.execute(
@@ -151,6 +151,7 @@ async def get_cached_district_research(
         .where(DistrictResearchCache.product_key == product_key)
         .where(DistrictResearchCache.status == "completed")
         .where(DistrictResearchCache.created_at > cutoff)
+        .where(DistrictResearchCache.is_archived == False)
     )
     return result.scalar_one_or_none()
 
@@ -160,11 +161,15 @@ async def get_or_create_district_research_job(
     state_code: str,
     product_key: str,
 ) -> DistrictResearchCache:
-    """Get existing cache entry or create a new one for tracking."""
+    """Get existing cache entry or create a new one for tracking.
+    
+    Archived entries are ignored - a new entry will be created.
+    """
     result = await db.execute(
         select(DistrictResearchCache)
         .where(DistrictResearchCache.state_code == state_code)
         .where(DistrictResearchCache.product_key == product_key)
+        .where(DistrictResearchCache.is_archived == False)
     )
     existing = result.scalar_one_or_none()
     

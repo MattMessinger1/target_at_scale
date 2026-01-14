@@ -318,7 +318,7 @@ async def get_cached_research(
     product_key: str,
     research_type: str = "funding_compliance",
 ) -> Optional[DeepResearchCache]:
-    """Get cached research if still valid (within TTL)."""
+    """Get cached research if still valid (within TTL) and not archived."""
     cutoff = datetime.utcnow() - timedelta(days=CACHE_TTL_DAYS)
     
     result = await db.execute(
@@ -328,6 +328,7 @@ async def get_cached_research(
         .where(DeepResearchCache.research_type == research_type)
         .where(DeepResearchCache.status == "completed")
         .where(DeepResearchCache.created_at > cutoff)
+        .where(DeepResearchCache.is_archived == False)
     )
     return result.scalar_one_or_none()
 
@@ -426,6 +427,8 @@ async def get_cache_status(
 ) -> Dict[str, Any]:
     """Get the current status of a research cache entry.
     
+    Archived entries are treated as not found.
+    
     Returns:
         Dict with status info:
         - status: "completed", "in_progress", "pending", "failed", "cancelled", or "not_found"
@@ -436,6 +439,7 @@ async def get_cache_status(
         select(DeepResearchCache)
         .where(DeepResearchCache.state_code == state_code)
         .where(DeepResearchCache.product_key == product_key)
+        .where(DeepResearchCache.is_archived == False)
     )
     entry = result.scalar_one_or_none()
     
@@ -482,13 +486,17 @@ async def get_or_create_research_job(
     product_key: str,
     research_type: str = "funding_compliance",
 ) -> DeepResearchCache:
-    """Get existing cache entry or create a new one for tracking."""
-    # Check for existing (any status)
+    """Get existing cache entry or create a new one for tracking.
+    
+    Archived entries are ignored - a new entry will be created.
+    """
+    # Check for existing non-archived entry (any status)
     result = await db.execute(
         select(DeepResearchCache)
         .where(DeepResearchCache.state_code == state_code)
         .where(DeepResearchCache.product_key == product_key)
         .where(DeepResearchCache.research_type == research_type)
+        .where(DeepResearchCache.is_archived == False)
     )
     existing = result.scalar_one_or_none()
     

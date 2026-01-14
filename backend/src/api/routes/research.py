@@ -520,12 +520,13 @@ async def get_research_coverage(
     cache_ttl_days = 30
     cutoff_date = datetime.utcnow() - timedelta(days=cache_ttl_days)
     
-    # Query all deep research cache entries for this product
+    # Query all deep research cache entries for this product (exclude archived)
     deep_cache_result = await db.execute(
         select(DeepResearchCache)
         .where(DeepResearchCache.product_key == product_key)
         .where(DeepResearchCache.status == "completed")
         .where(DeepResearchCache.created_at > cutoff_date)
+        .where(DeepResearchCache.is_archived == False)
     )
     deep_cache_entries = deep_cache_result.scalars().all()
     
@@ -535,12 +536,13 @@ async def get_research_coverage(
         key = (entry.state_code, entry.research_type)
         deep_cache_map[key] = entry
     
-    # Query all district research cache entries for this product
+    # Query all district research cache entries for this product (exclude archived)
     district_cache_result = await db.execute(
         select(DistrictResearchCache)
         .where(DistrictResearchCache.product_key == product_key)
         .where(DistrictResearchCache.status == "completed")
         .where(DistrictResearchCache.created_at > cutoff_date)
+        .where(DistrictResearchCache.is_archived == False)
     )
     district_cache_entries = district_cache_result.scalars().all()
     
@@ -629,4 +631,48 @@ async def get_research_coverage(
             "partial": partial_count,
             "missing": missing_count,
         }
+    }
+
+
+@router.post("/cache/archive")
+async def archive_all_cache(
+    db: AsyncSession = Depends(get_db),
+):
+    """Archive all existing research cache records.
+    
+    This marks all current cache entries as archived so they won't appear
+    in the coverage matrix or be used for cache lookups. The data is preserved
+    and can be restored later if needed.
+    
+    Use this before running fresh research to get a clean slate.
+    
+    Returns:
+        Count of archived records for each cache type
+    """
+    from sqlalchemy import update
+    
+    # Archive all deep research cache entries
+    deep_result = await db.execute(
+        update(DeepResearchCache)
+        .where(DeepResearchCache.is_archived == False)
+        .values(is_archived=True)
+    )
+    deep_count = deep_result.rowcount
+    
+    # Archive all district research cache entries
+    district_result = await db.execute(
+        update(DistrictResearchCache)
+        .where(DistrictResearchCache.is_archived == False)
+        .values(is_archived=True)
+    )
+    district_count = district_result.rowcount
+    
+    await db.commit()
+    
+    logger.info(f"Archived {deep_count} deep research entries and {district_count} district research entries")
+    
+    return {
+        "message": "Research cache archived successfully",
+        "archived_deep_research": deep_count,
+        "archived_district_research": district_count,
     }
