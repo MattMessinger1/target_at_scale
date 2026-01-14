@@ -1388,6 +1388,56 @@ function EmailGeneratorPipeline() {
   const [startingBatch, setStartingBatch] = useState(false)
   const [batchForceFresh, setBatchForceFresh] = useState(false)
   const [batchIncludeDistrictResearch, setBatchIncludeDistrictResearch] = useState(true)
+  const [batchStateInput, setBatchStateInput] = useState('')
+
+  // All 50 US states lookup
+  const ALL_US_STATES: Record<string, string> = {
+    'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas', 'CA': 'California',
+    'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware', 'DC': 'District of Columbia', 'FL': 'Florida',
+    'GA': 'Georgia', 'HI': 'Hawaii', 'ID': 'Idaho', 'IL': 'Illinois', 'IN': 'Indiana',
+    'IA': 'Iowa', 'KS': 'Kansas', 'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine',
+    'MD': 'Maryland', 'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota', 'MS': 'Mississippi',
+    'MO': 'Missouri', 'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada', 'NH': 'New Hampshire',
+    'NJ': 'New Jersey', 'NM': 'New Mexico', 'NY': 'New York', 'NC': 'North Carolina', 'ND': 'North Dakota',
+    'OH': 'Ohio', 'OK': 'Oklahoma', 'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island',
+    'SC': 'South Carolina', 'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah',
+    'VT': 'Vermont', 'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia', 'WI': 'Wisconsin', 'WY': 'Wyoming',
+  }
+
+  // Parse state codes from text input
+  const parseAndAddStates = (input: string) => {
+    if (!input.trim()) return
+    
+    // Split by comma, space, or newline and normalize to uppercase
+    const codes = input.toUpperCase().split(/[\s,]+/).filter(Boolean)
+    const newStates: Array<{ code: string; name: string }> = []
+    const invalidCodes: string[] = []
+    const existingCodes = new Set(batchStates.map(s => s.code))
+    
+    for (const code of codes) {
+      const name = ALL_US_STATES[code]
+      if (name && !existingCodes.has(code)) {
+        newStates.push({ code, name })
+        existingCodes.add(code)
+      } else if (!name) {
+        invalidCodes.push(code)
+      }
+    }
+    
+    if (newStates.length > 0) {
+      setBatchStates(prev => [...prev, ...newStates])
+    }
+    
+    if (invalidCodes.length > 0) {
+      toast({
+        title: 'Invalid state codes',
+        description: `Unknown codes: ${invalidCodes.join(', ')}`,
+        variant: 'destructive',
+      })
+    }
+    
+    setBatchStateInput('')
+  }
 
   // Validation section collapsed by default
   const [validationExpanded, setValidationExpanded] = useState(false)
@@ -2908,7 +2958,17 @@ function EmailGeneratorPipeline() {
                         }}
                         className="text-xs px-2 py-1 rounded bg-emerald-800/50 text-emerald-300 hover:bg-emerald-700/50"
                       >
-                        All WIDA States
+                        All WIDA
+                      </button>
+                      <button
+                        onClick={() => {
+                          // Add all 50 US states + DC
+                          const allStates = Object.entries(ALL_US_STATES).map(([code, name]) => ({ code, name }))
+                          setBatchStates(allStates)
+                        }}
+                        className="text-xs px-2 py-1 rounded bg-blue-800/50 text-blue-300 hover:bg-blue-700/50"
+                      >
+                        All 50 States
                       </button>
                       <button
                         onClick={() => setBatchStates([])}
@@ -2918,9 +2978,34 @@ function EmailGeneratorPipeline() {
                       </button>
                     </div>
                   </div>
+                  
+                  {/* Text input for typing state codes */}
+                  <div className="flex gap-2 mb-3">
+                    <input
+                      type="text"
+                      value={batchStateInput}
+                      onChange={(e) => setBatchStateInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          parseAndAddStates(batchStateInput)
+                        }
+                      }}
+                      placeholder="Type state codes: IL, TX, CA..."
+                      className="flex-1 px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <button
+                      onClick={() => parseAndAddStates(batchStateInput)}
+                      disabled={!batchStateInput.trim()}
+                      className="px-3 py-2 rounded-lg bg-emerald-700 text-white text-sm hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Add
+                    </button>
+                  </div>
+                  
                   <div className="flex flex-wrap gap-2 p-3 bg-slate-900/30 rounded-lg border border-slate-700 min-h-[60px]">
                     {batchStates.length === 0 ? (
-                      <span className="text-sm text-slate-500">No states selected. Click "All WIDA States" or add from your current selection.</span>
+                      <span className="text-sm text-slate-500">Type state codes above or use quick-select buttons</span>
                     ) : (
                       batchStates.map(s => (
                         <span

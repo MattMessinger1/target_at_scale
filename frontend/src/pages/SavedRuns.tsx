@@ -19,6 +19,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom'
 
 type ViewMode = 'grouped' | 'list' | 'batch'
+type RunTypeFilter = 'all' | 'research' | 'email'
 
 export default function SavedRuns() {
   const { toast } = useToast()
@@ -26,6 +27,7 @@ export default function SavedRuns() {
   const queryClient = useQueryClient()
   
   const [viewMode, setViewMode] = useState<ViewMode>('grouped')
+  const [runTypeFilter, setRunTypeFilter] = useState<RunTypeFilter>('all')
   const [expandedProducts, setExpandedProducts] = useState<Record<string, boolean>>({})
   const [expandedStates, setExpandedStates] = useState<Record<string, boolean>>({})
   
@@ -127,61 +129,86 @@ export default function SavedRuns() {
     }
   }
   
-  const renderRunCard = (run: SavedRunSummary) => (
-    <div
-      key={run.id}
-      className="p-3 rounded-lg border border-slate-700 bg-slate-800/30 hover:bg-slate-800/60 transition-colors cursor-pointer group"
-      onClick={() => loadAndNavigate(run)}
-    >
-      <div className="flex items-start justify-between">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            {run.run_type === 'research' ? (
-              <Search className="w-4 h-4 text-blue-400 shrink-0" />
-            ) : (
-              <Mail className="w-4 h-4 text-emerald-400 shrink-0" />
+  const renderRunCard = (run: SavedRunSummary) => {
+    const isEmail = run.run_type === 'email'
+    
+    return (
+      <div
+        key={run.id}
+        className={`p-3 rounded-lg border transition-colors cursor-pointer group ${
+          isEmail 
+            ? 'border-emerald-700/50 bg-emerald-900/10 hover:bg-emerald-900/20' 
+            : 'border-slate-700 bg-slate-800/30 hover:bg-slate-800/60'
+        }`}
+        onClick={() => loadAndNavigate(run)}
+      >
+        <div className="flex items-start justify-between">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              {isEmail ? (
+                <Mail className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : (
+                <Search className="w-4 h-4 text-blue-400 shrink-0" />
+              )}
+              <span className="font-medium text-slate-200 truncate">
+                {run.name || `${run.product} - ${run.state_full || run.state_code}`}
+              </span>
+              <Badge 
+                variant="outline" 
+                className={isEmail 
+                  ? 'border-emerald-500 bg-emerald-900/30 text-emerald-300' 
+                  : 'border-blue-600 text-blue-300'
+                }
+              >
+                {isEmail ? '✉️ Email' : 'Research'}
+              </Badge>
+            </div>
+            
+            {/* Email subject preview - prominent for email runs */}
+            {isEmail && run.subject_preview && (
+              <div className="mb-2 px-2 py-1.5 bg-slate-800/50 rounded border border-slate-700/50">
+                <span className="text-sm text-emerald-200 italic">"{run.subject_preview}"</span>
+              </div>
             )}
-            <span className="font-medium text-slate-200 truncate">
-              {run.name || `${run.product} - ${run.state_full || run.state_code}`}
-            </span>
-            <Badge variant="outline" className={run.run_type === 'research' ? 'border-blue-600 text-blue-300' : 'border-emerald-600 text-emerald-300'}>
-              {run.run_type}
-            </Badge>
+            
+            <div className="text-xs text-slate-500 flex items-center gap-3 flex-wrap">
+              <span>{formatDate(run.created_at)}</span>
+              {run.created_by && (
+                <span className="text-slate-400">by {run.created_by}</span>
+              )}
+              {/* State vs District indicator */}
+              <Badge variant="outline" className={run.district_name ? 'border-amber-600 text-amber-300' : 'border-slate-600 text-slate-400'}>
+                {run.district_name ? 'District' : 'State'}
+              </Badge>
+              {run.district_name && (
+                <span className="text-amber-400 truncate max-w-[150px]">{run.district_name}</span>
+              )}
+              {!isEmail && run.hook_count !== undefined && (
+                <span>{run.hook_count} hooks</span>
+              )}
+            </div>
           </div>
-          <div className="text-xs text-slate-500 flex items-center gap-3">
-            <span>{formatDate(run.created_at)}</span>
-            {run.created_by && (
-              <span className="text-slate-400">by {run.created_by}</span>
-            )}
-            {/* State vs District indicator */}
-            <Badge variant="outline" className={run.district_name ? 'border-amber-600 text-amber-300' : 'border-slate-600 text-slate-400'}>
-              {run.district_name ? 'District' : 'State'}
-            </Badge>
-            {run.district_name && (
-              <span className="text-amber-400 truncate max-w-[150px]">{run.district_name}</span>
-            )}
-            {run.run_type === 'research' && run.hook_count !== undefined && (
-              <span>{run.hook_count} hooks</span>
-            )}
-            {run.run_type === 'email' && run.subject_preview && (
-              <span className="truncate max-w-[200px]">{run.subject_preview}</span>
-            )}
-          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              if (confirm('Delete this saved run?')) {
+                deleteMutation.mutate(run.id)
+              }
+            }}
+            className="p-1.5 rounded hover:bg-red-900/30 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
         </div>
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            if (confirm('Delete this saved run?')) {
-              deleteMutation.mutate(run.id)
-            }
-          }}
-          className="p-1.5 rounded hover:bg-red-900/30 text-slate-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
       </div>
-    </div>
-  )
+    )
+  }
+  
+  // Filter runs based on type filter
+  const filterRuns = (runs: SavedRunSummary[]) => {
+    if (runTypeFilter === 'all') return runs
+    return runs.filter(r => r.run_type === runTypeFilter)
+  }
   
   const renderGroupedView = () => {
     if (groupedLoading) {
@@ -240,6 +267,10 @@ export default function SavedRuns() {
                 {Object.entries(group.states).map(([stateCode, runs]) => {
                   const key = `${group.product}-${stateCode}`
                   const stateName = runs[0]?.state_full || stateCode
+                  const filteredRuns = filterRuns(runs)
+                  
+                  // Hide states with no runs after filtering
+                  if (filteredRuns.length === 0) return null
                   
                   return (
                     <div key={key} className="border-b border-slate-700/50 last:border-b-0">
@@ -257,13 +288,13 @@ export default function SavedRuns() {
                           <span className="text-sm font-medium text-slate-300">{stateName}</span>
                           <span className="text-xs text-slate-500">({stateCode})</span>
                         </div>
-                        <span className="text-xs text-slate-500">{runs.length} runs</span>
+                        <span className="text-xs text-slate-500">{filteredRuns.length} runs</span>
                       </button>
                       
                       {/* Runs */}
                       {expandedStates[key] && (
                         <div className="px-8 py-2 space-y-2 bg-slate-900/20">
-                          {runs.map(renderRunCard)}
+                          {filteredRuns.map(renderRunCard)}
                         </div>
                       )}
                     </div>
@@ -295,9 +326,25 @@ export default function SavedRuns() {
       )
     }
     
+    const filtered = filterRuns(listRuns)
+    
+    if (filtered.length === 0) {
+      return (
+        <div className="text-center py-12">
+          <FolderOpen className="w-12 h-12 mx-auto text-slate-600 mb-3" />
+          <h3 className="text-lg font-medium text-slate-400">
+            No {runTypeFilter === 'email' ? 'email' : 'research'} runs found
+          </h3>
+          <p className="text-sm text-slate-500 mt-1">
+            Try changing the filter or create a new {runTypeFilter === 'email' ? 'email' : 'research'} run
+          </p>
+        </div>
+      )
+    }
+    
     return (
       <div className="space-y-2">
-        {listRuns.map(renderRunCard)}
+        {filtered.map(renderRunCard)}
       </div>
     )
   }
@@ -431,37 +478,77 @@ export default function SavedRuns() {
       </div>
       
       {/* View Mode Tabs */}
-      <div className="flex gap-2">
-        <button
-          onClick={() => setViewMode('grouped')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            viewMode === 'grouped'
-              ? 'bg-emerald-600 text-white'
-              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-          }`}
-        >
-          By Product
-        </button>
-        <button
-          onClick={() => setViewMode('list')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            viewMode === 'list'
-              ? 'bg-emerald-600 text-white'
-              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-          }`}
-        >
-          All Runs
-        </button>
-        <button
-          onClick={() => setViewMode('batch')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            viewMode === 'batch'
-              ? 'bg-emerald-600 text-white'
-              : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-          }`}
-        >
-          Batch Jobs
-        </button>
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setViewMode('grouped')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              viewMode === 'grouped'
+                ? 'bg-emerald-600 text-white'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            By Product
+          </button>
+          <button
+            onClick={() => setViewMode('list')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              viewMode === 'list'
+                ? 'bg-emerald-600 text-white'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            All Runs
+          </button>
+          <button
+            onClick={() => setViewMode('batch')}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              viewMode === 'batch'
+                ? 'bg-emerald-600 text-white'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+          >
+            Batch Jobs
+          </button>
+        </div>
+        
+        {/* Run Type Filter */}
+        {viewMode !== 'batch' && (
+          <div className="flex gap-1 p-1 bg-slate-900 rounded-lg border border-slate-700">
+            <button
+              onClick={() => setRunTypeFilter('all')}
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                runTypeFilter === 'all'
+                  ? 'bg-slate-700 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setRunTypeFilter('research')}
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                runTypeFilter === 'research'
+                  ? 'bg-blue-700 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Search className="w-3.5 h-3.5" />
+              Research
+            </button>
+            <button
+              onClick={() => setRunTypeFilter('email')}
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                runTypeFilter === 'email'
+                  ? 'bg-emerald-700 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Mail className="w-3.5 h-3.5" />
+              Emails
+            </button>
+          </div>
+        )}
       </div>
       
       {/* Content */}
