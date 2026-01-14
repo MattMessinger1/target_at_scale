@@ -1412,7 +1412,6 @@ function EmailGeneratorPipeline() {
       }
       const savedAudience = full.audiences?.[0] || 'Decision Makers'
       setSelectedAudience(oldAudienceMap[savedAudience] || savedAudience)
-      setDistrictName(full.district_name || '')
       
       // Restore pipeline result
       setResult(full.pipeline_response)
@@ -1732,7 +1731,6 @@ function EmailGeneratorPipeline() {
       }
       const savedAudience = full.audiences?.[0] || 'Decision Makers'
       setSelectedAudience(oldAudienceMap[savedAudience] || savedAudience)
-      setDistrictName(full.district_name || '')
       
       // Restore pipeline result
       setResult(full.pipeline_response)
