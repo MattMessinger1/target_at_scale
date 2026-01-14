@@ -18,7 +18,7 @@ import hashlib
 import json
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
@@ -290,6 +290,32 @@ def is_truly_district_specific(finding: Dict[str, Any]) -> Tuple[bool, str]:
     return False, "No district-specific indicators found"
 
 
+def _is_finding_expired(finding: Dict[str, Any]) -> Tuple[bool, str]:
+    """Check if district finding has an expired deadline.
+    
+    Filters out stale opportunities like expired levy votes or past grant deadlines.
+    """
+    today = date.today()
+    current_year = today.year
+    
+    # Combine text fields
+    text = f"{finding.get('title', '')} {finding.get('description', '')} {finding.get('deadline', '')} {finding.get('why_district_specific', '')}"
+    
+    # Pattern 1: "was [date]" = past tense = expired
+    if re.search(r"\bwas\s+(?:due\s+)?(?:on\s+)?(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}", text, re.I):
+        return True, "Past deadline (was + date)"
+    
+    # Pattern 2: Old year in deadline context
+    for m in re.finditer(r"\b(202[0-4]|201\d)\b", text):
+        year = int(m.group(1))
+        if year < current_year - 1:  # More than 1 year old
+            ctx = text[max(0, m.start()-40):min(len(text), m.end()+40)].lower()
+            if any(kw in ctx for kw in ["deadline", "due", "grant", "was", "expired", "levy", "vote"]):
+                return True, f"Stale deadline (year {year})"
+    
+    return False, ""
+
+
 def _passes_quality_gate(finding: Dict[str, Any]) -> Tuple[bool, str]:
     """
     Check if a finding passes the quality gate.
@@ -371,6 +397,11 @@ def filter_district_hooks(
         passed_gate, gate_reason = _passes_quality_gate(finding)
         if not passed_gate:
             filter_reasons.append(("failed_quality_gate", gate_reason))
+        
+        # Check 1.5: Expiration check
+        is_expired, expire_reason = _is_finding_expired(finding)
+        if is_expired:
+            filter_reasons.append(("expired_deadline", expire_reason))
         
         # Check 2: Is truly district-specific
         is_specific, specific_reason = is_truly_district_specific(finding)
