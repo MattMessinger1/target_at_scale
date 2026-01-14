@@ -56,6 +56,7 @@ class CreateBatchJobRequest(BaseModel):
     states: List[StateInput]
     audiences: List[str] = Field(default_factory=list)
     include_district_research: bool = False
+    force_fresh: bool = False  # Clear cache before starting for fresh results
 
 
 class BatchJobSummary(BaseModel):
@@ -113,9 +114,28 @@ async def create_batch_job(
     
     This creates the job record and starts processing in the background.
     Use GET /batch/{job_id} to poll for status.
+    
+    If force_fresh=True, clears all cached research for this product first.
     """
     if not request.states:
         raise HTTPException(status_code=400, detail="At least one state is required")
+    
+    # If force_fresh, clear all cached research for this product
+    if request.force_fresh:
+        from ...research.product_briefs import normalize_product_key
+        from ...research.deep_research import clear_deep_research_cache
+        from ...research.district_research import clear_district_research_cache
+        
+        product_key = normalize_product_key(request.product)
+        logger.info(f"Force fresh requested: clearing cache for product={product_key}")
+        
+        # Clear deep research cache (state-level hooks + conferences)
+        deep_cleared = await clear_deep_research_cache(db, product_key=product_key)
+        logger.info(f"Cleared {deep_cleared} deep research cache entries")
+        
+        # Clear district research cache
+        district_cleared = await clear_district_research_cache(db, product_key=product_key)
+        logger.info(f"Cleared {district_cleared} district research cache entries")
     
     # Create the batch job
     job = BatchJob(

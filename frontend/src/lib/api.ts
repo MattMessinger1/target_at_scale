@@ -722,6 +722,7 @@ export interface CreateBatchJobRequest {
   states: Array<{ code: string; name: string }>
   audiences?: string[]
   include_district_research?: boolean
+  force_fresh?: boolean  // Clear cache before starting for fresh results
 }
 
 export interface BatchRunSummary {

@@ -1384,6 +1384,7 @@ function EmailGeneratorPipeline() {
   const [showBatchModal, setShowBatchModal] = useState(false)
   const [batchStates, setBatchStates] = useState<Array<{ code: string; name: string }>>([])
   const [startingBatch, setStartingBatch] = useState(false)
+  const [batchForceFresh, setBatchForceFresh] = useState(false)
 
   // Load saved run from sessionStorage (when navigating from SavedRuns page)
   useEffect(() => {
@@ -2925,6 +2926,25 @@ function EmailGeneratorPipeline() {
                   </div>
                 </div>
                 
+                {/* Force fresh research option */}
+                <div className="mb-4">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={batchForceFresh}
+                      onChange={(e) => setBatchForceFresh(e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500/50"
+                    />
+                    <div>
+                      <span className="text-sm text-slate-200">Force fresh research</span>
+                      <span className="text-xs text-slate-500 ml-2">(clear cached results)</span>
+                    </div>
+                  </label>
+                  <p className="text-xs text-slate-500 mt-1 ml-7">
+                    Check this to get new research results instead of using cached data from previous runs.
+                  </p>
+                </div>
+                
                 {/* Estimated time/cost */}
                 <div className="mb-4 p-3 bg-amber-900/20 rounded-lg border border-amber-700/30">
                   <div className="text-sm text-amber-300 font-medium mb-1">Estimated Time & Cost</div>
@@ -2956,6 +2976,7 @@ function EmailGeneratorPipeline() {
                         states: batchStates,
                         audiences: [selectedAudience],
                         include_district_research: false,
+                        force_fresh: batchForceFresh,
                       })
                       toast({
                         title: 'Batch job started!',
@@ -2963,6 +2984,7 @@ function EmailGeneratorPipeline() {
                       })
                       setShowBatchModal(false)
                       setBatchStates([])
+                      setBatchForceFresh(false)
                     } catch (err) {
                       toast({
                         title: 'Failed to start batch job',
