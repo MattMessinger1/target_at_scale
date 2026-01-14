@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from ...db import get_db
-from ...db.models import KnowledgeBaseItem
+from ...db.models import KnowledgeBaseItem, DeepResearchCache, DistrictResearchCache
 
 logger = logging.getLogger(__name__)
 
@@ -486,3 +486,147 @@ async def clear_research_cache(
     await db.commit()
     
     return {"message": f"Research cache cleared for {state or 'all states'}"}
+
+
+@router.get("/coverage")
+async def get_research_coverage(
+    product: str,
+    wida_only: bool = True,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get research coverage matrix for a product across states.
+    
+    Shows which states have completed state/district/conference research
+    and how old the cached results are.
+    
+    Args:
+        product: Product name (e.g., "WIDA MODEL Online")
+        wida_only: If True, only return WIDA states (default True)
+        db: Database session
+    
+    Returns:
+        Coverage matrix with status for each research type per state
+    """
+    from datetime import datetime, timedelta
+    from ...research.product_briefs import normalize_product_key
+    
+    # Normalize product key
+    product_key = normalize_product_key(product)
+    
+    # Determine which states to check
+    states_to_check = WIDA_STATES if wida_only else list(STATE_NAMES.keys())
+    
+    # Cache TTL (30 days)
+    cache_ttl_days = 30
+    cutoff_date = datetime.utcnow() - timedelta(days=cache_ttl_days)
+    
+    # Query all deep research cache entries for this product
+    deep_cache_result = await db.execute(
+        select(DeepResearchCache)
+        .where(DeepResearchCache.product_key == product_key)
+        .where(DeepResearchCache.status == "completed")
+        .where(DeepResearchCache.created_at > cutoff_date)
+    )
+    deep_cache_entries = deep_cache_result.scalars().all()
+    
+    # Index by (state_code, research_type)
+    deep_cache_map = {}
+    for entry in deep_cache_entries:
+        key = (entry.state_code, entry.research_type)
+        deep_cache_map[key] = entry
+    
+    # Query all district research cache entries for this product
+    district_cache_result = await db.execute(
+        select(DistrictResearchCache)
+        .where(DistrictResearchCache.product_key == product_key)
+        .where(DistrictResearchCache.status == "completed")
+        .where(DistrictResearchCache.created_at > cutoff_date)
+    )
+    district_cache_entries = district_cache_result.scalars().all()
+    
+    # Index by state_code
+    district_cache_map = {entry.state_code: entry for entry in district_cache_entries}
+    
+    # Build coverage matrix
+    states_coverage = []
+    complete_count = 0
+    partial_count = 0
+    missing_count = 0
+    
+    for state_code in states_to_check:
+        state_name = STATE_NAMES.get(state_code, state_code)
+        
+        # Check state research (funding_compliance)
+        state_entry = deep_cache_map.get((state_code, "funding_compliance"))
+        state_research = None
+        if state_entry:
+            age_days = (datetime.utcnow() - state_entry.created_at).days
+            state_research = {
+                "status": "completed",
+                "age_days": age_days,
+                "hook_count": len((state_entry.results_json or {}).get("funding_items", [])) + 
+                             len((state_entry.results_json or {}).get("compliance_items", [])),
+            }
+        
+        # Check district research
+        district_entry = district_cache_map.get(state_code)
+        district_research = None
+        if district_entry:
+            age_days = (datetime.utcnow() - district_entry.created_at).days
+            district_research = {
+                "status": "completed",
+                "age_days": age_days,
+                "districts_surveyed": len(district_entry.districts_surveyed or []),
+                "hook_count": len((district_entry.results_json or {}).get("passed_hooks", [])),
+            }
+        
+        # Check conference research
+        conf_entry = deep_cache_map.get((state_code, "conference"))
+        conference_research = None
+        if conf_entry:
+            age_days = (datetime.utcnow() - conf_entry.created_at).days
+            conference_research = {
+                "status": "completed",
+                "age_days": age_days,
+                "conference_count": len((conf_entry.results_json or {}).get("conferences", [])),
+            }
+        
+        # Determine overall status
+        has_state = state_research is not None
+        has_district = district_research is not None
+        has_conference = conference_research is not None
+        
+        if has_state and has_district and has_conference:
+            overall_status = "complete"
+            complete_count += 1
+        elif has_state or has_district or has_conference:
+            overall_status = "partial"
+            partial_count += 1
+        else:
+            overall_status = "missing"
+            missing_count += 1
+        
+        states_coverage.append({
+            "code": state_code,
+            "name": state_name,
+            "overall_status": overall_status,
+            "state_research": state_research,
+            "district_research": district_research,
+            "conference_research": conference_research,
+        })
+    
+    # Sort by state name
+    states_coverage.sort(key=lambda x: x["name"])
+    
+    return {
+        "product": product,
+        "product_key": product_key,
+        "wida_only": wida_only,
+        "states": states_coverage,
+        "summary": {
+            "total_states": len(states_coverage),
+            "complete": complete_count,
+            "partial": partial_count,
+            "missing": missing_count,
+        }
+    }

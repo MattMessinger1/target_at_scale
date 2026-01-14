@@ -10,7 +10,7 @@
  */
 import React, { useState, useEffect } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { 
   api, 
   FundingItem, 
@@ -1485,6 +1485,48 @@ function EmailGeneratorPipeline() {
     
     setBatchStateInput('')
   }
+
+  // Handle URL params for batch prefill (from Coverage Matrix page)
+  const [searchParams, setSearchParams] = useSearchParams()
+  
+  useEffect(() => {
+    const batchParam = searchParams.get('batch')
+    if (batchParam === 'true') {
+      // Get prefill values from URL
+      const productParam = searchParams.get('product')
+      const statesParam = searchParams.get('states')
+      const districtParam = searchParams.get('district')
+      const conferenceParam = searchParams.get('conference')
+      
+      // Set product if specified
+      if (productParam) {
+        setSelectedProducts([productParam])
+      }
+      
+      // Parse and set states
+      if (statesParam) {
+        const stateCodes = statesParam.split(',')
+        const states = stateCodes
+          .map(code => ({ code, name: ALL_US_STATES[code] }))
+          .filter(s => s.name)
+        setBatchStates(states)
+      }
+      
+      // Set research options
+      if (districtParam === 'true') {
+        setBatchIncludeDistrictResearch(true)
+      }
+      if (conferenceParam === 'true') {
+        setBatchIncludeConferenceResearch(true)
+      }
+      
+      // Open the batch modal
+      setShowBatchModal(true)
+      
+      // Clear the URL params (without triggering navigation)
+      setSearchParams({}, { replace: true })
+    }
+  }, []) // Only run on mount
 
   // Validation section collapsed by default
   const [validationExpanded, setValidationExpanded] = useState(false)
@@ -2963,8 +3005,19 @@ function EmailGeneratorPipeline() {
                 </button>
               </div>
               <div className="p-4 overflow-y-auto max-h-[60vh]">
-                <p className="text-sm text-slate-400 mb-4">
+                <p className="text-sm text-slate-400 mb-2">
                   Run research across multiple states simultaneously. Results will be saved to your Saved Research.
+                </p>
+                <p className="text-xs text-slate-500 mb-4">
+                  💡 Want to fill gaps efficiently? Use the{' '}
+                  <Link 
+                    to="/coverage" 
+                    className="text-indigo-400 hover:text-indigo-300 underline"
+                    onClick={() => setShowBatchModal(false)}
+                  >
+                    Coverage Matrix
+                  </Link>{' '}
+                  to see exactly what research is missing.
                 </p>
                 
                 {/* Product Summary */}

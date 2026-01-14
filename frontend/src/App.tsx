@@ -9,6 +9,7 @@ import Export from '@/pages/Export'
 import EmailGenerator from '@/pages/EmailGenerator'
 import SavedRuns from '@/pages/SavedRuns'
 import TrainingFeedback from '@/pages/TrainingFeedback'
+import ResearchCoverage from '@/pages/ResearchCoverage'
 
 function App() {
   return (
@@ -17,6 +18,8 @@ function App() {
         {/* Main V1 Email Generator - now the primary route */}
         <Route path="/" element={<EmailGenerator />} />
         <Route path="/generator" element={<EmailGenerator />} />
+        <Route path="/email" element={<EmailGenerator />} />
+        <Route path="/coverage" element={<ResearchCoverage />} />
         <Route path="/saved-runs" element={<SavedRuns />} />
         <Route path="/training" element={<TrainingFeedback />} />
         

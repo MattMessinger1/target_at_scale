@@ -127,6 +127,37 @@ export interface StateInfo {
   is_wida: boolean
 }
 
+// Research coverage matrix types
+export interface ResearchStatus {
+  status: 'completed'
+  age_days: number
+  hook_count?: number
+  districts_surveyed?: number
+  conference_count?: number
+}
+
+export interface StateCoverage {
+  code: string
+  name: string
+  overall_status: 'complete' | 'partial' | 'missing'
+  state_research: ResearchStatus | null
+  district_research: ResearchStatus | null
+  conference_research: ResearchStatus | null
+}
+
+export interface CoverageResponse {
+  product: string
+  product_key: string
+  wida_only: boolean
+  states: StateCoverage[]
+  summary: {
+    total_states: number
+    complete: number
+    partial: number
+    missing: number
+  }
+}
+
 export interface SourceLink {
   url: string
   title?: string
@@ -1074,6 +1105,12 @@ export const api = {
     clearCache: (state?: string) => {
       const params = state ? `?state=${state}` : ''
       return fetchApi<{ message: string }>(`/research/cache/clear${params}`)
+    },
+    getCoverage: (product: string, widaOnly: boolean = true) => {
+      const params = new URLSearchParams()
+      params.set('product', product)
+      params.set('wida_only', String(widaOnly))
+      return fetchApi<CoverageResponse>(`/research/coverage?${params.toString()}`)
     },
   },
 
