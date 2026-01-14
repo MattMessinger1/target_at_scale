@@ -408,6 +408,8 @@ export interface WebHook {
   source_level?: SourceLevel
   district_name?: string | null
   why_district_specific?: string | null
+  // Deadline warning (added by hook gate if deadline is approaching)
+  deadline_warning?: string | null
 }
 
 export interface SelectedHook {

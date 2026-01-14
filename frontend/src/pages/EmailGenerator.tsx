@@ -2599,7 +2599,16 @@ function EmailGeneratorPipeline() {
                 <div key={`${h.link}-${i}`} className="p-3 rounded border border-slate-700 bg-slate-900/30">
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-xs text-slate-400 font-mono">{h.hook_type}</div>
-                    <div className="text-xs text-slate-500">{h.confidence}</div>
+                    <div className="flex items-center gap-2">
+                      {h.deadline_warning && (
+                        <span className={`px-1.5 py-0.5 rounded text-xs ${
+                          h.deadline_warning.includes('passed') ? 'bg-red-900/50 text-red-300' : 'bg-amber-900/50 text-amber-300'
+                        }`}>
+                          {h.deadline_warning}
+                        </span>
+                      )}
+                      <span className="text-xs text-slate-500">{h.confidence}</span>
+                    </div>
                   </div>
                   <a className="mt-1 block text-sm text-emerald-300 hover:text-emerald-200 underline break-all" href={h.link} target="_blank" rel="noreferrer">
                     {h.link}
@@ -2813,6 +2822,17 @@ function EmailGeneratorPipeline() {
               {isElevated && (
                 <span className="px-2 py-0.5 rounded bg-amber-900/50 text-amber-300 text-xs font-medium">
                   Elevated
+                </span>
+              )}
+              {h.deadline_warning && (
+                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                  h.deadline_warning.includes('passed') || h.deadline_warning.includes('TODAY')
+                    ? 'bg-red-900/50 text-red-300'
+                    : h.deadline_warning.includes('too late') || h.deadline_warning.includes('quickly')
+                    ? 'bg-amber-900/50 text-amber-300'
+                    : 'bg-blue-900/50 text-blue-300'
+                }`}>
+                  {h.deadline_warning}
                 </span>
               )}
             </div>

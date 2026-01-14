@@ -269,11 +269,78 @@ def _has_deliverable_tie_in(h: WebHook, *, evidence_pack: Optional[EvidencePack]
 # Expired deadline detection
 # ---------------------------------------------------------------------------
 
+# Month name to number mapping
+_MONTH_MAP = {
+    'jan': 1, 'january': 1, 'feb': 2, 'february': 2, 'mar': 3, 'march': 3,
+    'apr': 4, 'april': 4, 'may': 5, 'jun': 6, 'june': 6,
+    'jul': 7, 'july': 7, 'aug': 8, 'august': 8, 'sep': 9, 'sept': 9, 'september': 9,
+    'oct': 10, 'october': 10, 'nov': 11, 'november': 11, 'dec': 12, 'december': 12,
+}
+
+def _parse_date_from_text(text: str) -> Optional[date]:
+    """Try to extract a deadline date from text.
+    
+    Handles formats like:
+    - "September 30, 2026"
+    - "July 25, 2025"
+    - "due by June 15"
+    - "FY2026" (fiscal year ending June 30 or Sept 30)
+    """
+    if not text:
+        return None
+    
+    today = date.today()
+    
+    # Pattern 1: Full date "Month Day, Year" or "Month Day Year"
+    full_date_re = re.compile(
+        r"\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+        r"Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+        r"\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b",
+        re.I
+    )
+    match = full_date_re.search(text)
+    if match:
+        month_str = match.group(1).lower()[:3]
+        day = int(match.group(2))
+        year = int(match.group(3)) if match.group(3) else today.year
+        
+        month = _MONTH_MAP.get(month_str, 1)
+        try:
+            return date(year, month, day)
+        except ValueError:
+            pass
+    
+    # Pattern 2: "FY20XX" or "FY 20XX" - assume fiscal year end (June 30 for federal, Sept 30 typical)
+    fy_re = re.compile(r"\bFY\s?(\d{4})\b", re.I)
+    fy_match = fy_re.search(text)
+    if fy_match:
+        fy_year = int(fy_match.group(1))
+        # Federal fiscal year ends Sept 30 of that year
+        try:
+            return date(fy_year, 9, 30)
+        except ValueError:
+            pass
+    
+    # Pattern 3: "MM/DD/YYYY" or "M/D/YYYY"
+    slash_date_re = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")
+    slash_match = slash_date_re.search(text)
+    if slash_match:
+        try:
+            month = int(slash_match.group(1))
+            day = int(slash_match.group(2))
+            year = int(slash_match.group(3))
+            return date(year, month, day)
+        except ValueError:
+            pass
+    
+    return None
+
+
 def _is_hook_expired(h: WebHook) -> bool:
     """Check if hook has an expired deadline/trigger date.
     
     Deep research hooks are time-sensitive - filter out past deadlines like
-    "Intent to Participate was July 31, 2023".
+    "Intent to Participate was July 31, 2023" or "due July 2025" when it's Jan 2026.
     """
     today = date.today()
     current_year = today.year
@@ -289,7 +356,12 @@ def _is_hook_expired(h: WebHook) -> bool:
     if was_date.search(text):
         return True
     
-    # Pattern 2: Old years in deadline context (2024 or earlier when we're in 2026)
+    # Pattern 2: Try to parse an actual deadline date and check if it's past
+    deadline_date = _parse_date_from_text(text)
+    if deadline_date and deadline_date < today:
+        return True
+    
+    # Pattern 3: Old years in deadline context (2024 or earlier when we're in 2026)
     old_year = re.compile(r"\b(202[0-4]|201\d)\b")
     for m in old_year.finditer(text):
         year = int(m.group(1))
@@ -299,6 +371,52 @@ def _is_hook_expired(h: WebHook) -> bool:
                 return True
     
     return False
+
+
+def _days_until_deadline(h: WebHook) -> Optional[int]:
+    """Calculate days until deadline if one can be parsed from the hook.
+    
+    Returns:
+        - Positive number: days until deadline
+        - Negative number: days past deadline
+        - None: no deadline found
+    """
+    text = f"{h.trigger_excerpt or ''} {h.eligibility_excerpt or ''}"
+    deadline_date = _parse_date_from_text(text)
+    
+    if deadline_date:
+        return (deadline_date - date.today()).days
+    return None
+
+
+def get_deadline_warning(h: WebHook, warn_days: int = 45) -> Optional[str]:
+    """Get a warning message if deadline is approaching soon.
+    
+    Args:
+        h: The hook to check
+        warn_days: Number of days threshold for warning (default 45)
+    
+    Returns:
+        Warning message if deadline is within warn_days, None otherwise
+    """
+    days = _days_until_deadline(h)
+    
+    if days is None:
+        return None
+    
+    if days < 0:
+        return f"⚠️ Deadline passed {abs(days)} days ago"
+    elif days <= warn_days:
+        if days == 0:
+            return "⚠️ Deadline is TODAY"
+        elif days <= 7:
+            return f"⚠️ Deadline in {days} days - may be too late"
+        elif days <= 14:
+            return f"⚠️ Deadline in {days} days - act quickly"
+        else:
+            return f"⏰ Deadline in {days} days"
+    
+    return None
 
 
 # Human-readable labels for rejection reasons
@@ -363,6 +481,26 @@ def gate_treasure_hooks(
             _filter(h, "missing_deliverable_tie_in")
             continue
 
+        # Add deadline warning if applicable (hook passes but deadline is approaching)
+        warning = get_deadline_warning(h)
+        if warning:
+            # Create a copy with the warning added
+            h = WebHook(
+                hook_id=h.hook_id,
+                hook_type=h.hook_type,
+                quote=h.quote,
+                link=h.link,
+                trigger_excerpt=h.trigger_excerpt,
+                eligibility_excerpt=h.eligibility_excerpt,
+                why_relevant=h.why_relevant,
+                confidence=h.confidence,
+                source_quality_reason=h.source_quality_reason,
+                source_level=h.source_level,
+                district_name=h.district_name,
+                why_district_specific=h.why_district_specific,
+                deadline_warning=warning,
+            )
+        
         kept.append(h)
 
     report = HookGateReport(total=len(hooks or []), kept=len(kept), dropped_by_reason=dropped)

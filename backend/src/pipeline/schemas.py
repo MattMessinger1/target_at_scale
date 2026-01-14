@@ -171,6 +171,12 @@ class WebHook(BaseModel):
         default=None,
         description="For district-level hooks, explanation of why this is unique to this district."
     )
+    
+    # Deadline warning (added by hook gate)
+    deadline_warning: Optional[str] = Field(
+        default=None,
+        description="Warning if deadline is approaching soon or has passed (e.g. '⚠️ Deadline in 14 days')."
+    )
 
 
 class SelectedHook(BaseModel):
