@@ -1350,6 +1350,18 @@ export const api = {
         product_display_name?: string
         include_district_research?: boolean
         include_conference_research?: boolean
+        tasks?: Array<{
+          task_id: string
+          status: string
+          phase: 'state' | 'district' | 'conferences'
+          progress: number
+          message: string
+          state_code?: string
+          product_key?: string
+          product_display_name?: string
+          include_district_research?: boolean
+          include_conference_research?: boolean
+        }>
       }>('/generate/pipeline/prep/active'),
     // Polling wrapper that handles the full research prep flow
     pipelinePrepPolling: async (

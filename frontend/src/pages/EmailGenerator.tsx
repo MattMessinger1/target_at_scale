@@ -182,6 +182,19 @@ type ResearchRunSnapshot = {
   selections: ResearchRunSelections
 }
 
+type ActiveResearchTask = {
+  task_id: string
+  status: string
+  phase: 'state' | 'district' | 'conferences'
+  progress: number
+  message: string
+  state_code?: string
+  product_key?: string
+  product_display_name?: string
+  include_district_research?: boolean
+  include_conference_research?: boolean
+}
+
 const RESEARCH_RUNS_STORAGE_KEY = 'wceps_emailgen_research_runs_v1'
 const MAX_SAVED_RUNS = 3
 
@@ -1386,6 +1399,7 @@ function EmailGeneratorPipeline() {
   const [researchTaskId, setResearchTaskId] = useState<string | null>(null)
   const [researchProgress, setResearchProgress] = useState(0)
   const [researchMessage, setResearchMessage] = useState('')
+  const [activeResearchTasks, setActiveResearchTasks] = useState<ActiveResearchTask[]>([])
 
   // Cache status for the current state+product selection
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null)
@@ -1658,6 +1672,39 @@ function EmailGeneratorPipeline() {
       })
   }, [selectedStates, selectedProducts, wizardStep])
 
+  const normalizeActiveTasks = (active: {
+    task_id?: string | null
+    status?: string
+    phase?: 'state' | 'district' | 'conferences'
+    progress?: number
+    message?: string
+    state_code?: string
+    product_key?: string
+    product_display_name?: string
+    include_district_research?: boolean
+    include_conference_research?: boolean
+    tasks?: ActiveResearchTask[]
+  }): ActiveResearchTask[] => {
+    if (active?.tasks && active.tasks.length > 0) {
+      return active.tasks
+    }
+    if (active?.task_id) {
+      return [{
+        task_id: active.task_id,
+        status: active.status || 'in_progress',
+        phase: active.phase || 'state',
+        progress: active.progress || 0,
+        message: active.message || 'Research in progress',
+        state_code: active.state_code,
+        product_key: active.product_key,
+        product_display_name: active.product_display_name,
+        include_district_research: active.include_district_research,
+        include_conference_research: active.include_conference_research,
+      }]
+    }
+    return []
+  }
+
   // On page load: check for any active research and resume if found
   useEffect(() => {
     let cancelled = false
@@ -1671,7 +1718,12 @@ function EmailGeneratorPipeline() {
       
       try {
         const active = await api.generate.pipelinePrepActive()
-        if (cancelled || !active.task_id) return
+        if (cancelled) return
+
+        const tasks = normalizeActiveTasks(active)
+        setActiveResearchTasks(tasks)
+
+        if (!active.task_id) return
         
         // Found active research - resume polling
         setResearchTaskId(active.task_id)
@@ -1689,6 +1741,9 @@ function EmailGeneratorPipeline() {
         }
         if (active.include_district_research) {
           setIncludeDistrictResearch(true)
+        }
+        if (active.include_conference_research) {
+          setIncludeConferenceResearch(true)
         }
         
         toast({
@@ -1761,6 +1816,27 @@ function EmailGeneratorPipeline() {
     
     return () => { cancelled = true }
   }, []) // Only run once on mount
+
+  useEffect(() => {
+    if (wizardStep !== 2) return
+    let cancelled = false
+
+    const pollActiveTasks = async () => {
+      while (!cancelled) {
+        try {
+          const active = await api.generate.pipelinePrepActive()
+          if (cancelled) break
+          setActiveResearchTasks(normalizeActiveTasks(active))
+        } catch (err) {
+          console.warn('Failed to refresh active research tasks:', err)
+        }
+        await new Promise(resolve => setTimeout(resolve, 5000))
+      }
+    }
+
+    pollActiveTasks()
+    return () => { cancelled = true }
+  }, [wizardStep])
 
   const toggleReasonTag = (link: string, tag: string) => {
     setHookReasonTags((prev) => {
@@ -3593,6 +3669,46 @@ function EmailGeneratorPipeline() {
                 )}
               </div>
             </div>
+
+            {activeResearchTasks.length > 0 && (
+              <div className="mb-6 p-4 rounded-lg border border-slate-700 bg-slate-900/30">
+                <div className="text-xs text-slate-500 uppercase tracking-wide mb-3">Active searches</div>
+                <div className="space-y-3">
+                  {activeResearchTasks.map((task) => {
+                    const phaseLabel = task.phase === 'conferences'
+                      ? 'Conferences'
+                      : task.phase === 'district'
+                        ? 'District Research'
+                        : 'State Research'
+                    const phaseColor = task.phase === 'conferences'
+                      ? 'bg-indigo-500'
+                      : task.phase === 'district'
+                        ? 'bg-amber-500'
+                        : 'bg-emerald-500'
+                    return (
+                      <div key={task.task_id} className="p-3 rounded-lg border border-slate-700 bg-slate-900/40">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-sm text-slate-200">
+                            {task.product_display_name || task.product_key || 'Product'} | {task.state_code || 'State'}
+                          </div>
+                          <div className="text-xs text-slate-500">{task.status}</div>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
+                          <span>{phaseLabel}</span>
+                          <span>{Math.round(task.progress)}%</span>
+                        </div>
+                        <div className="mt-1 h-1 bg-slate-700 rounded-full overflow-hidden">
+                          <div className={`h-full transition-all duration-500 ${phaseColor}`} style={{ width: `${task.progress}%` }} />
+                        </div>
+                        {task.message && (
+                          <div className="mt-2 text-xs text-slate-500">{task.message}</div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
             
             {traceEvents.length > 0 && (
               <div className="p-4 rounded-lg border border-slate-700 bg-slate-900/30 max-h-48 overflow-y-auto">

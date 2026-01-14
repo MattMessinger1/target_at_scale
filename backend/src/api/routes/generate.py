@@ -1308,9 +1308,10 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         
         Used by frontend to detect and resume in-progress research on page load.
         """
+        active_tasks = []
         for task_id, task in _research_tasks.items():
             if task["status"] in ("queued", "in_progress"):
-                return {
+                active_tasks.append({
                     "task_id": task_id,
                     "status": task["status"],
                     "phase": task.get("phase", "state"),
@@ -1321,8 +1322,17 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     "product_display_name": task.get("product_display_name"),
                     "include_district_research": task.get("include_district_research", False),
                     "include_conference_research": task.get("include_conference_research", False),
-                }
-        return {"task_id": None, "message": "No active research"}
+                })
+
+        if not active_tasks:
+            return {"task_id": None, "message": "No active research", "tasks": []}
+
+        # Preserve existing single-task fields for backward compatibility.
+        primary = active_tasks[0]
+        return {
+            **primary,
+            "tasks": active_tasks,
+        }
 
     @router.post("/", response_model=PipelineRunResponse)
     @router.post("/pipeline", response_model=PipelineRunResponse)
