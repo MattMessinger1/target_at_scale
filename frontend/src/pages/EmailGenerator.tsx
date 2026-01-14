@@ -2866,27 +2866,27 @@ function EmailGeneratorPipeline() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => {
-                          // Add all WIDA states
+                          // Add all WIDA states (38 states - matches backend WIDA_STATES)
                           const widaStates = [
-                            { code: 'AL', name: 'Alabama' }, { code: 'CO', name: 'Colorado' },
-                            { code: 'DC', name: 'District of Columbia' }, { code: 'DE', name: 'Delaware' },
-                            { code: 'FL', name: 'Florida' }, { code: 'GA', name: 'Georgia' },
-                            { code: 'HI', name: 'Hawaii' }, { code: 'ID', name: 'Idaho' },
-                            { code: 'IL', name: 'Illinois' }, { code: 'IN', name: 'Indiana' },
-                            { code: 'KY', name: 'Kentucky' }, { code: 'ME', name: 'Maine' },
-                            { code: 'MD', name: 'Maryland' }, { code: 'MA', name: 'Massachusetts' },
-                            { code: 'MI', name: 'Michigan' }, { code: 'MN', name: 'Minnesota' },
-                            { code: 'MO', name: 'Missouri' }, { code: 'MT', name: 'Montana' },
-                            { code: 'NV', name: 'Nevada' }, { code: 'NH', name: 'New Hampshire' },
+                            { code: 'AK', name: 'Alaska' }, { code: 'AL', name: 'Alabama' },
+                            { code: 'CO', name: 'Colorado' }, { code: 'DC', name: 'District of Columbia' },
+                            { code: 'DE', name: 'Delaware' }, { code: 'FL', name: 'Florida' },
+                            { code: 'GA', name: 'Georgia' }, { code: 'HI', name: 'Hawaii' },
+                            { code: 'ID', name: 'Idaho' }, { code: 'IL', name: 'Illinois' },
+                            { code: 'IN', name: 'Indiana' }, { code: 'KY', name: 'Kentucky' },
+                            { code: 'MA', name: 'Massachusetts' }, { code: 'MD', name: 'Maryland' },
+                            { code: 'ME', name: 'Maine' }, { code: 'MI', name: 'Michigan' },
+                            { code: 'MN', name: 'Minnesota' }, { code: 'MO', name: 'Missouri' },
+                            { code: 'MT', name: 'Montana' }, { code: 'NC', name: 'North Carolina' },
+                            { code: 'ND', name: 'North Dakota' }, { code: 'NH', name: 'New Hampshire' },
                             { code: 'NJ', name: 'New Jersey' }, { code: 'NM', name: 'New Mexico' },
-                            { code: 'NC', name: 'North Carolina' }, { code: 'ND', name: 'North Dakota' },
-                            { code: 'OH', name: 'Ohio' }, { code: 'OK', name: 'Oklahoma' },
-                            { code: 'PA', name: 'Pennsylvania' }, { code: 'RI', name: 'Rhode Island' },
-                            { code: 'SC', name: 'South Carolina' }, { code: 'SD', name: 'South Dakota' },
-                            { code: 'TN', name: 'Tennessee' }, { code: 'UT', name: 'Utah' },
-                            { code: 'VT', name: 'Vermont' }, { code: 'VA', name: 'Virginia' },
+                            { code: 'NY', name: 'New York' }, { code: 'NV', name: 'Nevada' },
+                            { code: 'OK', name: 'Oklahoma' }, { code: 'PA', name: 'Pennsylvania' },
+                            { code: 'RI', name: 'Rhode Island' }, { code: 'SC', name: 'South Carolina' },
+                            { code: 'SD', name: 'South Dakota' }, { code: 'TN', name: 'Tennessee' },
+                            { code: 'UT', name: 'Utah' }, { code: 'VA', name: 'Virginia' },
+                            { code: 'VT', name: 'Vermont' }, { code: 'WA', name: 'Washington' },
                             { code: 'WI', name: 'Wisconsin' }, { code: 'WY', name: 'Wyoming' },
-                            { code: 'VI', name: 'US Virgin Islands' },
                           ]
                           setBatchStates(widaStates)
                         }}
