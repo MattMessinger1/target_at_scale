@@ -25,15 +25,19 @@ logger = logging.getLogger(__name__)
 
 
 def _dump_model(obj: Any) -> Any:
-    """Serialize a model/dataclass to a dict for JSON storage.
+    """Recursively serialize a model/dataclass to a dict for JSON storage.
     
     Handles: dataclasses, Pydantic models (v1 and v2), NamedTuples, 
-    and any object with __dict__.
+    and any object with __dict__. Recursively processes nested objects.
     """
     if obj is None:
         return None
-    if isinstance(obj, dict):
+    if isinstance(obj, (str, int, float, bool)):
         return obj
+    if isinstance(obj, dict):
+        return {k: _dump_model(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_dump_model(item) for item in obj]
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         return dataclasses.asdict(obj)
     if hasattr(obj, "model_dump"):
@@ -41,9 +45,10 @@ def _dump_model(obj: Any) -> Any:
     if hasattr(obj, "dict"):
         return obj.dict()
     if hasattr(obj, "_asdict"):  # NamedTuple
-        return obj._asdict()
+        return dict(obj._asdict())
     if hasattr(obj, "__dict__"):
-        return vars(obj)
+        # Recursively serialize each attribute for plain classes
+        return {k: _dump_model(v) for k, v in vars(obj).items()}
     return obj
 
 router = APIRouter(prefix="/batch", tags=["batch"])

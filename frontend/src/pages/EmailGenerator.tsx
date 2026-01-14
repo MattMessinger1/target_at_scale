@@ -1385,6 +1385,7 @@ function EmailGeneratorPipeline() {
   const [batchStates, setBatchStates] = useState<Array<{ code: string; name: string }>>([])
   const [startingBatch, setStartingBatch] = useState(false)
   const [batchForceFresh, setBatchForceFresh] = useState(false)
+  const [batchIncludeDistrictResearch, setBatchIncludeDistrictResearch] = useState(true)
 
   // Load saved run from sessionStorage (when navigating from SavedRuns page)
   useEffect(() => {
@@ -2945,6 +2946,25 @@ function EmailGeneratorPipeline() {
                   </p>
                 </div>
                 
+                {/* Include district research option */}
+                <div className="mb-4">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={batchIncludeDistrictResearch}
+                      onChange={(e) => setBatchIncludeDistrictResearch(e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500/50"
+                    />
+                    <div>
+                      <span className="text-sm text-slate-200">Include district research</span>
+                      <span className="text-xs text-slate-500 ml-2">(find district-specific opportunities)</span>
+                    </div>
+                  </label>
+                  <p className="text-xs text-slate-500 mt-1 ml-7">
+                    Adds ~5 min per state to find levy failures, budget crises, and district-specific initiatives.
+                  </p>
+                </div>
+                
                 {/* Estimated time/cost */}
                 <div className="mb-4 p-3 bg-amber-900/20 rounded-lg border border-amber-700/30">
                   <div className="text-sm text-amber-300 font-medium mb-1">Estimated Time & Cost</div>
@@ -2975,7 +2995,7 @@ function EmailGeneratorPipeline() {
                         product: selectedProducts[0],
                         states: batchStates,
                         audiences: [selectedAudience],
-                        include_district_research: false,
+                        include_district_research: batchIncludeDistrictResearch,
                         force_fresh: batchForceFresh,
                       })
                       toast({
