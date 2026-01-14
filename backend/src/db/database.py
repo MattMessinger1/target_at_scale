@@ -70,6 +70,14 @@ async def run_migrations():
         ("research_tasks", "conferences_json", "JSON"),
         # Add created_by to saved_email_runs
         ("saved_email_runs", "created_by", "VARCHAR(100)"),
+        # Add include_conference_research to research_tasks
+        ("research_tasks", "include_conference_research", "BOOLEAN DEFAULT FALSE"),
+        # Add include_district_research and include_conference_research to batch_jobs
+        ("batch_jobs", "include_district_research", "BOOLEAN DEFAULT FALSE"),
+        ("batch_jobs", "include_conference_research", "BOOLEAN DEFAULT FALSE"),
+        # Add is_archived to cache tables for archiving old research
+        ("deep_research_cache", "is_archived", "BOOLEAN DEFAULT FALSE NOT NULL"),
+        ("district_research_cache", "is_archived", "BOOLEAN DEFAULT FALSE NOT NULL"),
     ]
     
     async with engine.begin() as conn:
