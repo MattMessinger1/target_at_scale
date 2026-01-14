@@ -40,7 +40,7 @@ import { ProductSelector } from '../components/ProductSelector'
 import { StateSelector, SelectedState } from '../components/StateSelector'
 import { AudienceSelector } from '../components/AudienceSelector'
 import { CurationStep } from '../components/CurationStep'
-import { Loader2 } from 'lucide-react'
+import { Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 
 type Step = 'select' | 'research' | 'curate' | 'generate' | 'done'
 
@@ -1389,6 +1389,9 @@ function EmailGeneratorPipeline() {
   const [batchForceFresh, setBatchForceFresh] = useState(false)
   const [batchIncludeDistrictResearch, setBatchIncludeDistrictResearch] = useState(true)
 
+  // Validation section collapsed by default
+  const [validationExpanded, setValidationExpanded] = useState(false)
+
   // Load saved run from sessionStorage (when navigating from SavedRuns page)
   useEffect(() => {
     const storedRun = sessionStorage.getItem('loadSavedRun')
@@ -2177,56 +2180,75 @@ function EmailGeneratorPipeline() {
   const renderValidation = () => {
     if (!activeVariant) return null
     const v = activeVariant.validation
+    const failureCount = v.failures?.length || 0
+    
     return (
-      <div className="mt-4 p-4 rounded-lg border border-slate-700 bg-slate-800/50">
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-sm font-medium text-slate-200">Validation</div>
-          <div className={`text-xs px-2 py-1 rounded ${
-            v.passed ? 'bg-emerald-900/50 text-emerald-300 border border-emerald-700/50' : 'bg-amber-900/40 text-amber-300 border border-amber-700/50'
-          }`}>
-            {v.passed ? 'PASS' : 'FAIL'}
-          </div>
-        </div>
-        <div className="mt-2 text-xs text-slate-400">
-          Words: {v.word_count} · Bullets: {v.bullet_count} · Bullet words: {v.bullet_word_counts.join(', ') || 'n/a'}
-        </div>
-        {!v.passed && v.failures?.length > 0 && (
-          <ul className="mt-3 space-y-1 text-sm text-slate-300">
-            {v.failures.map((f, i) => (
-              <li key={`${f.code}-${i}`}>
-                <span className="text-amber-300 font-mono text-xs">{f.code}</span>
-                <span className="ml-2">{f.message}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        {activeVariant.trace?.attempts?.length > 0 && (
-          <div className="mt-4">
-            <div className="text-xs text-slate-500 uppercase tracking-wide">Repair trace</div>
-            <div className="mt-2 space-y-2">
-              {activeVariant.trace.attempts.map((a) => (
-                <div key={a.iteration} className="p-3 rounded border border-slate-700 bg-slate-900/30">
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-slate-200">Attempt {a.iteration}</div>
-                    <div className={`text-xs px-2 py-1 rounded ${
-                      a.validation.passed ? 'bg-emerald-900/50 text-emerald-300' : 'bg-slate-700/50 text-slate-300'
-                    }`}>
-                      {a.validation.passed ? 'PASS' : 'FAIL'}
-                    </div>
-                  </div>
-                  {a.stopped && (
-                    <div className="mt-1 text-xs text-slate-400">
-                      stopped: <span className="font-mono">{a.stop_reason || 'unknown'}</span>
-                    </div>
-                  )}
-                  {!a.validation.passed && a.validation.failures?.length > 0 && (
-                    <div className="mt-2 text-xs text-slate-400">
-                      failures: {a.validation.failures.map((f) => f.code).join(', ')}
-                    </div>
-                  )}
-                </div>
-              ))}
+      <div className="mt-4 rounded-lg border border-slate-700 bg-slate-800/50">
+        {/* Collapsible header - always visible */}
+        <button
+          onClick={() => setValidationExpanded(!validationExpanded)}
+          className="w-full p-3 flex items-center justify-between gap-3 hover:bg-slate-700/30 transition-colors rounded-lg"
+        >
+          <div className="flex items-center gap-3">
+            <div className="text-sm font-medium text-slate-400">Validation</div>
+            <div className={`text-xs px-2 py-0.5 rounded ${
+              v.passed ? 'bg-emerald-900/50 text-emerald-300 border border-emerald-700/50' : 'bg-amber-900/40 text-amber-300 border border-amber-700/50'
+            }`}>
+              {v.passed ? 'PASS' : `FAIL${failureCount > 0 ? ` (${failureCount} issue${failureCount > 1 ? 's' : ''})` : ''}`}
             </div>
+          </div>
+          {validationExpanded ? (
+            <ChevronUp className="h-4 w-4 text-slate-500" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-slate-500" />
+          )}
+        </button>
+        
+        {/* Expanded content */}
+        {validationExpanded && (
+          <div className="px-4 pb-4 border-t border-slate-700/50">
+            <div className="mt-3 text-xs text-slate-400">
+              Words: {v.word_count} · Bullets: {v.bullet_count} · Bullet words: {v.bullet_word_counts.join(', ') || 'n/a'}
+            </div>
+            {!v.passed && v.failures?.length > 0 && (
+              <ul className="mt-3 space-y-1 text-sm text-slate-300">
+                {v.failures.map((f, i) => (
+                  <li key={`${f.code}-${i}`}>
+                    <span className="text-amber-300 font-mono text-xs">{f.code}</span>
+                    <span className="ml-2">{f.message}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {activeVariant.trace?.attempts?.length > 0 && (
+              <div className="mt-4">
+                <div className="text-xs text-slate-500 uppercase tracking-wide">Repair trace</div>
+                <div className="mt-2 space-y-2">
+                  {activeVariant.trace.attempts.map((a) => (
+                    <div key={a.iteration} className="p-3 rounded border border-slate-700 bg-slate-900/30">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm text-slate-200">Attempt {a.iteration}</div>
+                        <div className={`text-xs px-2 py-1 rounded ${
+                          a.validation.passed ? 'bg-emerald-900/50 text-emerald-300' : 'bg-slate-700/50 text-slate-300'
+                        }`}>
+                          {a.validation.passed ? 'PASS' : 'FAIL'}
+                        </div>
+                      </div>
+                      {a.stopped && (
+                        <div className="mt-1 text-xs text-slate-400">
+                          stopped: <span className="font-mono">{a.stop_reason || 'unknown'}</span>
+                        </div>
+                      )}
+                      {!a.validation.passed && a.validation.failures?.length > 0 && (
+                        <div className="mt-2 text-xs text-slate-400">
+                          failures: {a.validation.failures.map((f) => f.code).join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
