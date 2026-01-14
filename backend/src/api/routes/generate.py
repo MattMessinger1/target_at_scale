@@ -561,6 +561,44 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 _email_tasks[task_id]["message"] = "Email generation complete!"
                 _email_tasks[task_id]["result"] = _dump_model(result)
                 logger.info(f"Email task {task_id} completed successfully")
+                
+                # Auto-save email to SavedEmailRun so user doesn't lose it
+                try:
+                    from ...db.models import SavedEmailRun
+                    from ...db.database import AsyncSessionLocal
+                    
+                    # Get the first variant's subject for the name
+                    first_variant = variants[0] if variants else None
+                    subject_preview = ""
+                    if first_variant and first_variant.active and first_variant.active.subject:
+                        subject_preview = first_variant.active.subject[:100]
+                    
+                    async with AsyncSessionLocal() as save_db:
+                        saved_email = SavedEmailRun(
+                            run_type="email",
+                            name=f"{product} - {state_full or state_code} (auto-saved)",
+                            created_by=request.created_by,
+                            product=product,
+                            state_code=state_code,
+                            state_full=state_full,
+                            audiences=audiences,
+                            district_name=request.district_name,
+                            pipeline_response={
+                                "evidence_pack": _dump_model(evidence_pack),
+                                "hooks": [_dump_model(h) for h in treasure_hooks],
+                            },
+                            email_variants=[_dump_model(v) for v in variants],
+                            selected_hook_links=[primary.link] if primary else [],
+                            primary_hook_link=primary.link if primary else None,
+                            subject_preview=subject_preview,
+                        )
+                        save_db.add(saved_email)
+                        await save_db.commit()
+                        await save_db.refresh(saved_email)
+                        _email_tasks[task_id]["saved_run_id"] = saved_email.id
+                        logger.info(f"Auto-saved email task {task_id} as SavedEmailRun {saved_email.id}")
+                except Exception as save_err:
+                    logger.warning(f"Failed to auto-save email task {task_id}: {save_err}")
 
             except Exception as e:
                 logger.error(f"Email task {task_id} failed: {e}", exc_info=True)
