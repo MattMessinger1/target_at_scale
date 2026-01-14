@@ -1,4 +1,5 @@
 """FastAPI application entry point."""
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
@@ -84,6 +85,62 @@ async def lifespan(app: FastAPI):
             await db.commit()
     except Exception as e:
         logger.error(f"Cleanup failed (startup will continue): {e}", exc_info=True)
+    
+    # Resume interrupted batch jobs (orphaned by deploy/restart)
+    try:
+        from .routes.batch import process_batch_job
+        
+        async with AsyncSessionLocal() as db:
+            # Find batch jobs that were running when the container stopped
+            stmt = select(BatchJob).where(BatchJob.status == "running")
+            result = await db.execute(stmt)
+            running_jobs = result.scalars().all()
+            
+            for job in running_jobs:
+                # Calculate how long this job has been "running" without a live process
+                started = job.started_at or job.created_at
+                orphan_duration = (datetime.utcnow() - started).total_seconds()
+                
+                # Find which states have already been completed for this job
+                completed_stmt = select(SavedEmailRun.state_code).where(
+                    SavedEmailRun.batch_job_id == job.id
+                )
+                completed_result = await db.execute(completed_stmt)
+                completed_codes = set(row[0] for row in completed_result.fetchall())
+                
+                # Filter to remaining states that need processing
+                remaining_states = [s for s in job.states if s["code"] not in completed_codes]
+                
+                if remaining_states:
+                    logger.warning(
+                        f"Batch job {job.id} was orphaned (running for {int(orphan_duration)}s without progress). "
+                        f"Resuming: {len(remaining_states)} of {len(job.states)} states remaining, "
+                        f"{len(completed_codes)} already completed."
+                    )
+                    
+                    # Resume processing in background
+                    asyncio.create_task(process_batch_job(
+                        job_id=job.id,
+                        product=job.product,
+                        states=remaining_states,
+                        audiences=job.audiences or [],
+                        include_district_research=False,  # Safe default for resume
+                        is_resume=True,
+                    ))
+                else:
+                    # All states completed but job wasn't marked done - fix it
+                    logger.info(
+                        f"Batch job {job.id} had all states completed but was still marked running. "
+                        f"Marking as completed."
+                    )
+                    job.status = "completed"
+                    job.completed_at = datetime.utcnow()
+                    await db.commit()
+            
+            if running_jobs:
+                logger.info(f"Checked {len(running_jobs)} potentially orphaned batch jobs on startup")
+    except Exception as e:
+        logger.error(f"Batch job resume failed (startup will continue): {e}", exc_info=True)
     
     yield
     # Shutdown (if needed)

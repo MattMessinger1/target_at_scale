@@ -352,6 +352,7 @@ async def process_batch_job(
     states: List[Dict[str, str]],
     audiences: List[str],
     include_district_research: bool,
+    is_resume: bool = False,
 ):
     """Background task to process a batch job.
     
@@ -363,6 +364,10 @@ async def process_batch_job(
     5. run_conference_research() - Conference opportunities
     
     Uses concurrent processing with rate limiting.
+    
+    Args:
+        is_resume: If True, this is resuming an interrupted job. Skip status/started_at updates.
+                   The 'states' param should contain only remaining states to process.
     """
     from ...db.database import AsyncSessionLocal
     from ...research.product_briefs import normalize_product_key
@@ -391,8 +396,12 @@ async def process_batch_job(
             if not job or job.status == "cancelled":
                 return
             
-            job.status = "running"
-            job.started_at = datetime.utcnow()
+            # Only update status/started_at for new jobs, not resumes
+            if not is_resume:
+                job.status = "running"
+                job.started_at = datetime.utcnow()
+            else:
+                logger.info(f"Batch job {job_id}: Resuming with {len(states)} remaining states")
             await db.commit()
             
             product_key = normalize_product_key(product)
@@ -580,8 +589,44 @@ async def process_batch_job(
                             except Exception as inner_e:
                                 logger.error(f"Batch job {job_id}: Failed to update error count: {inner_e}")
             
-            # Process all states concurrently (with semaphore limiting)
-            await asyncio.gather(*[process_state(s) for s in states])
+            # Heartbeat task to log progress periodically (helps detect orphaned jobs)
+            heartbeat_stop = asyncio.Event()
+            
+            async def heartbeat():
+                """Log periodic heartbeat while job is running."""
+                interval = 60  # seconds
+                while not heartbeat_stop.is_set():
+                    try:
+                        await asyncio.wait_for(heartbeat_stop.wait(), timeout=interval)
+                    except asyncio.TimeoutError:
+                        # Timeout means we should log a heartbeat
+                        async with AsyncSessionLocal() as hb_db:
+                            hb_stmt = select(BatchJob).where(BatchJob.id == job_id)
+                            hb_result = await hb_db.execute(hb_stmt)
+                            hb_job = hb_result.scalar_one_or_none()
+                            if hb_job:
+                                elapsed = (datetime.utcnow() - (hb_job.started_at or hb_job.created_at)).total_seconds()
+                                logger.info(
+                                    f"Batch job {job_id} heartbeat: "
+                                    f"{hb_job.completed_states}/{hb_job.total_states} states done, "
+                                    f"{hb_job.failed_states} failed, "
+                                    f"running for {int(elapsed)}s"
+                                )
+            
+            # Start heartbeat task
+            heartbeat_task = asyncio.create_task(heartbeat())
+            
+            try:
+                # Process all states concurrently (with semaphore limiting)
+                await asyncio.gather(*[process_state(s) for s in states])
+            finally:
+                # Stop heartbeat when processing completes
+                heartbeat_stop.set()
+                heartbeat_task.cancel()
+                try:
+                    await heartbeat_task
+                except asyncio.CancelledError:
+                    pass
             
             # Mark job as completed
             final_stmt = select(BatchJob).where(BatchJob.id == job_id)
