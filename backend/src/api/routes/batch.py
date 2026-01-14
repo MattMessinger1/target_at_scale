@@ -364,156 +364,166 @@ async def process_batch_job(
             semaphore = asyncio.Semaphore(MAX_CONCURRENT)
             
             async def process_state(state: Dict[str, str]):
-                """Process a single state using full pipeline."""
+                """Process a single state using full pipeline.
+                
+                Each state gets its own database session to avoid concurrent transaction conflicts.
+                """
                 async with semaphore:
                     state_code = state["code"]
                     state_name = state["name"]
                     
-                    try:
-                        # Check if job was cancelled
-                        check_stmt = select(BatchJob).where(BatchJob.id == job_id)
-                        check_result = await db.execute(check_stmt)
-                        current_job = check_result.scalar_one_or_none()
-                        if current_job and current_job.status == "cancelled":
-                            return
+                    # Use a separate database session for each state to avoid transaction conflicts
+                    async with AsyncSessionLocal() as state_db:
+                        try:
+                            # Check if job was cancelled
+                            check_stmt = select(BatchJob).where(BatchJob.id == job_id)
+                            check_result = await state_db.execute(check_stmt)
+                            current_job = check_result.scalar_one_or_none()
+                            if current_job and current_job.status == "cancelled":
+                                return
+                            
+                            logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 1: Evidence Pack")
+                            
+                            # =====================================================
+                            # Stage 1: Build Evidence Pack (KB chunks + product briefs)
+                            # =====================================================
+                            evidence_pack = await build_product_evidence_pack(
+                                db=state_db,
+                                product_display_name=product,
+                                state_code=state_code,
+                                audiences=audiences or ["Decision Makers"],
+                            )
+                            
+                            logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 2: Treasure Hunter")
+                            
+                            # =====================================================
+                            # Stage 2: Treasure Hunter (Deep Research)
+                            # =====================================================
+                            treasure_hooks = await run_treasure_hunter(
+                                db=state_db,
+                                product=product,
+                                state_code=state_code,
+                                state_full=state_name,
+                                district_name=None,
+                                district_url=None,
+                            )
                         
-                        logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 1: Evidence Pack")
-                        
-                        # =====================================================
-                        # Stage 1: Build Evidence Pack (KB chunks + product briefs)
-                        # =====================================================
-                        evidence_pack = await build_product_evidence_pack(
-                            db=db,
-                            product=product,
-                            state_code=state_code,
-                            state_full=state_name,
-                        )
-                        
-                        logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 2: Treasure Hunter")
-                        
-                        # =====================================================
-                        # Stage 2: Treasure Hunter (Deep Research)
-                        # =====================================================
-                        treasure_hooks = await run_treasure_hunter(
-                            db=db,
-                            product=product,
-                            state_code=state_code,
-                            state_full=state_name,
-                            evidence_pack=evidence_pack,
-                        )
-                        
-                        logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 3: Hook Gate (found {len(treasure_hooks or [])} hooks)")
-                        
-                        # =====================================================
-                        # Stage 3: Hook Gate (Filter & Consolidate)
-                        # =====================================================
-                        gated_hooks, filtered_reqs, report = gate_treasure_hooks(
-                            treasure_hooks, 
-                            evidence_pack=evidence_pack
-                        )
-                        
-                        logger.info(f"Batch job {job_id}: Processing {state_code} - Hook gate kept {len(gated_hooks)}/{len(treasure_hooks or [])} hooks")
-                        
-                        # =====================================================
-                        # Stage 4: District Research (Optional)
-                        # =====================================================
-                        district_result = None
-                        if include_district_research and len(gated_hooks) > 0:
-                            logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 4: District Research")
+                            logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 3: Hook Gate (found {len(treasure_hooks or [])} hooks)")
+                            
+                            # =====================================================
+                            # Stage 3: Hook Gate (Filter & Consolidate)
+                            # =====================================================
+                            gated_hooks, filtered_reqs, report = gate_treasure_hooks(
+                                treasure_hooks, 
+                                evidence_pack=evidence_pack
+                            )
+                            
+                            logger.info(f"Batch job {job_id}: Processing {state_code} - Hook gate kept {len(gated_hooks)}/{len(treasure_hooks or [])} hooks")
+                            
+                            # =====================================================
+                            # Stage 4: District Research (Optional)
+                            # =====================================================
+                            district_result = None
+                            if include_district_research and len(gated_hooks) > 0:
+                                logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 4: District Research")
+                                try:
+                                    district_result = await run_district_deep_research(
+                                        db=state_db,
+                                        state_code=state_code,
+                                        state_full=state_name,
+                                        product_key=product_key,
+                                        product_display_name=product,
+                                    )
+                                except Exception as e:
+                                    logger.warning(f"Batch job {job_id}: District research failed for {state_code}: {e}")
+                            
+                            # =====================================================
+                            # Stage 5: Conference Research
+                            # =====================================================
+                            conferences = []
                             try:
-                                district_result = await run_district_deep_research(
-                                    db=db,
+                                logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 5: Conference Research")
+                                conf_results = await run_conference_research(
+                                    db=state_db,
                                     state_code=state_code,
                                     state_full=state_name,
                                     product_key=product_key,
-                                    product_display_name=product,
+                                    audience=audiences[0] if audiences else "Decision Makers",
                                 )
+                                
+                                # Filter conferences for quality
+                                raw_conferences = conf_results.get("conferences", [])
+                                if raw_conferences:
+                                    passed_conferences, _ = filter_conferences(raw_conferences, product_key)
+                                    
+                                    # Convert to serializable dicts (limit to top 5)
+                                    for conf in passed_conferences[:5]:
+                                        conferences.append({
+                                            "conference_name": conf.get("conference_name", ""),
+                                            "organization": conf.get("organization", ""),
+                                            "location": conf.get("location", ""),
+                                            "dates": conf.get("dates", ""),
+                                            "relevance": conf.get("relevance", ""),
+                                            "presentation_deadline": conf.get("presentation_deadline"),
+                                            "sponsorship_info": conf.get("sponsorship_info"),
+                                            "website": conf.get("website", ""),
+                                            "confidence": conf.get("confidence", "medium"),
+                                        })
+                                    
+                                    logger.info(f"Batch job {job_id}: {state_code} - Found {len(conferences)} conference opportunities")
                             except Exception as e:
-                                logger.warning(f"Batch job {job_id}: District research failed for {state_code}: {e}")
-                        
-                        # =====================================================
-                        # Stage 5: Conference Research
-                        # =====================================================
-                        conferences = []
-                        try:
-                            logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 5: Conference Research")
-                            conf_results = await run_conference_research(
-                                db=db,
+                                logger.warning(f"Batch job {job_id}: Conference research failed for {state_code}: {e}")
+                            
+                            # =====================================================
+                            # Save results (same format as single-state)
+                            # =====================================================
+                            run = SavedEmailRun(
+                                run_type="research",
+                                name=f"{product} - {state_name}",
+                                product=product,
                                 state_code=state_code,
                                 state_full=state_name,
-                                product_key=product_key,
-                                audience=audiences[0] if audiences else "Decision Makers",
+                                audiences=audiences,
+                                district_name=None,
+                                pipeline_response={
+                                    "evidence_pack": _dump_model(evidence_pack),
+                                    "hooks": [_dump_model(h) for h in gated_hooks],
+                                    "filtered_requirements": [_dump_model(fr) for fr in filtered_reqs],
+                                    "district_research": _dump_model(district_result) if district_result else None,
+                                    "conferences": conferences,
+                                },
+                                selected_hook_links=[],
+                                primary_hook_link=None,
+                                hook_reason_tags={},
+                                hook_reason_notes={},
+                                batch_job_id=job_id,
                             )
+                            state_db.add(run)
                             
-                            # Filter conferences for quality
-                            raw_conferences = conf_results.get("conferences", [])
-                            if raw_conferences:
-                                passed_conferences, _ = filter_conferences(raw_conferences, product_key)
-                                
-                                # Convert to serializable dicts (limit to top 5)
-                                for conf in passed_conferences[:5]:
-                                    conferences.append({
-                                        "conference_name": conf.get("conference_name", ""),
-                                        "organization": conf.get("organization", ""),
-                                        "location": conf.get("location", ""),
-                                        "dates": conf.get("dates", ""),
-                                        "relevance": conf.get("relevance", ""),
-                                        "presentation_deadline": conf.get("presentation_deadline"),
-                                        "sponsorship_info": conf.get("sponsorship_info"),
-                                        "website": conf.get("website", ""),
-                                        "confidence": conf.get("confidence", "medium"),
-                                    })
-                                
-                                logger.info(f"Batch job {job_id}: {state_code} - Found {len(conferences)} conference opportunities")
+                            # Update job progress
+                            update_stmt = select(BatchJob).where(BatchJob.id == job_id)
+                            update_result = await state_db.execute(update_stmt)
+                            job_to_update = update_result.scalar_one_or_none()
+                            if job_to_update:
+                                job_to_update.completed_states += 1
+                            
+                            await state_db.commit()
+                            logger.info(f"Batch job {job_id}: Completed {state_code} with {len(gated_hooks)} hooks, {len(conferences)} conferences")
+                            
                         except Exception as e:
-                            logger.warning(f"Batch job {job_id}: Conference research failed for {state_code}: {e}")
-                        
-                        # =====================================================
-                        # Save results (same format as single-state)
-                        # =====================================================
-                        run = SavedEmailRun(
-                            run_type="research",
-                            name=f"{product} - {state_name}",
-                            product=product,
-                            state_code=state_code,
-                            state_full=state_name,
-                            audiences=audiences,
-                            district_name=None,
-                            pipeline_response={
-                                "evidence_pack": _dump_model(evidence_pack),
-                                "hooks": [_dump_model(h) for h in gated_hooks],
-                                "filtered_requirements": [_dump_model(fr) for fr in filtered_reqs],
-                                "district_research": _dump_model(district_result) if district_result else None,
-                                "conferences": conferences,
-                            },
-                            selected_hook_links=[],
-                            primary_hook_link=None,
-                            hook_reason_tags={},
-                            hook_reason_notes={},
-                            batch_job_id=job_id,
-                        )
-                        db.add(run)
-                        
-                        # Update job progress
-                        update_stmt = select(BatchJob).where(BatchJob.id == job_id)
-                        update_result = await db.execute(update_stmt)
-                        job_to_update = update_result.scalar_one_or_none()
-                        if job_to_update:
-                            job_to_update.completed_states += 1
-                        
-                        await db.commit()
-                        logger.info(f"Batch job {job_id}: Completed {state_code} with {len(gated_hooks)} hooks, {len(conferences)} conferences")
-                        
-                    except Exception as e:
-                        logger.error(f"Batch job {job_id}: Failed {state_code}: {e}", exc_info=True)
-                        
-                        # Update failed count
-                        fail_stmt = select(BatchJob).where(BatchJob.id == job_id)
-                        fail_result = await db.execute(fail_stmt)
-                        job_to_fail = fail_result.scalar_one_or_none()
-                        if job_to_fail:
-                            job_to_fail.failed_states += 1
-                        await db.commit()
+                            logger.error(f"Batch job {job_id}: Failed {state_code}: {e}", exc_info=True)
+                            
+                            # Update failed count - use a fresh session for error handling
+                            try:
+                                async with AsyncSessionLocal() as error_db:
+                                    fail_stmt = select(BatchJob).where(BatchJob.id == job_id)
+                                    fail_result = await error_db.execute(fail_stmt)
+                                    job_to_fail = fail_result.scalar_one_or_none()
+                                    if job_to_fail:
+                                        job_to_fail.failed_states += 1
+                                    await error_db.commit()
+                            except Exception as inner_e:
+                                logger.error(f"Batch job {job_id}: Failed to update error count: {inner_e}")
             
             # Process all states concurrently (with semaphore limiting)
             await asyncio.gather(*[process_state(s) for s in states])
