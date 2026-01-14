@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from typing import Dict, List, Optional, Tuple
 
 from .schemas import EvidencePack, WebHook
@@ -264,10 +265,47 @@ def _has_deliverable_tie_in(h: WebHook, *, evidence_pack: Optional[EvidencePack]
     return False
 
 
+# ---------------------------------------------------------------------------
+# Expired deadline detection
+# ---------------------------------------------------------------------------
+
+def _is_hook_expired(h: WebHook) -> bool:
+    """Check if hook has an expired deadline/trigger date.
+    
+    Deep research hooks are time-sensitive - filter out past deadlines like
+    "Intent to Participate was July 31, 2023".
+    """
+    today = date.today()
+    current_year = today.year
+    
+    text = f"{h.trigger_excerpt or ''} {h.eligibility_excerpt or ''} {h.quote or ''}"
+    
+    # Pattern 1: "was [date]" indicates past event (e.g., "was July 31, 2023")
+    was_date = re.compile(
+        r"\bwas\s+(?:due\s+)?(?:on\s+)?"
+        r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4})",
+        re.I
+    )
+    if was_date.search(text):
+        return True
+    
+    # Pattern 2: Old years in deadline context (2024 or earlier when we're in 2026)
+    old_year = re.compile(r"\b(202[0-4]|201\d)\b")
+    for m in old_year.finditer(text):
+        year = int(m.group(1))
+        if year < current_year - 1:  # More than 1 year old
+            ctx = text[max(0, m.start()-40):min(len(text), m.end()+40)].lower()
+            if any(kw in ctx for kw in ["deadline", "due", "grant", "was", "expired", "2023-24", "2022-23"]):
+                return True
+    
+    return False
+
+
 # Human-readable labels for rejection reasons
 REASON_LABELS: Dict[str, str] = {
     "missing_link": "No source URL provided",
     "low_confidence": "Source quality too uncertain",
+    "expired_deadline": "Deadline has passed (expired grant/funding cycle)",
     "table_stakes_title_i_iii": "Generic Title I/III (not school improvement specific)",
     "missing_impetus_now_trigger": "No deadline/FY/monitoring language found",
     "missing_deliverable_tie_in": "Doesn't connect to a concrete artifact we offer",
@@ -306,6 +344,11 @@ def gate_treasure_hooks(
         # Confidence: drop low-confidence hooks (too risky for outreach).
         if (h.confidence or "").lower() == "low":
             _filter(h, "low_confidence")
+            continue
+
+        # Filter expired deadlines (e.g., "was July 31, 2023")
+        if _is_hook_expired(h):
+            _filter(h, "expired_deadline")
             continue
 
         if _is_table_stakes(h):

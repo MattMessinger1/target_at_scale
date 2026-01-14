@@ -600,11 +600,10 @@ def score_item(
 
     # Hard rules
     
-    # Check for expired deadlines (applies to all item types)
-    # Note: _is_deadline_expired returns False if no date found, so ongoing
-    # requirements (like "teachers must have endorsement") won't be excluded
-    if _is_deadline_expired(item, text):
-        return GateResult(False, {}, ["Excluded: deadline has passed"])
+    # NOTE: Expired deadline filtering REMOVED for KB items.
+    # KB items are evergreen (statutes, regulations, PD requirements) and should
+    # not be filtered by date. Expiration filtering is now in hook_gate.py for
+    # time-sensitive deep research hooks only.
     
     if item_type in ("compliance", "compliance_funding") and _is_wida_access(text):
         return GateResult(False, {}, ["Excluded: WIDA ACCESS"])
