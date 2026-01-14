@@ -1659,6 +1659,12 @@ function EmailGeneratorPipeline() {
     let cancelled = false
     
     const checkActiveResearch = async () => {
+      // Skip if we're loading a saved run from sessionStorage
+      // (the saved run loading effect should take priority)
+      if (sessionStorage.getItem('loadSavedRun')) {
+        return
+      }
+      
       try {
         const active = await api.generate.pipelinePrepActive()
         if (cancelled || !active.task_id) return

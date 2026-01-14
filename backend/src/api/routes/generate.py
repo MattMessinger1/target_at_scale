@@ -678,6 +678,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     "hooks": result_data.get("treasure_hooks"),
                     "filtered_requirements": result_data.get("filtered_requirements"),
                     "district_research": result_data.get("district_research"),
+                    "conferences": result_data.get("conferences"),
                 },
                 selected_hook_links=[],
                 primary_hook_link=None,
