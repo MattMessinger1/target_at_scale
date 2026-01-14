@@ -1315,8 +1315,7 @@ function EmailGeneratorPipeline() {
     return ''
   })
 
-  const [districtName, setDistrictName] = useState('')
-  const [districtUrl, setDistrictUrl] = useState('')
+  // District name/URL removed - district research now handled automatically by checkbox
   
   // District research option
   const [includeDistrictResearch, setIncludeDistrictResearch] = useState(false)
@@ -1650,7 +1649,6 @@ function EmailGeneratorPipeline() {
         state_code: selectedStates[0]?.code || '',
         state_full: selectedStates[0]?.name || undefined,
         audiences: [selectedAudience],
-        district_name: districtName.trim() || undefined,
         pipeline_response: result,
         selected_hook_links: selectedHookLinks,
         primary_hook_link: primaryHookLink || undefined,
@@ -1690,7 +1688,6 @@ function EmailGeneratorPipeline() {
         state_code: state?.code || '',
         state_full: state?.name || undefined,
         audiences: [selectedAudience],
-        district_name: districtName.trim() || undefined,
         evidence_pack: prep.evidence_pack,
         hooks: prep.treasure_hooks || [],
         filtered_requirements: prep.filtered_requirements || [],
@@ -1808,8 +1805,6 @@ function EmailGeneratorPipeline() {
         state: selectedStates[0]?.code || '',
         state_full: selectedStates[0]?.name || undefined,
         audiences: [selectedAudience],
-        district_name: districtName.trim() || undefined,
-        district_url: districtUrl.trim() || undefined,
         include_district_research: includeDistrictResearch,
         created_by: createdBy.trim() || undefined,
       }
@@ -1884,8 +1879,6 @@ function EmailGeneratorPipeline() {
         state: selectedStates[0]?.code || '',
         state_full: selectedStates[0]?.name || undefined,
         audiences: [selectedAudience],
-        district_name: districtName.trim() || undefined,
-        district_url: districtUrl.trim() || undefined,
       }
       if (prep) {
         req.evidence_pack = sanitizeEvidencePack(prep.evidence_pack)
@@ -3051,23 +3044,7 @@ function EmailGeneratorPipeline() {
               </div>
               
               <ProductSelector selectedProducts={selectedProducts} onSelect={setSelectedProducts} />
-              <StateSelector selectedStates={selectedStates} onSelect={setSelectedStates} />
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-slate-300">District (optional)</label>
-                <input
-                  value={districtName}
-                  onChange={(e) => setDistrictName(e.target.value)}
-                  placeholder="District name (optional)"
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-                <input
-                  value={districtUrl}
-                  onChange={(e) => setDistrictUrl(e.target.value)}
-                  placeholder="District URL (optional)"
-                  className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
+              <StateSelector selectedStates={selectedStates} onSelect={setSelectedStates} singleSelect />
 
               <div>
                 <AudienceSelector selectedAudience={selectedAudience} onSelect={setSelectedAudience} />

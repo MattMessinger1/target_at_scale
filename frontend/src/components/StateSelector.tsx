@@ -1,7 +1,7 @@
 /**
  * StateSelector component for selecting US states.
  * Includes all 50 states with WIDA preset option.
- * Supports multi-select mode.
+ * Supports single-select (default) or multi-select mode.
  */
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -15,9 +15,11 @@ export interface SelectedState {
 interface StateSelectorProps {
   selectedStates: SelectedState[]
   onSelect: (states: SelectedState[]) => void
+  /** Single-select mode (default true). Set to false for multi-select. */
+  singleSelect?: boolean
 }
 
-export function StateSelector({ selectedStates, onSelect }: StateSelectorProps) {
+export function StateSelector({ selectedStates, onSelect, singleSelect = false }: StateSelectorProps) {
   const [showWidaOnly, setShowWidaOnly] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
 
@@ -49,10 +51,20 @@ export function StateSelector({ selectedStates, onSelect }: StateSelectorProps) 
   const selectedCodes = selectedStates.map(s => s.code)
 
   const handleToggleState = (code: string, name: string) => {
-    if (selectedCodes.includes(code)) {
-      onSelect(selectedStates.filter(s => s.code !== code))
+    if (singleSelect) {
+      // Single-select: replace selection (or clear if same state clicked)
+      if (selectedCodes.includes(code)) {
+        onSelect([])
+      } else {
+        onSelect([{ code, name }])
+      }
     } else {
-      onSelect([...selectedStates, { code, name }])
+      // Multi-select: toggle state in list
+      if (selectedCodes.includes(code)) {
+        onSelect(selectedStates.filter(s => s.code !== code))
+      } else {
+        onSelect([...selectedStates, { code, name }])
+      }
     }
   }
 
@@ -93,17 +105,24 @@ export function StateSelector({ selectedStates, onSelect }: StateSelectorProps) 
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <label className="block text-sm font-medium text-slate-300">
-          Target State{selectedStates.length > 1 ? 's' : ''}
+          Target State
         </label>
         {selectedStates.length > 0 && (
           <button
             onClick={handleClearAll}
             className="text-xs text-slate-400 hover:text-slate-300 transition-colors"
           >
-            Clear All
+            Clear
           </button>
         )}
       </div>
+      
+      {/* Single-select hint */}
+      {singleSelect && (
+        <p className="text-xs text-slate-500">
+          Select one state for research. Use <span className="text-amber-400">Batch Research</span> below for multiple states.
+        </p>
+      )}
       
       {/* Action Buttons */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -117,16 +136,18 @@ export function StateSelector({ selectedStates, onSelect }: StateSelectorProps) 
         >
           {showWidaOnly ? '✓ WIDA Only' : 'Show WIDA Only'}
         </button>
-        <button
-          onClick={handleSelectAllWida}
-          className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-            allWidaSelected
-              ? 'bg-emerald-600 text-white'
-              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-          }`}
-        >
-          {allWidaSelected ? '✓ All WIDA Selected' : 'Select All WIDA'}
-        </button>
+        {!singleSelect && (
+          <button
+            onClick={handleSelectAllWida}
+            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+              allWidaSelected
+                ? 'bg-emerald-600 text-white'
+                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+            }`}
+          >
+            {allWidaSelected ? '✓ All WIDA Selected' : 'Select All WIDA'}
+          </button>
+        )}
         <span className="text-xs text-slate-500">
           {data?.wida_states?.length || 0} WIDA states
         </span>
@@ -178,24 +199,29 @@ export function StateSelector({ selectedStates, onSelect }: StateSelectorProps) 
           <div className="flex items-center gap-2 text-sm">
             <span className="text-slate-400">Selected:</span>
             <span className="text-emerald-400 font-medium">
-              {selectedStates.length} state{selectedStates.length > 1 ? 's' : ''}
+              {singleSelect 
+                ? selectedStates[0]?.name 
+                : `${selectedStates.length} state${selectedStates.length > 1 ? 's' : ''}`
+              }
             </span>
           </div>
-          <div className="flex flex-wrap gap-1">
-            {selectedStates.slice(0, 10).map(state => (
-              <span 
-                key={state.code}
-                className="text-xs bg-emerald-900/50 text-emerald-400 px-2 py-0.5 rounded"
-              >
-                {state.code}
-              </span>
-            ))}
-            {selectedStates.length > 10 && (
-              <span className="text-xs text-slate-500">
-                +{selectedStates.length - 10} more
-              </span>
-            )}
-          </div>
+          {!singleSelect && (
+            <div className="flex flex-wrap gap-1">
+              {selectedStates.slice(0, 10).map(state => (
+                <span 
+                  key={state.code}
+                  className="text-xs bg-emerald-900/50 text-emerald-400 px-2 py-0.5 rounded"
+                >
+                  {state.code}
+                </span>
+              ))}
+              {selectedStates.length > 10 && (
+                <span className="text-xs text-slate-500">
+                  +{selectedStates.length - 10} more
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
