@@ -462,12 +462,32 @@ async def process_batch_job(
                             if include_district_research and len(gated_hooks) > 0:
                                 logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 4: District Research")
                                 try:
+                                    from ...research.product_briefs import get_product_brief
+                                    import json
+                                    
+                                    # Get product context for district research
+                                    product_brief = await get_product_brief(state_db, product, state_code=state_code)
+                                    product_context = json.dumps(product_brief, default=str)[:3000]
+                                    
+                                    # Convert gated hooks to dict format for de-duplication
+                                    state_hooks_dict = [
+                                        {
+                                            "hook_type": h.hook_type,
+                                            "quote": h.quote,
+                                            "link": h.link,
+                                            "trigger_excerpt": h.trigger_excerpt,
+                                            "title": h.quote[:100] if h.quote else "",
+                                        }
+                                        for h in gated_hooks
+                                    ]
+                                    
                                     district_result = await run_district_deep_research(
                                         db=state_db,
                                         state_code=state_code,
                                         state_full=state_name,
                                         product_key=product_key,
-                                        product_display_name=product,
+                                        product_context=product_context,
+                                        state_hooks=state_hooks_dict,
                                     )
                                 except Exception as e:
                                     logger.warning(f"Batch job {job_id}: District research failed for {state_code}: {e}")
