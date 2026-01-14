@@ -25,15 +25,25 @@ logger = logging.getLogger(__name__)
 
 
 def _dump_model(obj: Any) -> Any:
-    """Serialize a model/dataclass to a dict for JSON storage."""
+    """Serialize a model/dataclass to a dict for JSON storage.
+    
+    Handles: dataclasses, Pydantic models (v1 and v2), NamedTuples, 
+    and any object with __dict__.
+    """
     if obj is None:
         return None
-    if dataclasses.is_dataclass(obj):
+    if isinstance(obj, dict):
+        return obj
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         return dataclasses.asdict(obj)
     if hasattr(obj, "model_dump"):
         return obj.model_dump()
     if hasattr(obj, "dict"):
         return obj.dict()
+    if hasattr(obj, "_asdict"):  # NamedTuple
+        return obj._asdict()
+    if hasattr(obj, "__dict__"):
+        return vars(obj)
     return obj
 
 router = APIRouter(prefix="/batch", tags=["batch"])

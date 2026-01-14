@@ -1067,7 +1067,7 @@ async def run_conference_research(
         
         # Poll for completion (conferences can take a while with deep research)
         poll_interval = 15  # seconds
-        max_polls = 40  # 10 minutes max
+        max_polls = 80  # 20 minutes max (80 * 15s = 1200s)
         
         for poll_count in range(max_polls):
             if response.status == "completed":
