@@ -82,6 +82,8 @@ async def run_migrations():
         # Add is_archived to cache tables for archiving old research
         ("deep_research_cache", "is_archived", "BOOLEAN DEFAULT FALSE NOT NULL"),
         ("district_research_cache", "is_archived", "BOOLEAN DEFAULT FALSE NOT NULL"),
+        # Add saved_run_id to research_tasks for linking to saved runs
+        ("research_tasks", "saved_run_id", "INTEGER"),
     ]
     
     async with engine.begin() as conn:

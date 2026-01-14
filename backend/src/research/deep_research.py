@@ -488,19 +488,33 @@ async def get_or_create_research_job(
 ) -> DeepResearchCache:
     """Get existing cache entry or create a new one for tracking.
     
-    Archived entries are ignored - a new entry will be created.
+    If an archived entry exists, it will be un-archived and reset for fresh research.
     """
-    # Check for existing non-archived entry (any status)
+    # Check for existing entry (any status, including archived)
     result = await db.execute(
         select(DeepResearchCache)
         .where(DeepResearchCache.state_code == state_code)
         .where(DeepResearchCache.product_key == product_key)
         .where(DeepResearchCache.research_type == research_type)
-        .where(DeepResearchCache.is_archived.is_(False))
     )
     existing = result.scalar_one_or_none()
     
     if existing:
+        # If archived, un-archive and reset for fresh research
+        if existing.is_archived:
+            existing.is_archived = False
+            existing.status = "pending"
+            existing.error_message = None
+            existing.results_json = {}
+            existing.openai_response_id = None
+            existing.started_at = None
+            existing.completed_at = None
+            existing.created_at = datetime.utcnow()
+            existing.updated_at = datetime.utcnow()
+            await db.commit()
+            await db.refresh(existing)
+            return existing
+        
         # Check if it's stale (older than TTL) and reset if needed
         cutoff = datetime.utcnow() - timedelta(days=CACHE_TTL_DAYS)
         if existing.created_at < cutoff or existing.status == "failed":

@@ -163,17 +163,32 @@ async def get_or_create_district_research_job(
 ) -> DistrictResearchCache:
     """Get existing cache entry or create a new one for tracking.
     
-    Archived entries are ignored - a new entry will be created.
+    If an archived entry exists, it will be un-archived and reset for fresh research.
     """
     result = await db.execute(
         select(DistrictResearchCache)
         .where(DistrictResearchCache.state_code == state_code)
         .where(DistrictResearchCache.product_key == product_key)
-        .where(DistrictResearchCache.is_archived.is_(False))
     )
     existing = result.scalar_one_or_none()
     
     if existing:
+        # If archived, un-archive and reset for fresh research
+        if existing.is_archived:
+            existing.is_archived = False
+            existing.status = "pending"
+            existing.error_message = None
+            existing.results_json = {}
+            existing.filtered_items_json = None
+            existing.districts_surveyed = None
+            existing.started_at = None
+            existing.completed_at = None
+            existing.created_at = datetime.utcnow()
+            existing.updated_at = datetime.utcnow()
+            await db.commit()
+            await db.refresh(existing)
+            return existing
+        
         # Check if stale (older than TTL) and reset if needed
         cutoff = datetime.utcnow() - timedelta(days=CACHE_TTL_DAYS)
         if existing.created_at < cutoff or existing.status == "failed":
