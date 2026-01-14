@@ -151,7 +151,7 @@ async def get_cached_district_research(
         .where(DistrictResearchCache.product_key == product_key)
         .where(DistrictResearchCache.status == "completed")
         .where(DistrictResearchCache.created_at > cutoff)
-        .where(DistrictResearchCache.is_archived == False)
+        .where(DistrictResearchCache.is_archived.is_(False))
     )
     return result.scalar_one_or_none()
 
@@ -169,7 +169,7 @@ async def get_or_create_district_research_job(
         select(DistrictResearchCache)
         .where(DistrictResearchCache.state_code == state_code)
         .where(DistrictResearchCache.product_key == product_key)
-        .where(DistrictResearchCache.is_archived == False)
+        .where(DistrictResearchCache.is_archived.is_(False))
     )
     existing = result.scalar_one_or_none()
     

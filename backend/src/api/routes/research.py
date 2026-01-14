@@ -526,7 +526,7 @@ async def get_research_coverage(
         .where(DeepResearchCache.product_key == product_key)
         .where(DeepResearchCache.status == "completed")
         .where(DeepResearchCache.created_at > cutoff_date)
-        .where(DeepResearchCache.is_archived == False)
+        .where(DeepResearchCache.is_archived.is_(False))
     )
     deep_cache_entries = deep_cache_result.scalars().all()
     
@@ -542,7 +542,7 @@ async def get_research_coverage(
         .where(DistrictResearchCache.product_key == product_key)
         .where(DistrictResearchCache.status == "completed")
         .where(DistrictResearchCache.created_at > cutoff_date)
-        .where(DistrictResearchCache.is_archived == False)
+        .where(DistrictResearchCache.is_archived.is_(False))
     )
     district_cache_entries = district_cache_result.scalars().all()
     
@@ -654,7 +654,7 @@ async def archive_all_cache(
     # Archive all deep research cache entries
     deep_result = await db.execute(
         update(DeepResearchCache)
-        .where(DeepResearchCache.is_archived == False)
+        .where(DeepResearchCache.is_archived.is_(False))
         .values(is_archived=True)
     )
     deep_count = deep_result.rowcount
@@ -662,7 +662,7 @@ async def archive_all_cache(
     # Archive all district research cache entries
     district_result = await db.execute(
         update(DistrictResearchCache)
-        .where(DistrictResearchCache.is_archived == False)
+        .where(DistrictResearchCache.is_archived.is_(False))
         .values(is_archived=True)
     )
     district_count = district_result.rowcount

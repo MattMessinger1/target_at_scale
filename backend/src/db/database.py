@@ -27,10 +27,14 @@ elif database_url.startswith("postgresql+psycopg2://"):
 # Detect if we're using PostgreSQL
 is_postgres = "postgresql" in database_url or "postgres" in database_url
 
-# Create async engine
+# Create async engine with connection pool settings
 engine = create_async_engine(
     database_url,
     echo=settings.debug,
+    pool_size=10,  # Number of connections to keep open
+    max_overflow=20,  # Allow up to 20 additional connections under load
+    pool_timeout=30,  # Wait up to 30s for a connection
+    pool_recycle=1800,  # Recycle connections after 30 minutes
 )
 
 # Create async session factory

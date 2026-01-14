@@ -328,7 +328,7 @@ async def get_cached_research(
         .where(DeepResearchCache.research_type == research_type)
         .where(DeepResearchCache.status == "completed")
         .where(DeepResearchCache.created_at > cutoff)
-        .where(DeepResearchCache.is_archived == False)
+        .where(DeepResearchCache.is_archived.is_(False))
     )
     return result.scalar_one_or_none()
 
@@ -439,7 +439,7 @@ async def get_cache_status(
         select(DeepResearchCache)
         .where(DeepResearchCache.state_code == state_code)
         .where(DeepResearchCache.product_key == product_key)
-        .where(DeepResearchCache.is_archived == False)
+        .where(DeepResearchCache.is_archived.is_(False))
     )
     entry = result.scalar_one_or_none()
     
@@ -496,7 +496,7 @@ async def get_or_create_research_job(
         .where(DeepResearchCache.state_code == state_code)
         .where(DeepResearchCache.product_key == product_key)
         .where(DeepResearchCache.research_type == research_type)
-        .where(DeepResearchCache.is_archived == False)
+        .where(DeepResearchCache.is_archived.is_(False))
     )
     existing = result.scalar_one_or_none()
     
