@@ -477,10 +477,11 @@ class ResearchTask(Base):
     state_full: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     audiences: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     include_district_research: Mapped[bool] = mapped_column(Boolean, default=False)
+    include_conference_research: Mapped[bool] = mapped_column(Boolean, default=False)
     district_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     district_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     
-    # Phase: 'state' or 'district'
+    # Phase: 'state', 'district', or 'conferences'
     phase: Mapped[str] = mapped_column(String(20), default='state')
     
     # Status: queued, in_progress, completed, failed, cancelled
@@ -525,6 +526,10 @@ class BatchJob(Base):
     product: Mapped[str] = mapped_column(String(200), nullable=False)
     states: Mapped[list] = mapped_column(JSON, nullable=False)  # List of {code, name} objects
     audiences: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    
+    # Research options (persisted for resume after restart)
+    include_district_research: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    include_conference_research: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     
     # Progress tracking
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, running, completed, failed, cancelled

@@ -1015,6 +1015,8 @@ async def run_conference_research(
     assessment conferences, etc.) that would be opportunities for WCEPS to
     present or sponsor.
     
+    Uses 30-day caching to avoid expensive repeated research.
+    
     Args:
         db: Database session
         state_code: Two-letter state code
@@ -1026,8 +1028,29 @@ async def run_conference_research(
     Returns:
         Dict with conferences list
     """
+    research_type = "conference"
+    
+    # Check cache first
+    cached = await get_cached_research(db, state_code, product_key, research_type)
+    if cached and cached.results_json:
+        cache_age = datetime.utcnow() - cached.created_at
+        logger.info(f"Using cached conference research for {state_code}/{product_key} (age: {cache_age.days} days)")
+        if on_progress:
+            on_progress(f"Using cached conference results from {cache_age.days} days ago", 100.0)
+        return {
+            **cached.results_json,
+            "_cache": {
+                "cached": True,
+                "cache_age_days": cache_age.days,
+                "cached_at": cached.created_at.isoformat(),
+            }
+        }
+    
     if on_progress:
         on_progress("Searching for relevant conferences...", 10.0)
+    
+    # Get or create tracking entry for this research
+    cache_entry = await get_or_create_research_job(db, state_code, product_key, research_type)
     
     # Get product-specific conference configuration
     config = _get_product_conference_config(product_key)
@@ -1046,15 +1069,20 @@ async def run_conference_research(
         region=region,
     )
     
-    # Use a shorter timeout since this is a simpler query
+    # Use a longer timeout since deep research can take a while
     client = AsyncOpenAI(
         api_key=settings.openai_api_key,
-        timeout=300.0,  # 5 minutes should be plenty
+        timeout=1800.0,  # 30 minutes
     )
     
     try:
+        # Mark as in progress
+        cache_entry.status = "in_progress"
+        cache_entry.started_at = datetime.utcnow()
+        await db.commit()
+        
         if on_progress:
-            on_progress("Researching conferences (this may take 1-2 minutes)...", 20.0)
+            on_progress("Researching conferences (this may take 5-15 minutes)...", 20.0)
         
         # Use o3-deep-research for thorough conference searching
         response = await client.responses.create(
@@ -1064,6 +1092,11 @@ async def run_conference_research(
             background=True,
             reasoning={"effort": "medium"},
         )
+        
+        # Store the response ID for potential resume
+        cache_entry.openai_response_id = response.id
+        cache_entry.model_used = "o3-deep-research"
+        await db.commit()
         
         # Poll for completion (conferences can take a while with deep research)
         poll_interval = 15  # seconds
@@ -1075,6 +1108,9 @@ async def run_conference_research(
             
             if response.status in ("failed", "cancelled"):
                 logger.warning(f"Conference research failed: {response.status}")
+                cache_entry.status = "failed"
+                cache_entry.error_message = f"Research {response.status}"
+                await db.commit()
                 return {"conferences": [], "_error": f"Research {response.status}"}
             
             if on_progress:
@@ -1086,6 +1122,9 @@ async def run_conference_research(
         
         else:
             logger.warning("Conference research timed out")
+            cache_entry.status = "failed"
+            cache_entry.error_message = "Research timed out"
+            await db.commit()
             return {"conferences": [], "_error": "Research timed out"}
         
         if on_progress:
@@ -1094,6 +1133,12 @@ async def run_conference_research(
         # Parse the response
         raw_content = response.output_text or "{}"
         results = _parse_research_response(raw_content)
+        
+        # Save to cache
+        cache_entry.status = "completed"
+        cache_entry.results_json = results
+        cache_entry.completed_at = datetime.utcnow()
+        await db.commit()
         
         if on_progress:
             on_progress("Conference research complete!", 100.0)
@@ -1104,6 +1149,9 @@ async def run_conference_research(
         
     except Exception as e:
         logger.error(f"Conference research failed for {state_code}/{product_key}: {e}")
+        cache_entry.status = "failed"
+        cache_entry.error_message = str(e)
+        await db.commit()
         return {"conferences": [], "_error": str(e)}
 
 

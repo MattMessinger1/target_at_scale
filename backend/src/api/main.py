@@ -118,13 +118,14 @@ async def lifespan(app: FastAPI):
                         f"{len(completed_codes)} already completed."
                     )
                     
-                    # Resume processing in background
+                    # Resume processing in background using stored flags
                     asyncio.create_task(process_batch_job(
                         job_id=job.id,
                         product=job.product,
                         states=remaining_states,
                         audiences=job.audiences or [],
-                        include_district_research=False,  # Safe default for resume
+                        include_district_research=job.include_district_research,
+                        include_conference_research=job.include_conference_research,
                         is_resume=True,
                     ))
                 else:

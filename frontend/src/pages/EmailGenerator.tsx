@@ -8,8 +8,7 @@
  * 4. Generate email
  * 5. Copy / Export
  */
-import { useState } from 'react'
-import { useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { 
@@ -43,6 +42,50 @@ import { CurationStep } from '../components/CurationStep'
 import { Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 
 type Step = 'select' | 'research' | 'curate' | 'generate' | 'done'
+
+// Parse markdown links and render as clickable elements
+// Handles: [text](url) and bare URLs
+const renderWithLinks = (text: string | undefined | null): React.ReactNode => {
+  if (!text) return null
+  
+  // Pattern to match markdown links: [text](url)
+  const markdownLinkPattern = /\[([^\]]+)\]\(([^)]+)\)/g
+  
+  const parts: React.ReactNode[] = []
+  let lastIndex = 0
+  let match
+  let keyIndex = 0
+  
+  while ((match = markdownLinkPattern.exec(text)) !== null) {
+    // Add text before the match
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index))
+    }
+    
+    // Add the link
+    const [, linkText, url] = match
+    parts.push(
+      <a
+        key={`link-${keyIndex++}`}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-indigo-400 hover:text-indigo-300 underline"
+      >
+        {linkText}
+      </a>
+    )
+    
+    lastIndex = match.index + match[0].length
+  }
+  
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex))
+  }
+  
+  return parts.length > 0 ? <>{parts}</> : text
+}
 
 // Clean up markdown URLs and links from quote text for display
 const cleanQuoteText = (text: string | undefined | null): string => {
@@ -1326,6 +1369,9 @@ function EmailGeneratorPipeline() {
   const [districtResearchProgress, setDistrictResearchProgress] = useState(0)
   const [districtResearchMessage, setDistrictResearchMessage] = useState('')
   
+  // Conference research option  
+  const [includeConferenceResearch, setIncludeConferenceResearch] = useState(false)
+  
   // Polling-based research state (robust against browser sleep/network issues)
   const [researchPhase, setResearchPhase] = useState<'idle' | 'state' | 'district' | 'conferences'>('idle')
   const [researchTaskId, setResearchTaskId] = useState<string | null>(null)
@@ -1388,6 +1434,7 @@ function EmailGeneratorPipeline() {
   const [startingBatch, setStartingBatch] = useState(false)
   const [batchForceFresh, setBatchForceFresh] = useState(false)
   const [batchIncludeDistrictResearch, setBatchIncludeDistrictResearch] = useState(true)
+  const [batchIncludeConferenceResearch, setBatchIncludeConferenceResearch] = useState(false)
   const [batchStateInput, setBatchStateInput] = useState('')
 
   // All 50 US states lookup
@@ -1860,6 +1907,7 @@ function EmailGeneratorPipeline() {
         state_full: selectedStates[0]?.name || undefined,
         audiences: [selectedAudience],
         include_district_research: includeDistrictResearch,
+        include_conference_research: includeConferenceResearch,
         created_by: createdBy.trim() || undefined,
       }
       
@@ -3054,7 +3102,7 @@ function EmailGeneratorPipeline() {
                       type="checkbox"
                       checked={batchIncludeDistrictResearch}
                       onChange={(e) => setBatchIncludeDistrictResearch(e.target.checked)}
-                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500/50"
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-amber-500 focus:ring-amber-500/50"
                     />
                     <div>
                       <span className="text-sm text-slate-200">Include district research</span>
@@ -3062,7 +3110,26 @@ function EmailGeneratorPipeline() {
                     </div>
                   </label>
                   <p className="text-xs text-slate-500 mt-1 ml-7">
-                    Adds ~5 min per state to find levy failures, budget crises, and district-specific initiatives.
+                    Adds ~10-20 min per state to find levy failures, budget crises, and district-specific initiatives.
+                  </p>
+                </div>
+
+                {/* Include conference research option */}
+                <div className="mb-4">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={batchIncludeConferenceResearch}
+                      onChange={(e) => setBatchIncludeConferenceResearch(e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-indigo-500 focus:ring-indigo-500/50"
+                    />
+                    <div>
+                      <span className="text-sm text-slate-200">Include conference research</span>
+                      <span className="text-xs text-slate-500 ml-2">(find marketing opportunities)</span>
+                    </div>
+                  </label>
+                  <p className="text-xs text-slate-500 mt-1 ml-7">
+                    Adds ~5-15 min per state to find relevant conferences (TESOL affiliates, EL summits, etc.)
                   </p>
                 </div>
                 
@@ -3097,6 +3164,7 @@ function EmailGeneratorPipeline() {
                         states: batchStates,
                         audiences: [selectedAudience],
                         include_district_research: batchIncludeDistrictResearch,
+                        include_conference_research: batchIncludeConferenceResearch,
                         force_fresh: batchForceFresh,
                       })
                       toast({
@@ -3172,6 +3240,24 @@ function EmailGeneratorPipeline() {
                   <p className="text-xs text-slate-400 mt-0.5">
                     Survey top 30 districts by EL population for incremental opportunities 
                     (adds ~10-20 min, runs automatically after state research)
+                  </p>
+                </label>
+              </div>
+
+              {/* Conference Research Toggle */}
+              <div className="flex items-center gap-3 p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+                <input 
+                  type="checkbox" 
+                  id="conference-research"
+                  checked={includeConferenceResearch}
+                  onChange={(e) => setIncludeConferenceResearch(e.target.checked)}
+                  className="w-4 h-4 rounded border-slate-600 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-900"
+                />
+                <label htmlFor="conference-research" className="flex-1 cursor-pointer">
+                  <span className="text-sm font-medium text-slate-200">Include Conference Research</span>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Find relevant professional conferences (TESOL affiliates, EL summits, etc.) for marketing opportunities
+                    (adds ~5-15 min)
                   </p>
                 </label>
               </div>
@@ -3772,22 +3858,22 @@ function EmailGeneratorPipeline() {
                                 </p>
                                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
                                   <span className="text-indigo-400">
-                                    📅 {conf.dates}
+                                    📅 {renderWithLinks(conf.dates)}
                                   </span>
                                   {conf.presentation_deadline && (
                                     <span className="text-amber-400">
-                                      ✍️ Proposals due: {conf.presentation_deadline}
+                                      ✍️ Proposals due: {renderWithLinks(conf.presentation_deadline)}
                                     </span>
                                   )}
                                   {conf.sponsorship_info && (
                                     <span className="text-emerald-400">
-                                      💼 {conf.sponsorship_info}
+                                      💼 {renderWithLinks(conf.sponsorship_info)}
                                     </span>
                                   )}
                                 </div>
                                 {conf.relevance && (
                                   <p className="text-xs text-slate-500 mt-2 italic">
-                                    {conf.relevance}
+                                    {renderWithLinks(conf.relevance)}
                                   </p>
                                 )}
                               </div>

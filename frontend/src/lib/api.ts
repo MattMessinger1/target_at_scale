@@ -318,6 +318,7 @@ export interface PipelineRequest {
   district_name?: string | null
   district_url?: string | null
   include_district_research?: boolean
+  include_conference_research?: boolean
   created_by?: string | null
 }
 
@@ -325,6 +326,7 @@ export interface PipelineRunStreamRequest extends PipelineRequest {
   evidence_pack?: EvidencePack | null
   treasure_hooks?: WebHook[] | null
   district_research?: DistrictResearchResult | null
+  conferences?: ConferenceOpportunity[] | null
   selected_hook_links?: string[] | null   // Deprecated: use selected_hook_ids
   primary_hook_link?: string | null       // Deprecated: use primary_hook_id
   selected_hook_ids?: string[] | null     // Preferred: unique hook IDs for reliable selection
@@ -706,6 +708,8 @@ export interface BatchJobDetail {
   product: string
   states: Array<{ code: string; name: string }>
   audiences: string[]
+  include_district_research?: boolean
+  include_conference_research?: boolean
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
   total_states: number
   completed_states: number
@@ -722,6 +726,7 @@ export interface CreateBatchJobRequest {
   states: Array<{ code: string; name: string }>
   audiences?: string[]
   include_district_research?: boolean
+  include_conference_research?: boolean
   force_fresh?: boolean  // Clear cache before starting for fresh results
 }
 
@@ -1269,6 +1274,7 @@ export const api = {
         product_key?: string
         product_display_name?: string
         include_district_research?: boolean
+        include_conference_research?: boolean
         saved_run_id?: number  // Auto-saved run ID (when completed)
         result?: {
           evidence_pack: EvidencePack
@@ -1296,6 +1302,7 @@ export const api = {
         product_key?: string
         product_display_name?: string
         include_district_research?: boolean
+        include_conference_research?: boolean
       }>('/generate/pipeline/prep/active'),
     // Polling wrapper that handles the full research prep flow
     pipelinePrepPolling: async (

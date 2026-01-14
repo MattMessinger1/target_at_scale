@@ -71,6 +71,7 @@ class CreateBatchJobRequest(BaseModel):
     states: List[StateInput]
     audiences: List[str] = Field(default_factory=list)
     include_district_research: bool = False
+    include_conference_research: bool = False
     force_fresh: bool = False  # Clear cache before starting for fresh results
 
 
@@ -95,6 +96,8 @@ class BatchJobDetail(BaseModel):
     product: str
     states: List[Dict[str, str]]
     audiences: List[str]
+    include_district_research: bool = False
+    include_conference_research: bool = False
     status: str
     total_states: int
     completed_states: int
@@ -152,12 +155,14 @@ async def create_batch_job(
         district_cleared = await clear_district_research_cache(db, product_key=product_key)
         logger.info(f"Cleared {district_cleared} district research cache entries")
     
-    # Create the batch job
+    # Create the batch job with research flags stored for resume capability
     job = BatchJob(
         name=request.name,
         product=request.product,
         states=[{"code": s.code, "name": s.name} for s in request.states],
         audiences=request.audiences,
+        include_district_research=request.include_district_research,
+        include_conference_research=request.include_conference_research,
         status="pending",
         total_states=len(request.states),
         completed_states=0,
@@ -177,6 +182,7 @@ async def create_batch_job(
         [{"code": s.code, "name": s.name} for s in request.states],
         request.audiences,
         request.include_district_research,
+        request.include_conference_research,
     )
     
     return BatchJobDetail(
@@ -185,6 +191,8 @@ async def create_batch_job(
         product=job.product,
         states=job.states,
         audiences=job.audiences,
+        include_district_research=job.include_district_research,
+        include_conference_research=job.include_conference_research,
         status=job.status,
         total_states=job.total_states,
         completed_states=job.completed_states,
@@ -248,6 +256,8 @@ async def get_batch_job(
         product=job.product,
         states=job.states,
         audiences=job.audiences,
+        include_district_research=job.include_district_research,
+        include_conference_research=job.include_conference_research,
         status=job.status,
         total_states=job.total_states,
         completed_states=job.completed_states,
@@ -352,6 +362,7 @@ async def process_batch_job(
     states: List[Dict[str, str]],
     audiences: List[str],
     include_district_research: bool,
+    include_conference_research: bool = False,
     is_resume: bool = False,
 ):
     """Background task to process a batch job.
@@ -361,11 +372,13 @@ async def process_batch_job(
     2. run_treasure_hunter() - Deep research with product context
     3. gate_treasure_hooks() - Filter table stakes, consolidate hooks
     4. run_district_deep_research() - District-level opportunities (optional)
-    5. run_conference_research() - Conference opportunities
+    5. run_conference_research() - Conference opportunities (optional)
     
     Uses concurrent processing with rate limiting.
     
     Args:
+        include_district_research: If True, run district-level research
+        include_conference_research: If True, run conference research
         is_resume: If True, this is resuming an interrupted job. Skip status/started_at updates.
                    The 'states' param should contain only remaining states to process.
     """
@@ -468,7 +481,7 @@ async def process_batch_job(
                             # Stage 4: District Research (Optional)
                             # =====================================================
                             district_result = None
-                            if include_district_research and len(gated_hooks) > 0:
+                            if include_district_research:
                                 logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 4: District Research")
                                 try:
                                     from ...research.product_briefs import get_product_brief
@@ -502,41 +515,42 @@ async def process_batch_job(
                                     logger.warning(f"Batch job {job_id}: District research failed for {state_code}: {e}")
                             
                             # =====================================================
-                            # Stage 5: Conference Research
+                            # Stage 5: Conference Research (Optional)
                             # =====================================================
                             conferences = []
-                            try:
-                                logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 5: Conference Research")
-                                conf_results = await run_conference_research(
-                                    db=state_db,
-                                    state_code=state_code,
-                                    state_full=state_name,
-                                    product_key=product_key,
-                                    audience=audiences[0] if audiences else "Decision Makers",
-                                )
-                                
-                                # Filter conferences for quality
-                                raw_conferences = conf_results.get("conferences", [])
-                                if raw_conferences:
-                                    passed_conferences, _ = filter_conferences(raw_conferences, product_key)
+                            if include_conference_research:
+                                try:
+                                    logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 5: Conference Research")
+                                    conf_results = await run_conference_research(
+                                        db=state_db,
+                                        state_code=state_code,
+                                        state_full=state_name,
+                                        product_key=product_key,
+                                        audience=audiences[0] if audiences else "Decision Makers",
+                                    )
                                     
-                                    # Convert to serializable dicts (limit to top 5)
-                                    for conf in passed_conferences[:5]:
-                                        conferences.append({
-                                            "conference_name": conf.get("conference_name", ""),
-                                            "organization": conf.get("organization", ""),
-                                            "location": conf.get("location", ""),
-                                            "dates": conf.get("dates", ""),
-                                            "relevance": conf.get("relevance", ""),
-                                            "presentation_deadline": conf.get("presentation_deadline"),
-                                            "sponsorship_info": conf.get("sponsorship_info"),
-                                            "website": conf.get("website", ""),
-                                            "confidence": conf.get("confidence", "medium"),
-                                        })
-                                    
-                                    logger.info(f"Batch job {job_id}: {state_code} - Found {len(conferences)} conference opportunities")
-                            except Exception as e:
-                                logger.warning(f"Batch job {job_id}: Conference research failed for {state_code}: {e}")
+                                    # Filter conferences for quality
+                                    raw_conferences = conf_results.get("conferences", [])
+                                    if raw_conferences:
+                                        passed_conferences, _ = filter_conferences(raw_conferences, product_key)
+                                        
+                                        # Convert to serializable dicts (limit to top 5)
+                                        for conf in passed_conferences[:5]:
+                                            conferences.append({
+                                                "conference_name": conf.get("conference_name", ""),
+                                                "organization": conf.get("organization", ""),
+                                                "location": conf.get("location", ""),
+                                                "dates": conf.get("dates", ""),
+                                                "relevance": conf.get("relevance", ""),
+                                                "presentation_deadline": conf.get("presentation_deadline"),
+                                                "sponsorship_info": conf.get("sponsorship_info"),
+                                                "website": conf.get("website", ""),
+                                                "confidence": conf.get("confidence", "medium"),
+                                            })
+                                        
+                                        logger.info(f"Batch job {job_id}: {state_code} - Found {len(conferences)} conference opportunities")
+                                except Exception as e:
+                                    logger.warning(f"Batch job {job_id}: Conference research failed for {state_code}: {e}")
                             
                             # =====================================================
                             # Save results (same format as single-state)
