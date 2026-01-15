@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 import dataclasses
 
@@ -1347,6 +1347,60 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             logger.warning(f"DB fallback failed for email task {task_id}: {e}")
         
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+    @router.get("/pipeline/tasks/recent")
+    async def get_recent_email_tasks(
+        hours: int = 24,
+        db: AsyncSession = Depends(get_db)
+    ):
+        """Get all email tasks from the last N hours (for debugging/tracking).
+        
+        Returns tasks from both in-memory and database.
+        """
+        from ...db.models import EmailTask
+        from sqlalchemy import select
+        
+        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        
+        # Get from DB
+        result = await db.execute(
+            select(EmailTask)
+            .where(EmailTask.created_at >= cutoff)
+            .order_by(EmailTask.created_at.desc())
+        )
+        db_tasks = result.scalars().all()
+        
+        tasks = []
+        for t in db_tasks:
+            tasks.append({
+                "task_id": t.id,
+                "product": t.product,
+                "state": t.state_code,
+                "status": t.status,
+                "progress": t.progress,
+                "message": t.message,
+                "error": t.error,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+                "saved_run_id": t.saved_run_id,
+            })
+        
+        # Also include in-memory tasks not yet in DB
+        for task_id, task_data in _email_tasks.items():
+            if task_id not in [t["task_id"] for t in tasks]:
+                tasks.append({
+                    "task_id": task_id,
+                    "product": task_data.get("product"),
+                    "state": task_data.get("state_code"),
+                    "status": task_data.get("status"),
+                    "progress": task_data.get("progress"),
+                    "message": task_data.get("message"),
+                    "error": task_data.get("error"),
+                    "created_at": task_data.get("started_at"),
+                    "saved_run_id": task_data.get("saved_run_id"),
+                })
+        
+        return {"tasks": tasks, "count": len(tasks)}
 
     # ---------------------------------------------------------------------------
     # Polling-based research prep (avoids long-running HTTP connections)
