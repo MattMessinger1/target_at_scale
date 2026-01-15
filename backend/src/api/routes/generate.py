@@ -478,8 +478,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         
                         first_variant = variants[0] if variants else None
                         subject_preview = ""
-                        if first_variant and first_variant.active and first_variant.active.subject:
-                            subject_preview = first_variant.active.subject[:100]
+                        if first_variant and first_variant.email_draft and first_variant.email_draft.subject_line:
+                            subject_preview = first_variant.email_draft.subject_line[:100]
                         
                         async with AsyncSessionLocal() as save_db:
                             cached_hook_ids = None
@@ -854,8 +854,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     # Get the first variant's subject for the name
                     first_variant = variants[0] if variants else None
                     subject_preview = ""
-                    if first_variant and first_variant.active and first_variant.active.subject:
-                        subject_preview = first_variant.active.subject[:100]
+                    if first_variant and first_variant.email_draft and first_variant.email_draft.subject_line:
+                        subject_preview = first_variant.email_draft.subject_line[:100]
                     
                     async with AsyncSessionLocal() as save_db:
                         # Extract hook IDs from selected_cached_hooks if provided
