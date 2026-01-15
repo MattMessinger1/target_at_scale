@@ -1273,6 +1273,7 @@ export const api = {
       onProgress: (progress: number, message: string) => void,
       pollInterval = 3000,
       maxPolls = 600, // ~30 minutes max (3 audiences × 2 repair attempts × ~5 min each)
+      onTaskStarted?: (taskId: string) => void, // Called when task starts (for auto-save)
     ): Promise<PipelineRunResponse> => {
       // Start the task
       const startResult = await fetchApi<{ task_id: string; status: string; message: string }>(
@@ -1281,6 +1282,11 @@ export const api = {
       )
       const taskId = startResult.task_id
       onProgress(0, 'Email generation started...')
+      
+      // Notify caller of task ID (for auto-save functionality)
+      if (onTaskStarted) {
+        onTaskStarted(taskId)
+      }
 
       // Poll for completion
       for (let i = 0; i < maxPolls; i++) {

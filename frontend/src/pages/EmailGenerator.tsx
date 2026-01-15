@@ -201,7 +201,22 @@ type SelectedCachedHook = {
 }
 
 const RESEARCH_RUNS_STORAGE_KEY = 'wceps_emailgen_research_runs_v1'
+const PENDING_EMAIL_TASK_KEY = 'wceps_pending_email_task_v1'
 const MAX_SAVED_RUNS = 3
+
+// Type for pending email task (auto-save when navigating away)
+interface PendingEmailTask {
+  taskId: string
+  product: string
+  stateCode: string
+  stateName: string
+  audience: string
+  purposePrompt?: string
+  selectedHookLinks: string[]
+  primaryHookLink?: string
+  startedAt: string
+  prep?: ResearchResponse  // Cached prep data for restoration
+}
 
 const safeJsonParse = <T,>(raw: string | null): T | null => {
   if (!raw) return null
@@ -238,6 +253,33 @@ const saveRuns = (runs: ResearchRunSnapshot[]) => {
     window.localStorage.setItem(RESEARCH_RUNS_STORAGE_KEY, JSON.stringify(runs))
   } catch {
     // Ignore storage quota errors
+  }
+}
+
+// Pending email task helpers (for auto-save on navigate away)
+const savePendingEmailTask = (task: PendingEmailTask) => {
+  try {
+    window.localStorage.setItem(PENDING_EMAIL_TASK_KEY, JSON.stringify(task))
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+const loadPendingEmailTask = (): PendingEmailTask | null => {
+  try {
+    const raw = window.localStorage.getItem(PENDING_EMAIL_TASK_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as PendingEmailTask
+  } catch {
+    return null
+  }
+}
+
+const clearPendingEmailTask = () => {
+  try {
+    window.localStorage.removeItem(PENDING_EMAIL_TASK_KEY)
+  } catch {
+    // Ignore
   }
 }
 
@@ -1818,6 +1860,159 @@ function EmailGeneratorPipeline() {
     return () => { cancelled = true }
   }, []) // Only run once on mount
 
+  // On page load: check for pending email generation and resume polling
+  useEffect(() => {
+    let cancelled = false
+    
+    const checkPendingEmail = async () => {
+      const pending = loadPendingEmailTask()
+      if (!pending) return
+      
+      // Check if the task is still in progress
+      try {
+        const status = await api.generate.pipelineRunStatus(pending.taskId)
+        if (cancelled) return
+        
+        if (status.status === 'completed' && status.result) {
+          // Task completed while we were away - auto-save!
+          clearPendingEmailTask()
+          
+          // Restore state from pending task
+          setSelectedProducts([pending.product])
+          setSelectedStates([{ code: pending.stateCode, name: pending.stateName }])
+          setSelectedAudience(pending.audience)
+          if (pending.purposePrompt) setPurposePrompt(pending.purposePrompt)
+          if (pending.selectedHookLinks) setSelectedHookLinks(pending.selectedHookLinks)
+          if (pending.primaryHookLink) setPrimaryHookLink(pending.primaryHookLink)
+          if (pending.prep) setPrep(pending.prep)
+          
+          // Set the result and go to review step
+          setResult(status.result)
+          const first = status.result.variants?.[0]?.audience
+          setActiveAudience(first || null)
+          setWizardStep(5)
+          
+          // Auto-save to backend
+          try {
+            await api.savedRuns.save({
+              name: `Auto-saved: ${pending.product} - ${pending.stateName}`,
+              product: pending.product,
+              state_code: pending.stateCode,
+              state_full: pending.stateName,
+              audiences: [pending.audience],
+              request: status.result.request,
+              result: status.result,
+            })
+            toast({
+              title: 'Email generation complete!',
+              description: 'Your email was auto-saved while you were away.',
+            })
+          } catch {
+            toast({
+              title: 'Email generation complete!',
+              description: 'Navigate to review your generated email.',
+            })
+          }
+          return
+        }
+        
+        if (status.status === 'failed') {
+          clearPendingEmailTask()
+          toast({
+            title: 'Email generation failed',
+            description: status.error || 'The email generation that was running failed.',
+            variant: 'destructive',
+          })
+          return
+        }
+        
+        if (status.status === 'in_progress' || status.status === 'queued') {
+          // Resume polling
+          toast({
+            title: 'Resuming email generation',
+            description: `Reconnecting to ${pending.product} / ${pending.stateName}...`,
+          })
+          
+          // Restore state
+          setSelectedProducts([pending.product])
+          setSelectedStates([{ code: pending.stateCode, name: pending.stateName }])
+          setSelectedAudience(pending.audience)
+          if (pending.purposePrompt) setPurposePrompt(pending.purposePrompt)
+          if (pending.selectedHookLinks) setSelectedHookLinks(pending.selectedHookLinks)
+          if (pending.primaryHookLink) setPrimaryHookLink(pending.primaryHookLink)
+          if (pending.prep) setPrep(pending.prep)
+          setWizardStep(4) // Go to generate step
+          setEmailProgress({ progress: status.progress, message: status.message })
+          
+          // Resume polling
+          const pollForCompletion = async () => {
+            while (!cancelled) {
+              await new Promise(resolve => setTimeout(resolve, 3000))
+              if (cancelled) break
+              
+              try {
+                const pollStatus = await api.generate.pipelineRunStatus(pending.taskId)
+                if (cancelled) break
+                
+                setEmailProgress({ progress: pollStatus.progress, message: pollStatus.message })
+                
+                if (pollStatus.status === 'completed' && pollStatus.result) {
+                  clearPendingEmailTask()
+                  setResult(pollStatus.result)
+                  const first = pollStatus.result.variants?.[0]?.audience
+                  setActiveAudience(first || null)
+                  setWizardStep(5)
+                  
+                  // Auto-save to backend
+                  try {
+                    await api.savedRuns.save({
+                      name: `Auto-saved: ${pending.product} - ${pending.stateName}`,
+                      product: pending.product,
+                      state_code: pending.stateCode,
+                      state_full: pending.stateName,
+                      audiences: [pending.audience],
+                      request: pollStatus.result.request,
+                      result: pollStatus.result,
+                    })
+                    toast({
+                      title: 'Email complete & auto-saved!',
+                      description: 'Your email has been saved to Saved Runs.',
+                    })
+                  } catch {
+                    toast({ title: 'Email generation complete!' })
+                  }
+                  break
+                }
+                
+                if (pollStatus.status === 'failed') {
+                  clearPendingEmailTask()
+                  toast({
+                    title: 'Email generation failed',
+                    description: pollStatus.error,
+                    variant: 'destructive',
+                  })
+                  setWizardStep(3)
+                  break
+                }
+              } catch (e) {
+                console.warn('Failed to poll email status:', e)
+              }
+            }
+          }
+          
+          pollForCompletion()
+        }
+      } catch (e) {
+        console.warn('Failed to check pending email task:', e)
+        clearPendingEmailTask()
+      }
+    }
+    
+    checkPendingEmail()
+    
+    return () => { cancelled = true }
+  }, []) // Only run once on mount
+
   useEffect(() => {
     if (wizardStep !== 2) return
     loadCachedPrepForStates()
@@ -2128,13 +2323,36 @@ function EmailGeneratorPipeline() {
         req.primary_hook_link = prep?.treasure_hooks.find(h => getHookKey(h) === primaryHookLink)?.link || primaryHookLink || undefined
       }
       // Use polling-based approach to avoid browser connection timeouts
-      return api.generate.pipelineRunPolling(req, (progress, message) => {
-        setEmailProgress({ progress, message })
-        // Also add to trace events for activity log
-        setTraceEvents((prev) => [...prev, { type: 'progress', progress, message } as PipelineStreamEvent])
-      })
+      return api.generate.pipelineRunPolling(
+        req,
+        (progress, message) => {
+          setEmailProgress({ progress, message })
+          // Also add to trace events for activity log
+          setTraceEvents((prev) => [...prev, { type: 'progress', progress, message } as PipelineStreamEvent])
+        },
+        3000, // pollInterval
+        600,  // maxPolls
+        (taskId) => {
+          // Save pending task for auto-resume if user navigates away
+          const pendingTask: PendingEmailTask = {
+            taskId,
+            product: selectedProducts[0] || '',
+            stateCode: selectedStates[0]?.code || '',
+            stateName: selectedStates[0]?.name || '',
+            audience: selectedAudience,
+            purposePrompt: purposePrompt.trim() || undefined,
+            selectedHookLinks,
+            primaryHookLink: primaryHookLink || undefined,
+            startedAt: new Date().toISOString(),
+            prep: prep || undefined,
+          }
+          savePendingEmailTask(pendingTask)
+        }
+      )
     },
     onSuccess: (data) => {
+      // Clear pending task - email completed successfully
+      clearPendingEmailTask()
       setReviewDrafts({})
       setResult(data)
       const first = data.variants?.[0]?.audience
@@ -2181,6 +2399,8 @@ function EmailGeneratorPipeline() {
       }
     },
     onError: (error) => {
+      // Clear pending task - email failed
+      clearPendingEmailTask()
       toast({
         title: 'Email generation failed',
         description: error instanceof Error ? error.message : 'Unknown error',
