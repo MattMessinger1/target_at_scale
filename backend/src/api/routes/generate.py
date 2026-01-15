@@ -323,6 +323,193 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 
                 use_hook_ids = len(forced_ids) > 0
                 use_forced = use_hook_ids or len(forced_links) > 0
+                
+                # -------------------------------------------------------------------
+                # PURPOSE-ONLY MODE: Skip deep research when user provides only purpose
+                # -------------------------------------------------------------------
+                # If user provides purpose_prompt but no hooks, generate directly from 
+                # KB product context + purpose (no treasure hunting / deep research).
+                purpose_only_mode = (
+                    request.purpose_prompt and request.purpose_prompt.strip()
+                    and not use_forced  # No hook_ids or hook_links selected
+                    and not request.treasure_hooks  # No pre-computed hooks passed in
+                )
+                
+                if purpose_only_mode:
+                    logger.info(f"Email task {task_id}: Using PURPOSE-ONLY mode (no deep research)")
+                    _email_tasks[task_id]["message"] = "Building evidence pack (purpose-only)..."
+                    _email_tasks[task_id]["progress"] = 5
+                    
+                    # Build evidence pack for product context (KB-based, no web research)
+                    t0 = time.perf_counter()
+                    evidence_pack = await build_product_evidence_pack(
+                        db=db,
+                        product_display_name=product,
+                        state_code=state_code,
+                        audiences=audiences,
+                    )
+                    stage_ms["evidence_pack"] = int((time.perf_counter() - t0) * 1000)
+                    
+                    # Create a synthetic "purpose" hook from the user's purpose prompt
+                    # This becomes the primary hook - no treasure hunting needed
+                    purpose_text = request.purpose_prompt.strip()
+                    synthetic_hook = WebHook(
+                        hook_id=f"purpose_{uuid4().hex[:8]}",
+                        hook_type="custom",
+                        quote=purpose_text[:200],  # Use purpose as the "quote"
+                        link="",  # No external source - this is user-provided
+                        trigger_excerpt=purpose_text,  # Purpose is the trigger
+                        eligibility_excerpt=None,
+                        why_relevant=f"Custom purpose provided by user: {purpose_text[:100]}",
+                        confidence="high",  # User provided = high confidence
+                        source_quality_reason="User-provided purpose (not web-sourced)",
+                    )
+                    
+                    # Set up for email generation
+                    treasure_hooks = [synthetic_hook]
+                    primary = SelectedHook(hook=synthetic_hook, rank=1, reasons=["purpose_only_mode"])
+                    secondary = None
+                    
+                    # Add supporting context from cached hooks if provided
+                    supporting_context: Optional[List[str]] = None
+                    if request.selected_cached_hooks:
+                        supporting_context = []
+                        for cached in request.selected_cached_hooks:
+                            hook_data = cached.get("hook") if isinstance(cached, dict) else getattr(cached, "hook", None)
+                            if hook_data:
+                                if isinstance(hook_data, dict):
+                                    trigger = hook_data.get("trigger_excerpt", "")
+                                    if trigger:
+                                        supporting_context.append(trigger[:300])
+                                elif hasattr(hook_data, "trigger_excerpt"):
+                                    if hook_data.trigger_excerpt:
+                                        supporting_context.append(hook_data.trigger_excerpt[:300])
+                                elif hasattr(hook_data, "conference_name"):
+                                    conf_text = f"Conference: {hook_data.conference_name} ({hook_data.dates}) - {hook_data.relevance}"
+                                    supporting_context.append(conf_text[:300])
+                    
+                    # Generate email directly (skip hook gate, treasure hunting, etc.)
+                    _email_tasks[task_id]["message"] = "Generating email (purpose-only)..."
+                    _email_tasks[task_id]["progress"] = 20
+                    
+                    variants = []
+                    t4 = time.perf_counter()
+                    
+                    def update_progress(msg: str, pct: float):
+                        _email_tasks[task_id]["message"] = msg
+                        _email_tasks[task_id]["progress"] = min(95, 20 + int(pct * 0.75))
+                    
+                    for aud_idx, aud in enumerate(audiences):
+                        _email_tasks[task_id]["message"] = f"Generating email for {aud}..."
+                        _email_tasks[task_id]["progress"] = 20 + int((aud_idx / max(len(audiences), 1)) * 75)
+                        
+                        variant = await _run_variant(
+                            product=product,
+                            state_code=state_code,
+                            state_full=state_full,
+                            audience=aud,
+                            evidence_pack=evidence_pack,
+                            selected_hook=primary,
+                            secondary_hook=secondary,
+                            treasure_hooks=treasure_hooks,
+                            district_name=request.district_name,
+                            district_url=request.district_url,
+                            purpose_prompt=purpose_text,
+                            supporting_context=supporting_context,
+                            on_progress=update_progress,
+                        )
+                        variants.append(variant)
+                    
+                    stage_ms["write_validate_repair"] = int((time.perf_counter() - t4) * 1000)
+                    
+                    # Build result (same as normal flow)
+                    run_id = task_id
+                    started_at = _utcnow()
+                    trace = PipelineTrace(
+                        run_id=run_id,
+                        started_at=started_at,
+                        finished_at=_utcnow(),
+                        stage_ms=stage_ms,
+                        variant_traces=[v.trace for v in variants],
+                    )
+
+                    request_out = PipelineRequestModel(
+                        product=product,
+                        state=state_code,
+                        state_full=state_full,
+                        audiences=audiences,
+                        district_name=request.district_name,
+                        district_url=request.district_url,
+                    )
+
+                    result = PipelineRunResponse(
+                        run_id=run_id,
+                        mode=_mode(request_out),
+                        request=request_out,
+                        evidence_pack=evidence_pack,
+                        treasure_hooks=list(treasure_hooks),
+                        variants=variants,
+                        trace=trace,
+                        warnings=warnings + ["Generated using PURPOSE-ONLY mode (no deep research)"],
+                    )
+
+                    _email_tasks[task_id]["status"] = "completed"
+                    _email_tasks[task_id]["progress"] = 100
+                    _email_tasks[task_id]["message"] = "Email generation complete (purpose-only)!"
+                    _email_tasks[task_id]["result"] = _dump_model(result)
+                    logger.info(f"Email task {task_id} completed successfully (purpose-only mode)")
+                    
+                    # Auto-save email
+                    try:
+                        from ...db.models import SavedEmailRun
+                        from ...db.database import AsyncSessionLocal
+                        
+                        first_variant = variants[0] if variants else None
+                        subject_preview = ""
+                        if first_variant and first_variant.active and first_variant.active.subject:
+                            subject_preview = first_variant.active.subject[:100]
+                        
+                        async with AsyncSessionLocal() as save_db:
+                            cached_hook_ids = None
+                            if request.selected_cached_hooks:
+                                cached_hook_ids = []
+                                for cached in request.selected_cached_hooks:
+                                    hook_data = cached.get("hook") if isinstance(cached, dict) else getattr(cached, "hook", None)
+                                    if hook_data:
+                                        hook_id = hook_data.get("hook_id") if isinstance(hook_data, dict) else getattr(hook_data, "hook_id", None)
+                                        if hook_id:
+                                            cached_hook_ids.append(hook_id)
+                            
+                            saved_email = SavedEmailRun(
+                                run_type="email",
+                                name=f"{product} - {state_full or state_code} (purpose-only)",
+                                created_by=request.created_by,
+                                product=product,
+                                state_code=state_code,
+                                state_full=state_full,
+                                audiences=audiences,
+                                district_name=request.district_name,
+                                purpose_prompt=purpose_text,
+                                selected_cached_hook_ids=cached_hook_ids,
+                                pipeline_response={
+                                    "evidence_pack": _dump_model(evidence_pack),
+                                    "hooks": [_dump_model(h) for h in treasure_hooks],
+                                    "variants": [_dump_model(v) for v in variants],
+                                    "subject_preview": subject_preview,
+                                    "purpose_only_mode": True,
+                                },
+                                selected_hook_links=[],
+                                primary_hook_link=None,
+                            )
+                            save_db.add(saved_email)
+                            await save_db.commit()
+                            await save_db.refresh(saved_email)
+                            _email_tasks[task_id]["saved_run_id"] = saved_email.id
+                            logger.info(f"Auto-saved purpose-only email task {task_id} as SavedEmailRun {saved_email.id}")
+                    except Exception as save_err:
+                        logger.warning(f"Failed to auto-save purpose-only email task {task_id}: {save_err}")
+                    
+                    return  # Exit early - purpose-only flow complete
 
                 # Evidence pack / hooks: reuse if provided, else compute
                 evidence_pack = request.evidence_pack
