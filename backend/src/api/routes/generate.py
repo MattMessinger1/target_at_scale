@@ -26,10 +26,16 @@ def _dump_model(obj: Any) -> Any:
     """Recursively serialize a model/dataclass to a dict for JSON storage.
     
     Handles datetime objects by converting to ISO format strings.
+    This function is intentionally defensive to catch any datetime leaks.
     """
     if obj is None:
         return None
+    # Check datetime FIRST before other types
     if isinstance(obj, datetime):
+        return obj.isoformat()
+    # Also handle date objects (from datetime module)
+    from datetime import date
+    if isinstance(obj, date):
         return obj.isoformat()
     if isinstance(obj, (str, int, float, bool)):
         return obj
@@ -41,15 +47,25 @@ def _dump_model(obj: Any) -> Any:
         # Convert dataclass to dict, then recursively process to handle nested datetimes
         return _dump_model(dataclasses.asdict(obj))
     if hasattr(obj, "model_dump"):
-        # Pydantic model - dump then recursively process to handle nested datetimes
-        return _dump_model(obj.model_dump())
+        # Pydantic model - use mode='json' to get JSON-compatible output
+        try:
+            return _dump_model(obj.model_dump(mode='json'))
+        except Exception:
+            # Fallback for older pydantic or incompatible models
+            return _dump_model(obj.model_dump())
     if hasattr(obj, "dict"):
         return _dump_model(obj.dict())
     if hasattr(obj, "_asdict"):  # NamedTuple
         return _dump_model(dict(obj._asdict()))
     if hasattr(obj, "__dict__"):
         return {k: _dump_model(v) for k, v in vars(obj).items()}
-    return obj
+    # For any unknown type, try json.dumps to catch any remaining issues
+    try:
+        json.dumps(obj)
+        return obj
+    except TypeError:
+        # If it's not JSON-serializable, convert to string
+        return str(obj)
 
 
 async def resume_email_task(task_id: str):
@@ -583,21 +599,29 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         openai_audience: Optional[str] = None,
                     ):
                         """Update EmailTask checkpoint in DB."""
-                        email_task.current_stage = stage
-                        email_task.progress = progress
-                        email_task.message = message
-                        email_task.updated_at = datetime.utcnow()
-                        if evidence_pack_data is not None:
-                            email_task.evidence_pack_json = evidence_pack_data
-                        if treasure_hooks_data is not None:
-                            email_task.treasure_hooks_json = treasure_hooks_data
-                        if selected_hook_data is not None:
-                            email_task.selected_hook_json = selected_hook_data
-                        if openai_response_id is not None:
-                            email_task.openai_response_id = openai_response_id
-                        if openai_audience is not None:
-                            email_task.openai_audience = openai_audience
-                        await db.commit()
+                        try:
+                            email_task.current_stage = stage
+                            email_task.progress = progress
+                            email_task.message = message
+                            email_task.updated_at = datetime.utcnow()
+                            if evidence_pack_data is not None:
+                                email_task.evidence_pack_json = evidence_pack_data
+                            if treasure_hooks_data is not None:
+                                email_task.treasure_hooks_json = treasure_hooks_data
+                            if selected_hook_data is not None:
+                                email_task.selected_hook_json = selected_hook_data
+                            if openai_response_id is not None:
+                                email_task.openai_response_id = openai_response_id
+                            if openai_audience is not None:
+                                email_task.openai_audience = openai_audience
+                            await db.commit()
+                        except Exception as checkpoint_err:
+                            logger.warning(f"Checkpoint commit failed for {task_id}: {checkpoint_err}")
+                            # Rollback and continue - checkpoints are optional, not critical
+                            try:
+                                await db.rollback()
+                            except Exception:
+                                pass
                     
                     if purpose_only_mode:
                         logger.info(f"Email task {task_id}: Using PURPOSE-ONLY mode (no deep research)")
@@ -1205,7 +1229,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         # Rollback the failed transaction before trying again
                         await db.rollback()
                         # Re-fetch the email_task since rollback may have expired it
-                        result_stmt = await db.execute(select(EmailTask).where(EmailTask.id == task_id))
+                        from sqlalchemy import select as sql_select
+                        result_stmt = await db.execute(sql_select(EmailTask).where(EmailTask.id == task_id))
                         email_task = result_stmt.scalar_one_or_none()
                         if email_task:
                             # Update just the status fields (without the SavedEmailRun link)
