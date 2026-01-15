@@ -327,12 +327,13 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 # -------------------------------------------------------------------
                 # PURPOSE-ONLY MODE: Skip deep research when user provides only purpose
                 # -------------------------------------------------------------------
-                # If user provides purpose_prompt but no hooks, generate directly from 
-                # KB product context + purpose (no treasure hunting / deep research).
+                # If user provides purpose_prompt but hasn't SELECTED any hooks, generate 
+                # directly from KB product context + purpose (no treasure hunting).
+                # Note: treasure_hooks may be passed from cached research, but if user
+                # didn't select any (use_forced=False), we use purpose-only mode.
                 purpose_only_mode = (
                     request.purpose_prompt and request.purpose_prompt.strip()
-                    and not use_forced  # No hook_ids or hook_links selected
-                    and not request.treasure_hooks  # No pre-computed hooks passed in
+                    and not use_forced  # No hook_ids or hook_links explicitly selected
                 )
                 
                 if purpose_only_mode:
