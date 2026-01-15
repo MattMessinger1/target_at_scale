@@ -307,28 +307,11 @@ const savePendingEmailTask = (task: PendingEmailTask) => {
   }
 }
 
-const loadPendingEmailTask = (taskId: string): PendingEmailTask | null => {
-  try {
-    const all = loadAllPendingEmailTasks()
-    return all[taskId] || null
-  } catch {
-    return null
-  }
-}
-
 const clearPendingEmailTask = (taskId: string) => {
   try {
     const existing = loadAllPendingEmailTasks()
     delete existing[taskId]
     window.localStorage.setItem(PENDING_EMAIL_TASKS_KEY, JSON.stringify(existing))
-  } catch {
-    // Ignore
-  }
-}
-
-const clearAllPendingEmailTasks = () => {
-  try {
-    window.localStorage.removeItem(PENDING_EMAIL_TASKS_KEY)
   } catch {
     // Ignore
   }
