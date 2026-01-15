@@ -23,9 +23,14 @@ _email_tasks: Dict[str, Dict[str, Any]] = {}
 
 
 def _dump_model(obj: Any) -> Any:
-    """Recursively serialize a model/dataclass to a dict for JSON storage."""
+    """Recursively serialize a model/dataclass to a dict for JSON storage.
+    
+    Handles datetime objects by converting to ISO format strings.
+    """
     if obj is None:
         return None
+    if isinstance(obj, datetime):
+        return obj.isoformat()
     if isinstance(obj, (str, int, float, bool)):
         return obj
     if isinstance(obj, dict):
@@ -33,13 +38,15 @@ def _dump_model(obj: Any) -> Any:
     if isinstance(obj, (list, tuple)):
         return [_dump_model(item) for item in obj]
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        return dataclasses.asdict(obj)
+        # Convert dataclass to dict, then recursively process to handle nested datetimes
+        return _dump_model(dataclasses.asdict(obj))
     if hasattr(obj, "model_dump"):
-        return obj.model_dump()
+        # Pydantic model - dump then recursively process to handle nested datetimes
+        return _dump_model(obj.model_dump())
     if hasattr(obj, "dict"):
-        return obj.dict()
+        return _dump_model(obj.dict())
     if hasattr(obj, "_asdict"):  # NamedTuple
-        return dict(obj._asdict())
+        return _dump_model(dict(obj._asdict()))
     if hasattr(obj, "__dict__"):
         return {k: _dump_model(v) for k, v in vars(obj).items()}
     return obj
@@ -1195,8 +1202,25 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         logger.info(f"Auto-saved email task {task_id} as SavedEmailRun {saved_email.id}")
                     except Exception as save_err:
                         logger.warning(f"Failed to auto-save email task {task_id}: {save_err}")
-                        # Still commit the EmailTask status update
-                        await db.commit()
+                        # Rollback the failed transaction before trying again
+                        await db.rollback()
+                        # Re-fetch the email_task since rollback may have expired it
+                        result_stmt = await db.execute(select(EmailTask).where(EmailTask.id == task_id))
+                        email_task = result_stmt.scalar_one_or_none()
+                        if email_task:
+                            # Update just the status fields (without the SavedEmailRun link)
+                            email_task.status = "completed"
+                            email_task.progress = 100
+                            email_task.message = "Email generation complete!"
+                            email_task.result_json = _dump_model(result)
+                            email_task.completed_variants_json = [_dump_model(v) for v in variants]
+                            email_task.completed_at = datetime.utcnow()
+                            email_task.updated_at = datetime.utcnow()
+                            try:
+                                await db.commit()
+                            except Exception as commit_err:
+                                logger.error(f"Failed to commit EmailTask {task_id} status: {commit_err}")
+                                await db.rollback()
 
             except Exception as e:
                 logger.error(f"Email task {task_id} failed: {e}", exc_info=True)
