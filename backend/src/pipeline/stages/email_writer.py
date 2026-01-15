@@ -1260,3 +1260,238 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
 
     return draft, claims_map
 
+
+async def resume_email_generation(
+    *,
+    openai_response_id: str,
+    product: str,
+    state_code: str,
+    audience: str,
+    evidence_pack: EvidencePack,
+    selected_hook: SelectedHook,
+    secondary_hook: Optional[SelectedHook] = None,
+    on_progress: Optional[Callable[[str, float], None]] = None,
+) -> Tuple[EmailDraft, List[ClaimsMapEntry]]:
+    """Resume polling an in-progress OpenAI response.
+    
+    This is called by startup recovery when an email task was interrupted
+    mid-generation. We skip the prompt construction and just resume polling.
+    
+    Args:
+        openai_response_id: The resp_xxx ID from OpenAI to poll
+        product: Product name (for logging)
+        state_code: State code (for logging)
+        audience: Audience type (for logging)
+        evidence_pack: Required for post-processing the email
+        selected_hook: Required for post-processing (URL citations)
+        secondary_hook: Optional secondary hook for citations
+        on_progress: Optional progress callback
+    
+    Returns:
+        Tuple of (EmailDraft, List[ClaimsMapEntry])
+    """
+    if not settings.openai_api_key:
+        raise RuntimeError("OPENAI_API_KEY is not set")
+    
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    
+    logger.info(
+        "EmailWriter: Resuming OpenAI polling for response_id=%s (%s/%s, audience=%s)",
+        openai_response_id, state_code, product, audience
+    )
+    start_time = time.perf_counter()
+    
+    try:
+        # Retrieve current status
+        resp = await client.responses.retrieve(openai_response_id)
+        
+        # Check if already completed
+        if resp.status == "completed":
+            elapsed = time.perf_counter() - start_time
+            logger.info(
+                "EmailWriter: Resumed task already completed in %.1fs for %s/%s",
+                elapsed, state_code, product
+            )
+            if on_progress:
+                on_progress("Email generation complete (resumed)", 100.0)
+        elif resp.status in ("failed", "cancelled"):
+            error_obj = getattr(resp, 'error', None)
+            raise RuntimeError(f"Email generation {resp.status}: {error_obj}")
+        else:
+            # Continue polling
+            poll_interval = 15
+            max_polls = 40  # 10 minutes max
+            
+            for poll_count in range(max_polls):
+                if resp.status == "completed":
+                    elapsed = time.perf_counter() - start_time
+                    logger.info(
+                        "EmailWriter: Resumed task completed in %.1fs for %s/%s",
+                        elapsed, state_code, product
+                    )
+                    if on_progress:
+                        on_progress(f"Email generation complete ({int(elapsed)}s)", 100.0)
+                    break
+                
+                if resp.status in ("failed", "cancelled"):
+                    error_obj = getattr(resp, 'error', None)
+                    raise RuntimeError(f"Email generation {resp.status}: {error_obj}")
+                
+                elapsed = time.perf_counter() - start_time
+                progress_pct = min(95.0, 10.0 + (poll_count / max_polls) * 85.0)
+                if on_progress:
+                    on_progress(f"Resuming email generation... {int(elapsed)}s", progress_pct)
+                
+                if poll_count > 0 and poll_count % 4 == 0:
+                    logger.info(
+                        "EmailWriter: Resumed polling... %.0fs elapsed, status=%s for %s/%s",
+                        elapsed, resp.status, state_code, product
+                    )
+                
+                await asyncio.sleep(poll_interval)
+                resp = await client.responses.retrieve(openai_response_id)
+            else:
+                elapsed = time.perf_counter() - start_time
+                raise RuntimeError(f"Email generation timed out after {max_polls * poll_interval}s")
+    
+    except Exception as e:
+        elapsed = time.perf_counter() - start_time
+        logger.error(
+            "EmailWriter: Resume polling FAILED after %.1fs for %s/%s: %s",
+            elapsed, state_code, product, str(e)
+        )
+        raise
+    
+    # Extract output from Responses API format
+    raw = resp.output_text or ""
+    if not raw and hasattr(resp, 'output') and resp.output:
+        for item in resp.output:
+            if hasattr(item, 'content') and item.content:
+                for content_item in item.content:
+                    if hasattr(content_item, 'text'):
+                        raw = content_item.text.strip()
+                        break
+            if raw:
+                break
+    
+    logger.info(
+        "EmailWriter: Got resumed response for %s/%s (raw_len=%d)",
+        state_code, product, len(raw) if raw else 0
+    )
+    
+    try:
+        data = _parse_json_object(raw)
+    except Exception as e:
+        logger.error(
+            "EmailWriter: JSON parse FAILED for resumed %s/%s: %s",
+            state_code, product, str(e)
+        )
+        raise
+    
+    subject_line = str(data.get("subject_line") or "").strip()
+    email_body = str(data.get("email_body") or "").strip()
+    micro_offer = str(data.get("micro_offer") or "").strip() or None
+    
+    # Apply same post-processing as write_email_variant
+    email_body = _normalize_email_body_for_validator(email_body)
+    email_body = _pad_short_email(email_body, min_words=80)
+    email_body = _strip_urls_from_email_body(email_body)
+    email_body = _ensure_exact_bullets(email_body, evidence_pack=evidence_pack)
+    email_body = _ensure_calendly_cta(email_body)
+    
+    # Parse claims
+    claims_map: List[ClaimsMapEntry] = []
+    for item in (data.get("claims_map") or []):
+        if not isinstance(item, dict):
+            continue
+        try:
+            claims_map.append(ClaimsMapEntry(**item))
+        except Exception:
+            continue
+    
+    # Build EmailDraft
+    bullets = extract_bullets(email_body)
+    draft = EmailDraft(
+        subject_line=subject_line or "Quick resource for your team",
+        email_body=email_body,
+        word_count=word_count(email_body),
+        bullets=bullets,
+        micro_offer=micro_offer or _choose_micro_offer(evidence_pack),
+    )
+    
+    # Apply same claims-map hardening as write_email_variant
+    hook = selected_hook.hook
+    secondary_url = ""
+    if secondary_hook and secondary_hook.hook and secondary_hook.hook.link:
+        secondary_url = secondary_hook.hook.link
+    
+    try:
+        allowed_kb: List[str] = [c.chunk_id for c in (evidence_pack.retrieved_chunks or []) if c.chunk_id]
+        allowed_set = set(allowed_kb)
+        
+        allowed_links = [hook.link]
+        if secondary_url and secondary_url != hook.link:
+            allowed_links.append(secondary_url)
+        
+        for c in claims_map:
+            c.urls = [u for u in (c.urls or []) if u in allowed_links]
+        
+        opener = ""
+        paras = _split_paragraphs(draft.email_body)
+        if paras:
+            opener = paras[0]
+        
+        for c in claims_map:
+            if c.claim_kind == "hook" and not (c.claim_text or "").strip() and opener:
+                c.claim_text = opener.strip()
+        
+        for c in claims_map:
+            if c.claim_kind == "hook":
+                c.urls = []
+        
+        hook_entry = next((c for c in claims_map if c.claim_kind == "hook"), None)
+        if not hook_entry and opener:
+            claims_map.insert(0, ClaimsMapEntry(
+                claim_kind="hook",
+                claim_text=opener.strip(),
+                kb_chunk_ids=[],
+                urls=[hook.link] if hook.link else [],
+            ))
+        elif hook_entry:
+            if hook.link and hook.link not in hook_entry.urls:
+                hook_entry.urls = [hook.link]
+        
+        def _normalize_ws(s: str) -> str:
+            return re.sub(r"\s+", " ", s.strip()).lower()
+        
+        by_text = {_normalize_ws(c.claim_text): c for c in claims_map if c.claim_kind == "deliverable_bullet" and c.claim_text}
+        
+        for b in (draft.bullets or []):
+            nb = _normalize_ws(b)
+            entry = by_text.get(nb)
+            if not entry:
+                entry = ClaimsMapEntry(
+                    claim_kind="deliverable_bullet",
+                    claim_text=b,
+                    kb_chunk_ids=[],
+                    urls=[],
+                )
+                claims_map.append(entry)
+                by_text[nb] = entry
+            
+            entry.kb_chunk_ids = [cid for cid in (entry.kb_chunk_ids or []) if cid in allowed_set]
+            entry.urls = []
+            if not entry.kb_chunk_ids and not entry.urls and allowed_kb:
+                entry.kb_chunk_ids = allowed_kb[:2]
+        
+        required_kinds = {"hook", "deliverable_bullet", "funding", "compliance", "outcome"}
+        claims_map[:] = [
+            c
+            for c in claims_map
+            if (c.claim_kind not in required_kinds) or bool(c.kb_chunk_ids or c.urls)
+        ]
+    except Exception:
+        pass
+    
+    return draft, claims_map
+

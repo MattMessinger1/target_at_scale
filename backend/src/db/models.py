@@ -607,3 +607,64 @@ class SavedEmailRun(Base):
     
     # Relationships
     batch_job: Mapped[Optional["BatchJob"]] = relationship("BatchJob", back_populates="runs")
+
+
+class EmailTask(Base):
+    """Track email generation tasks for polling and resume after server restart.
+    
+    This enables:
+    1. Multiple concurrent email generations without session conflicts
+    2. Progress polling via /pipeline/run/status?task_id=X
+    3. Automatic resume if server restarts mid-generation
+    4. Auto-save to SavedEmailRun on completion
+    """
+    __tablename__ = "email_tasks"
+    
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)  # UUID
+    
+    # Who started this task (for team attribution)
+    created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    
+    # Request context
+    product: Mapped[str] = mapped_column(String(200), nullable=False)
+    state_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    state_full: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    audiences: Mapped[list] = mapped_column(JSON, nullable=False)
+    district_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    district_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    purpose_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # Selected hooks for generation
+    selected_hook_ids: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    selected_cached_hooks: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    
+    # Progress tracking
+    status: Mapped[str] = mapped_column(String(20), default='queued')  # queued, in_progress, completed, failed
+    progress: Mapped[int] = mapped_column(Integer, default=0)  # 0-100
+    message: Mapped[str] = mapped_column(Text, default='')  # Human-readable status message
+    current_stage: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # evidence_pack, treasure_hunter, email_writing, validation
+    
+    # OpenAI task tracking (for resume after restart)
+    openai_response_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # resp_xxx ID
+    openai_audience: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # Which audience is being generated
+    
+    # Intermediate state (checkpoints for resume)
+    evidence_pack_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    treasure_hooks_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    selected_hook_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    completed_variants_json: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    
+    # Result / Error
+    result_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    
+    # Auto-cleanup: tasks expire after 2 hours
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    
+    # Link to auto-saved result
+    saved_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

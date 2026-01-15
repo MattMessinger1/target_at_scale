@@ -143,6 +143,123 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Batch job resume failed (startup will continue): {e}", exc_info=True)
     
+    # Resume interrupted email tasks (orphaned by deploy/restart)
+    try:
+        from ..db.models import EmailTask
+        from .routes.generate import _email_tasks, _dump_model, resume_email_task
+        
+        async with AsyncSessionLocal() as db:
+            # Find email tasks that were in progress when the container stopped
+            stmt = select(EmailTask).where(EmailTask.status.in_(["queued", "in_progress"]))
+            result = await db.execute(stmt)
+            incomplete_tasks = result.scalars().all()
+            
+            for task in incomplete_tasks:
+                orphan_duration = (datetime.utcnow() - task.created_at).total_seconds()
+                
+                # Check if task has expired (2 hour TTL)
+                if task.expires_at and datetime.utcnow() > task.expires_at:
+                    logger.info(
+                        f"Email task {task.id} has expired (created {int(orphan_duration)}s ago). "
+                        f"Marking as failed."
+                    )
+                    task.status = "failed"
+                    task.error = "Task expired (exceeded 2 hour TTL)"
+                    await db.commit()
+                    continue
+                
+                if task.openai_response_id:
+                    # Can resume from OpenAI polling
+                    logger.info(
+                        f"Email task {task.id} was interrupted during OpenAI generation. "
+                        f"Resuming polling for response {task.openai_response_id}"
+                    )
+                    asyncio.create_task(resume_email_task(task.id))
+                elif task.evidence_pack_json:
+                    # Has checkpoint data - can resume from there
+                    logger.info(
+                        f"Email task {task.id} was interrupted at stage '{task.current_stage}'. "
+                        f"Resuming from checkpoint."
+                    )
+                    asyncio.create_task(resume_email_task(task.id))
+                else:
+                    # Too early to resume - mark as failed
+                    logger.warning(
+                        f"Email task {task.id} was interrupted too early to resume "
+                        f"(stage: {task.current_stage}). Marking as failed."
+                    )
+                    task.status = "failed"
+                    task.error = "Interrupted before checkpoint; please retry"
+                    await db.commit()
+            
+            if incomplete_tasks:
+                logger.info(f"Processed {len(incomplete_tasks)} interrupted email tasks on startup")
+    except Exception as e:
+        logger.error(f"Email task resume failed (startup will continue): {e}", exc_info=True)
+    
+    # Resume interrupted research tasks (orphaned by deploy/restart)
+    try:
+        from ..db.models import ResearchTask, DeepResearchCache
+        from .routes.generate import _research_tasks, resume_research_task
+        
+        async with AsyncSessionLocal() as db:
+            # Find research tasks that were in progress when the container stopped
+            stmt = select(ResearchTask).where(ResearchTask.status.in_(["queued", "in_progress"]))
+            result = await db.execute(stmt)
+            incomplete_tasks = result.scalars().all()
+            
+            for task in incomplete_tasks:
+                orphan_duration = (datetime.utcnow() - task.started_at).total_seconds()
+                
+                # Check if task has expired (1 hour TTL for research)
+                if task.expires_at and datetime.utcnow() > task.expires_at:
+                    logger.info(
+                        f"Research task {task.id} has expired (started {int(orphan_duration)}s ago). "
+                        f"Marking as failed."
+                    )
+                    task.status = "failed"
+                    task.error = "Task expired (exceeded TTL)"
+                    await db.commit()
+                    continue
+                
+                # Check if deep research is in progress (has openai_response_id)
+                cache_stmt = select(DeepResearchCache).where(
+                    DeepResearchCache.state_code == task.state_code,
+                    DeepResearchCache.product_key == task.product_key,
+                    DeepResearchCache.status == "in_progress"
+                )
+                cache_result = await db.execute(cache_stmt)
+                in_progress_cache = cache_result.scalar_one_or_none()
+                
+                if in_progress_cache and in_progress_cache.openai_response_id:
+                    # Can resume from OpenAI polling
+                    logger.info(
+                        f"Research task {task.id} has in-progress deep research. "
+                        f"Resuming for {task.state_code}/{task.product_key}"
+                    )
+                    asyncio.create_task(resume_research_task(task.id))
+                elif task.treasure_hooks_json:
+                    # Has hooks, was in later stage - resume from there
+                    logger.info(
+                        f"Research task {task.id} was in phase '{task.phase}'. "
+                        f"Resuming from checkpoint."
+                    )
+                    asyncio.create_task(resume_research_task(task.id))
+                else:
+                    # No checkpoint - mark as failed
+                    logger.warning(
+                        f"Research task {task.id} was interrupted too early to resume "
+                        f"(phase: {task.phase}). Marking as failed."
+                    )
+                    task.status = "failed"
+                    task.error = "Interrupted before checkpoint; please retry"
+                    await db.commit()
+            
+            if incomplete_tasks:
+                logger.info(f"Processed {len(incomplete_tasks)} interrupted research tasks on startup")
+    except Exception as e:
+        logger.error(f"Research task resume failed (startup will continue): {e}", exc_info=True)
+    
     yield
     # Shutdown (if needed)
 

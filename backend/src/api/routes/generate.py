@@ -21,6 +21,186 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _email_tasks: Dict[str, Dict[str, Any]] = {}
 
+
+def _dump_model(obj: Any) -> Any:
+    """Recursively serialize a model/dataclass to a dict for JSON storage."""
+    if obj is None:
+        return None
+    if isinstance(obj, (str, int, float, bool)):
+        return obj
+    if isinstance(obj, dict):
+        return {k: _dump_model(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_dump_model(item) for item in obj]
+    if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+        return dataclasses.asdict(obj)
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    if hasattr(obj, "dict"):
+        return obj.dict()
+    if hasattr(obj, "_asdict"):  # NamedTuple
+        return dict(obj._asdict())
+    if hasattr(obj, "__dict__"):
+        return {k: _dump_model(v) for k, v in vars(obj).items()}
+    return obj
+
+
+async def resume_email_task(task_id: str):
+    """Resume an interrupted email task from its checkpoint.
+    
+    Called by startup recovery when server restarts mid-generation.
+    """
+    from ...db.database import AsyncSessionLocal
+    from ...db.models import EmailTask, SavedEmailRun
+    from ...pipeline.schemas import EvidencePack, WebHook, SelectedHook
+    from ...pipeline.stages.email_writer import resume_email_generation
+    
+    logger.info(f"Resuming email task {task_id}...")
+    
+    try:
+        async with AsyncSessionLocal() as db:
+            from sqlalchemy import select
+            result = await db.execute(select(EmailTask).where(EmailTask.id == task_id))
+            email_task = result.scalar_one_or_none()
+            
+            if not email_task:
+                logger.warning(f"Email task {task_id} not found in DB")
+                return
+            
+            if email_task.status not in ("queued", "in_progress"):
+                logger.info(f"Email task {task_id} already {email_task.status}, skipping resume")
+                return
+            
+            # Restore in-memory task state for polling
+            _email_tasks[task_id] = {
+                "status": "in_progress",
+                "progress": email_task.progress,
+                "message": f"Resuming from {email_task.current_stage}...",
+                "started_at": email_task.created_at.isoformat() if email_task.created_at else None,
+                "result": None,
+                "error": None,
+            }
+            
+            # If we have an OpenAI response_id, resume polling
+            if email_task.openai_response_id:
+                logger.info(f"Email task {task_id}: Resuming OpenAI polling for {email_task.openai_response_id}")
+                
+                # Reconstruct the minimal context needed for post-processing
+                evidence_pack = None
+                if email_task.evidence_pack_json:
+                    try:
+                        evidence_pack = EvidencePack(**email_task.evidence_pack_json)
+                    except Exception as e:
+                        logger.warning(f"Failed to reconstruct evidence_pack for {task_id}: {e}")
+                
+                selected_hook = None
+                if email_task.selected_hook_json:
+                    try:
+                        selected_hook = SelectedHook(**email_task.selected_hook_json)
+                    except Exception as e:
+                        logger.warning(f"Failed to reconstruct selected_hook for {task_id}: {e}")
+                
+                if evidence_pack and selected_hook:
+                    try:
+                        def on_progress(msg: str, pct: float):
+                            _email_tasks[task_id]["message"] = msg
+                            _email_tasks[task_id]["progress"] = int(pct)
+                        
+                        draft, claims_map = await resume_email_generation(
+                            openai_response_id=email_task.openai_response_id,
+                            product=email_task.product,
+                            state_code=email_task.state_code,
+                            audience=email_task.openai_audience or "Decision Makers",
+                            evidence_pack=evidence_pack,
+                            selected_hook=selected_hook,
+                            on_progress=on_progress,
+                        )
+                        
+                        # Mark completed
+                        email_task.status = "completed"
+                        email_task.progress = 100
+                        email_task.message = "Email generation complete (resumed)"
+                        email_task.completed_at = datetime.utcnow()
+                        
+                        _email_tasks[task_id]["status"] = "completed"
+                        _email_tasks[task_id]["progress"] = 100
+                        _email_tasks[task_id]["message"] = "Email generation complete (resumed)"
+                        
+                        logger.info(f"Email task {task_id} resumed successfully")
+                        await db.commit()
+                        
+                    except Exception as e:
+                        logger.error(f"Email task {task_id} resume failed: {e}", exc_info=True)
+                        email_task.status = "failed"
+                        email_task.error = str(e)
+                        _email_tasks[task_id]["status"] = "failed"
+                        _email_tasks[task_id]["error"] = str(e)
+                        await db.commit()
+                else:
+                    # Missing context - can't resume
+                    logger.warning(f"Email task {task_id}: Missing evidence_pack or selected_hook, marking failed")
+                    email_task.status = "failed"
+                    email_task.error = "Missing checkpoint data; please retry"
+                    _email_tasks[task_id]["status"] = "failed"
+                    _email_tasks[task_id]["error"] = "Missing checkpoint data; please retry"
+                    await db.commit()
+            else:
+                # No OpenAI response_id - task was interrupted before email generation started
+                # Mark as failed since we can't easily re-run the full pipeline
+                logger.warning(f"Email task {task_id}: No OpenAI response_id, marking failed")
+                email_task.status = "failed"
+                email_task.error = "Interrupted before email generation; please retry"
+                _email_tasks[task_id]["status"] = "failed"
+                _email_tasks[task_id]["error"] = "Interrupted before email generation; please retry"
+                await db.commit()
+                
+    except Exception as e:
+        logger.error(f"Error resuming email task {task_id}: {e}", exc_info=True)
+        _email_tasks[task_id] = {
+            "status": "failed",
+            "error": str(e),
+            "message": f"Resume failed: {e}",
+        }
+
+
+async def resume_research_task(task_id: str):
+    """Resume an interrupted research task from its checkpoint.
+    
+    Called by startup recovery when server restarts mid-research.
+    """
+    from ...db.database import AsyncSessionLocal
+    from ...db.models import ResearchTask, DeepResearchCache
+    
+    logger.info(f"Resuming research task {task_id}...")
+    
+    try:
+        async with AsyncSessionLocal() as db:
+            from sqlalchemy import select
+            result = await db.execute(select(ResearchTask).where(ResearchTask.id == task_id))
+            research_task = result.scalar_one_or_none()
+            
+            if not research_task:
+                logger.warning(f"Research task {task_id} not found in DB")
+                return
+            
+            if research_task.status not in ("queued", "in_progress"):
+                logger.info(f"Research task {task_id} already {research_task.status}, skipping resume")
+                return
+            
+            # For now, mark interrupted research tasks as failed
+            # Full research resume is more complex due to multiple stages
+            # Users can re-trigger research easily from the UI
+            logger.warning(
+                f"Research task {task_id} was interrupted at phase '{research_task.phase}'. "
+                f"Marking as failed (user can re-trigger research)."
+            )
+            research_task.status = "failed"
+            research_task.error = "Research was interrupted by server restart; please re-run"
+            await db.commit()
+            
+    except Exception as e:
+        logger.error(f"Error resuming research task {task_id}: {e}", exc_info=True)
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -303,185 +483,258 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
 
         async def run_email_task():
             """Background task that runs the email pipeline."""
+            # Import here to avoid circular imports
+            from ...db.database import AsyncSessionLocal
+            from ...db.models import EmailTask
+            from datetime import timedelta
+            
             try:
-                _email_tasks[task_id]["status"] = "in_progress"
-                _email_tasks[task_id]["message"] = "Initializing pipeline..."
-                
-                product = (request.product or "").strip()
-                state_code = (request.state or "").strip().upper()
-                state_full = (request.state_full or "").strip() or state_code
-                audiences = (request.audiences or list(DEFAULT_AUDIENCES))[:1]  # Single audience for speed
-                warnings: List[str] = []
-                stage_ms: Dict[str, int] = {}
-
-                # Decide whether this is a forced-hook (human selection) run
-                # Prefer hook_ids if provided, fallback to links for backwards compatibility
-                forced_ids = [str(x).strip() for x in (request.selected_hook_ids or []) if str(x).strip()]
-                forced_ids = list(dict.fromkeys(forced_ids))
-                forced_links = [str(x).strip() for x in (request.selected_hook_links or []) if str(x).strip()]
-                forced_links = list(dict.fromkeys(forced_links))
-                
-                use_hook_ids = len(forced_ids) > 0
-                use_forced = use_hook_ids or len(forced_links) > 0
-                
-                # -------------------------------------------------------------------
-                # MODE DETECTION: Purpose-only vs Hook-based vs Both
-                # -------------------------------------------------------------------
-                # User must provide at least ONE of: purpose_prompt OR selected hooks
-                # - Purpose only → generate using purpose as the angle (no deep research)
-                # - Hook only → generate using selected hook (existing flow)
-                # - Both → use hook as opener, purpose as supporting context
-                # - Neither → error
-                
-                has_purpose = bool(request.purpose_prompt and request.purpose_prompt.strip())
-                has_cached_hooks = bool(request.selected_cached_hooks and len(request.selected_cached_hooks) > 0)
-                has_hooks_selected = use_forced or has_cached_hooks  # True if user selected hook_ids, hook_links, OR cached hooks
-                
-                # Validate: at least one input required
-                if not has_purpose and not has_hooks_selected:
-                    raise RuntimeError(
-                        "Please provide a purpose prompt OR select at least one hook. "
-                        "You can also provide both for more targeted emails."
-                    )
-                
-                # Purpose-only mode: user provided purpose but didn't select any hooks
-                purpose_only_mode = has_purpose and not has_hooks_selected
-                
-                if purpose_only_mode:
-                    logger.info(f"Email task {task_id}: Using PURPOSE-ONLY mode (no deep research)")
-                    _email_tasks[task_id]["message"] = "Building evidence pack (purpose-only)..."
-                    _email_tasks[task_id]["progress"] = 5
+                # Create our own database session - don't use request-scoped session
+                # This allows multiple concurrent email tasks without session conflicts
+                async with AsyncSessionLocal() as db:
+                    # Create EmailTask record in DB for tracking and resume
+                    product = (request.product or "").strip()
+                    state_code = (request.state or "").strip().upper()
+                    state_full = (request.state_full or "").strip() or state_code
+                    audiences = (request.audiences or list(DEFAULT_AUDIENCES))[:1]  # Single audience for speed
                     
-                    # Build evidence pack for product context (KB-based, no web research)
-                    t0 = time.perf_counter()
-                    evidence_pack = await build_product_evidence_pack(
-                        db=db,
-                        product_display_name=product,
-                        state_code=state_code,
-                        audiences=audiences,
-                    )
-                    stage_ms["evidence_pack"] = int((time.perf_counter() - t0) * 1000)
-                    
-                    # Create a synthetic "purpose" hook from the user's purpose prompt
-                    # This becomes the primary hook - no treasure hunting needed
-                    purpose_text = request.purpose_prompt.strip()
-                    synthetic_hook = WebHook(
-                        hook_id=f"purpose_{uuid4().hex[:8]}",
-                        hook_type="custom",
-                        quote=purpose_text[:200],  # Use purpose as the "quote"
-                        link="",  # No external source - this is user-provided
-                        trigger_excerpt=purpose_text,  # Purpose is the trigger
-                        eligibility_excerpt=None,
-                        why_relevant=f"Custom purpose provided by user: {purpose_text[:100]}",
-                        confidence="high",  # User provided = high confidence
-                        source_quality_reason="User-provided purpose (not web-sourced)",
-                    )
-                    
-                    # Set up for email generation
-                    treasure_hooks = [synthetic_hook]
-                    primary = SelectedHook(hook=synthetic_hook, rank=1, reasons=["purpose_only_mode"])
-                    secondary = None
-                    
-                    # Add supporting context from cached hooks if provided
-                    supporting_context: Optional[List[str]] = None
-                    if request.selected_cached_hooks:
-                        supporting_context = []
-                        for cached in request.selected_cached_hooks:
-                            hook_data = cached.get("hook") if isinstance(cached, dict) else getattr(cached, "hook", None)
-                            if hook_data:
-                                if isinstance(hook_data, dict):
-                                    trigger = hook_data.get("trigger_excerpt", "")
-                                    if trigger:
-                                        supporting_context.append(trigger[:300])
-                                elif hasattr(hook_data, "trigger_excerpt"):
-                                    if hook_data.trigger_excerpt:
-                                        supporting_context.append(hook_data.trigger_excerpt[:300])
-                                elif hasattr(hook_data, "conference_name"):
-                                    conf_text = f"Conference: {hook_data.conference_name} ({hook_data.dates}) - {hook_data.relevance}"
-                                    supporting_context.append(conf_text[:300])
-                    
-                    # Generate email directly (skip hook gate, treasure hunting, etc.)
-                    _email_tasks[task_id]["message"] = "Generating email (purpose-only)..."
-                    _email_tasks[task_id]["progress"] = 20
-                    
-                    variants = []
-                    t4 = time.perf_counter()
-                    
-                    def update_progress(msg: str, pct: float):
-                        _email_tasks[task_id]["message"] = msg
-                        _email_tasks[task_id]["progress"] = min(95, 20 + int(pct * 0.75))
-                    
-                    for aud_idx, aud in enumerate(audiences):
-                        _email_tasks[task_id]["message"] = f"Generating email for {aud}..."
-                        _email_tasks[task_id]["progress"] = 20 + int((aud_idx / max(len(audiences), 1)) * 75)
-                        
-                        variant = await _run_variant(
-                            product=product,
-                            state_code=state_code,
-                            state_full=state_full,
-                            audience=aud,
-                            evidence_pack=evidence_pack,
-                            selected_hook=primary,
-                            secondary_hook=secondary,
-                            treasure_hooks=treasure_hooks,
-                            district_name=request.district_name,
-                            district_url=request.district_url,
-                            purpose_prompt=purpose_text,
-                            supporting_context=supporting_context,
-                            on_progress=update_progress,
-                        )
-                        variants.append(variant)
-                    
-                    stage_ms["write_validate_repair"] = int((time.perf_counter() - t4) * 1000)
-                    
-                    # Build result (same as normal flow)
-                    run_id = task_id
-                    started_at = _utcnow()
-                    trace = PipelineTrace(
-                        run_id=run_id,
-                        started_at=started_at,
-                        finished_at=_utcnow(),
-                        stage_ms=stage_ms,
-                        variant_traces=[v.trace for v in variants],
-                    )
-
-                    request_out = PipelineRequestModel(
+                    email_task = EmailTask(
+                        id=task_id,
+                        created_by=request.created_by,
                         product=product,
-                        state=state_code,
+                        state_code=state_code,
                         state_full=state_full,
                         audiences=audiences,
                         district_name=request.district_name,
                         district_url=request.district_url,
+                        purpose_prompt=request.purpose_prompt,
+                        selected_hook_ids=[str(x).strip() for x in (request.selected_hook_ids or []) if str(x).strip()],
+                        selected_cached_hooks=[_dump_model(h) for h in (request.selected_cached_hooks or [])],
+                        status="in_progress",
+                        progress=0,
+                        message="Initializing pipeline...",
+                        current_stage="init",
+                        expires_at=datetime.utcnow() + timedelta(hours=2),
                     )
-
-                    result = PipelineRunResponse(
-                        run_id=run_id,
-                        mode=_mode(request_out),
-                        request=request_out,
-                        evidence_pack=evidence_pack,
-                        treasure_hooks=list(treasure_hooks),
-                        variants=variants,
-                        trace=trace,
-                        warnings=warnings + ["Generated using PURPOSE-ONLY mode (no deep research)"],
-                    )
-
-                    _email_tasks[task_id]["status"] = "completed"
-                    _email_tasks[task_id]["progress"] = 100
-                    _email_tasks[task_id]["message"] = "Email generation complete (purpose-only)!"
-                    _email_tasks[task_id]["result"] = _dump_model(result)
-                    logger.info(f"Email task {task_id} completed successfully (purpose-only mode)")
+                    db.add(email_task)
+                    await db.commit()
                     
-                    # Auto-save email
-                    try:
-                        from ...db.models import SavedEmailRun
-                        from ...db.database import AsyncSessionLocal
+                    _email_tasks[task_id]["status"] = "in_progress"
+                    _email_tasks[task_id]["message"] = "Initializing pipeline..."
+                    
+                    warnings: List[str] = []
+                    stage_ms: Dict[str, int] = {}
+
+                    # Decide whether this is a forced-hook (human selection) run
+                    # Prefer hook_ids if provided, fallback to links for backwards compatibility
+                    forced_ids = [str(x).strip() for x in (request.selected_hook_ids or []) if str(x).strip()]
+                    forced_ids = list(dict.fromkeys(forced_ids))
+                    forced_links = [str(x).strip() for x in (request.selected_hook_links or []) if str(x).strip()]
+                    forced_links = list(dict.fromkeys(forced_links))
+                    
+                    use_hook_ids = len(forced_ids) > 0
+                    use_forced = use_hook_ids or len(forced_links) > 0
+                    
+                    # -------------------------------------------------------------------
+                    # MODE DETECTION: Purpose-only vs Hook-based vs Both
+                    # -------------------------------------------------------------------
+                    # User must provide at least ONE of: purpose_prompt OR selected hooks
+                    # - Purpose only → generate using purpose as the angle (no deep research)
+                    # - Hook only → generate using selected hook (existing flow)
+                    # - Both → use hook as opener, purpose as supporting context
+                    # - Neither → error
+                    
+                    has_purpose = bool(request.purpose_prompt and request.purpose_prompt.strip())
+                    has_cached_hooks = bool(request.selected_cached_hooks and len(request.selected_cached_hooks) > 0)
+                    has_hooks_selected = use_forced or has_cached_hooks  # True if user selected hook_ids, hook_links, OR cached hooks
+                    
+                    # Validate: at least one input required
+                    if not has_purpose and not has_hooks_selected:
+                        raise RuntimeError(
+                            "Please provide a purpose prompt OR select at least one hook. "
+                            "You can also provide both for more targeted emails."
+                        )
+                    
+                    # Purpose-only mode: user provided purpose but didn't select any hooks
+                    purpose_only_mode = has_purpose and not has_hooks_selected
+                    
+                    # Helper to checkpoint EmailTask to DB
+                    async def checkpoint_email_task(
+                        stage: str,
+                        progress: int,
+                        message: str,
+                        evidence_pack_data: Optional[dict] = None,
+                        treasure_hooks_data: Optional[list] = None,
+                        selected_hook_data: Optional[dict] = None,
+                        openai_response_id: Optional[str] = None,
+                        openai_audience: Optional[str] = None,
+                    ):
+                        """Update EmailTask checkpoint in DB."""
+                        email_task.current_stage = stage
+                        email_task.progress = progress
+                        email_task.message = message
+                        email_task.updated_at = datetime.utcnow()
+                        if evidence_pack_data is not None:
+                            email_task.evidence_pack_json = evidence_pack_data
+                        if treasure_hooks_data is not None:
+                            email_task.treasure_hooks_json = treasure_hooks_data
+                        if selected_hook_data is not None:
+                            email_task.selected_hook_json = selected_hook_data
+                        if openai_response_id is not None:
+                            email_task.openai_response_id = openai_response_id
+                        if openai_audience is not None:
+                            email_task.openai_audience = openai_audience
+                        await db.commit()
+                    
+                    if purpose_only_mode:
+                        logger.info(f"Email task {task_id}: Using PURPOSE-ONLY mode (no deep research)")
+                        _email_tasks[task_id]["message"] = "Building evidence pack (purpose-only)..."
+                        _email_tasks[task_id]["progress"] = 5
+                        await checkpoint_email_task("evidence_pack", 5, "Building evidence pack (purpose-only)...")
                         
-                        first_variant = variants[0] if variants else None
-                        subject_preview = ""
-                        if first_variant and first_variant.email_draft and first_variant.email_draft.subject_line:
-                            subject_preview = first_variant.email_draft.subject_line[:100]
+                        # Build evidence pack for product context (KB-based, no web research)
+                        t0 = time.perf_counter()
+                        evidence_pack = await build_product_evidence_pack(
+                            db=db,
+                            product_display_name=product,
+                            state_code=state_code,
+                            audiences=audiences,
+                        )
+                        stage_ms["evidence_pack"] = int((time.perf_counter() - t0) * 1000)
                         
-                        async with AsyncSessionLocal() as save_db:
+                        # Checkpoint: evidence pack complete
+                        await checkpoint_email_task(
+                            "evidence_pack_done", 10, "Evidence pack ready",
+                            evidence_pack_data=_dump_model(evidence_pack)
+                        )
+                        
+                        # Create a synthetic "purpose" hook from the user's purpose prompt
+                        # This becomes the primary hook - no treasure hunting needed
+                        purpose_text = request.purpose_prompt.strip()
+                        synthetic_hook = WebHook(
+                            hook_id=f"purpose_{uuid4().hex[:8]}",
+                            hook_type="custom",
+                            quote=purpose_text[:200],  # Use purpose as the "quote"
+                            link="",  # No external source - this is user-provided
+                            trigger_excerpt=purpose_text,  # Purpose is the trigger
+                            eligibility_excerpt=None,
+                            why_relevant=f"Custom purpose provided by user: {purpose_text[:100]}",
+                            confidence="high",  # User provided = high confidence
+                            source_quality_reason="User-provided purpose (not web-sourced)",
+                        )
+                        
+                        # Set up for email generation
+                        treasure_hooks = [synthetic_hook]
+                        primary = SelectedHook(hook=synthetic_hook, rank=1, reasons=["purpose_only_mode"])
+                        secondary = None
+                        
+                        # Add supporting context from cached hooks if provided
+                        supporting_context: Optional[List[str]] = None
+                        if request.selected_cached_hooks:
+                            supporting_context = []
+                            for cached in request.selected_cached_hooks:
+                                hook_data = cached.get("hook") if isinstance(cached, dict) else getattr(cached, "hook", None)
+                                if hook_data:
+                                    if isinstance(hook_data, dict):
+                                        trigger = hook_data.get("trigger_excerpt", "")
+                                        if trigger:
+                                            supporting_context.append(trigger[:300])
+                                    elif hasattr(hook_data, "trigger_excerpt"):
+                                        if hook_data.trigger_excerpt:
+                                            supporting_context.append(hook_data.trigger_excerpt[:300])
+                                    elif hasattr(hook_data, "conference_name"):
+                                        conf_text = f"Conference: {hook_data.conference_name} ({hook_data.dates}) - {hook_data.relevance}"
+                                        supporting_context.append(conf_text[:300])
+                        
+                        # Generate email directly (skip hook gate, treasure hunting, etc.)
+                        _email_tasks[task_id]["message"] = "Generating email (purpose-only)..."
+                        _email_tasks[task_id]["progress"] = 20
+                        
+                        variants = []
+                        t4 = time.perf_counter()
+                        
+                        def update_progress(msg: str, pct: float):
+                            _email_tasks[task_id]["message"] = msg
+                            _email_tasks[task_id]["progress"] = min(95, 20 + int(pct * 0.75))
+                        
+                        for aud_idx, aud in enumerate(audiences):
+                            _email_tasks[task_id]["message"] = f"Generating email for {aud}..."
+                            _email_tasks[task_id]["progress"] = 20 + int((aud_idx / max(len(audiences), 1)) * 75)
+                            
+                            variant = await _run_variant(
+                                product=product,
+                                state_code=state_code,
+                                state_full=state_full,
+                                audience=aud,
+                                evidence_pack=evidence_pack,
+                                selected_hook=primary,
+                                secondary_hook=secondary,
+                                treasure_hooks=treasure_hooks,
+                                district_name=request.district_name,
+                                district_url=request.district_url,
+                                purpose_prompt=purpose_text,
+                                supporting_context=supporting_context,
+                                on_progress=update_progress,
+                            )
+                            variants.append(variant)
+                        
+                        stage_ms["write_validate_repair"] = int((time.perf_counter() - t4) * 1000)
+                        
+                        # Build result (same as normal flow)
+                        run_id = task_id
+                        started_at = _utcnow()
+                        trace = PipelineTrace(
+                            run_id=run_id,
+                            started_at=started_at,
+                            finished_at=_utcnow(),
+                            stage_ms=stage_ms,
+                            variant_traces=[v.trace for v in variants],
+                        )
+
+                        request_out = PipelineRequestModel(
+                            product=product,
+                            state=state_code,
+                            state_full=state_full,
+                            audiences=audiences,
+                            district_name=request.district_name,
+                            district_url=request.district_url,
+                        )
+
+                        result = PipelineRunResponse(
+                            run_id=run_id,
+                            mode=_mode(request_out),
+                            request=request_out,
+                            evidence_pack=evidence_pack,
+                            treasure_hooks=list(treasure_hooks),
+                            variants=variants,
+                            trace=trace,
+                            warnings=warnings + ["Generated using PURPOSE-ONLY mode (no deep research)"],
+                        )
+
+                        _email_tasks[task_id]["status"] = "completed"
+                        _email_tasks[task_id]["progress"] = 100
+                        _email_tasks[task_id]["message"] = "Email generation complete (purpose-only)!"
+                        _email_tasks[task_id]["result"] = _dump_model(result)
+                        logger.info(f"Email task {task_id} completed successfully (purpose-only mode)")
+                        
+                        # Update EmailTask DB record as completed
+                        email_task.status = "completed"
+                        email_task.progress = 100
+                        email_task.message = "Email generation complete (purpose-only)!"
+                        email_task.result_json = _dump_model(result)
+                        email_task.completed_variants_json = [_dump_model(v) for v in variants]
+                        email_task.completed_at = datetime.utcnow()
+                        email_task.updated_at = datetime.utcnow()
+                        
+                        # Auto-save email
+                        try:
+                            from ...db.models import SavedEmailRun
+                            
+                            first_variant = variants[0] if variants else None
+                            subject_preview = ""
+                            if first_variant and first_variant.email_draft and first_variant.email_draft.subject_line:
+                                subject_preview = first_variant.email_draft.subject_line[:100]
+                            
                             cached_hook_ids = None
                             if request.selected_cached_hooks:
                                 cached_hook_ids = []
@@ -513,351 +766,386 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                 selected_hook_links=[],
                                 primary_hook_link=None,
                             )
-                            save_db.add(saved_email)
-                            await save_db.commit()
-                            await save_db.refresh(saved_email)
+                            db.add(saved_email)
+                            await db.commit()
+                            await db.refresh(saved_email)
                             _email_tasks[task_id]["saved_run_id"] = saved_email.id
+                            
+                            # Link EmailTask to SavedEmailRun
+                            email_task.saved_run_id = saved_email.id
+                            await db.commit()
+                            
                             logger.info(f"Auto-saved purpose-only email task {task_id} as SavedEmailRun {saved_email.id}")
-                    except Exception as save_err:
-                        logger.warning(f"Failed to auto-save purpose-only email task {task_id}: {save_err}")
-                    
-                    return  # Exit early - purpose-only flow complete
+                        except Exception as save_err:
+                            logger.warning(f"Failed to auto-save purpose-only email task {task_id}: {save_err}")
+                            # Still commit the EmailTask status update
+                            await db.commit()
+                        
+                        return  # Exit early - purpose-only flow complete
 
-                # Evidence pack / hooks: reuse if provided, else compute
-                evidence_pack = request.evidence_pack
-                treasure_hooks = request.treasure_hooks
+                    # Evidence pack / hooks: reuse if provided, else compute
+                    evidence_pack = request.evidence_pack
+                    treasure_hooks = request.treasure_hooks
 
-                if evidence_pack is None or treasure_hooks is None:
-                    _email_tasks[task_id]["message"] = "Building evidence pack..."
-                    _email_tasks[task_id]["progress"] = 5
+                    if evidence_pack is None or treasure_hooks is None:
+                        _email_tasks[task_id]["message"] = "Building evidence pack..."
+                        _email_tasks[task_id]["progress"] = 5
+                        await checkpoint_email_task("evidence_pack", 5, "Building evidence pack...")
+                        
+                        t0 = time.perf_counter()
+                        evidence_pack = await build_product_evidence_pack(
+                            db=db,
+                            product_display_name=product,
+                            state_code=state_code,
+                            audiences=audiences,
+                        )
+                        stage_ms["evidence_pack"] = int((time.perf_counter() - t0) * 1000)
+                        
+                        # Checkpoint: evidence pack complete
+                        await checkpoint_email_task(
+                            "evidence_pack_done", 8, "Evidence pack ready",
+                            evidence_pack_data=_dump_model(evidence_pack)
+                        )
+
+                        _email_tasks[task_id]["message"] = "Running treasure hunter..."
+                        _email_tasks[task_id]["progress"] = 10
+                        await checkpoint_email_task("treasure_hunter", 10, "Running treasure hunter (deep research)...")
+                        
+                        t1 = time.perf_counter()
+                        treasure_hooks = await run_treasure_hunter(
+                            db=db,
+                            product=product,
+                            state_code=state_code,
+                            state_full=state_full,
+                            district_name=request.district_name,
+                            district_url=request.district_url,
+                            product_context_text=None,
+                        )
+                        stage_ms["treasure_hunter"] = int((time.perf_counter() - t1) * 1000)
+                        
+                        # Checkpoint: treasure hooks complete
+                        await checkpoint_email_task(
+                            "treasure_hunter_done", 15, f"Deep research complete: {len(treasure_hooks)} hooks",
+                            treasure_hooks_data=[_dump_model(h) for h in treasure_hooks]
+                        )
+
+                    if not treasure_hooks:
+                        raise RuntimeError("No treasure hooks returned (Deep Research returned no results)")
+
+                    # HookGate
+                    _email_tasks[task_id]["message"] = "Filtering hooks..."
+                    _email_tasks[task_id]["progress"] = 15
                     
-                    t0 = time.perf_counter()
-                    evidence_pack = await build_product_evidence_pack(
-                        db=db,
-                        product_display_name=product,
-                        state_code=state_code,
-                        audiences=audiences,
+                    t2 = time.perf_counter()
+                    gated, filtered_reqs, report = gate_treasure_hooks(treasure_hooks, evidence_pack=evidence_pack)
+                    stage_ms["hook_gate"] = int((time.perf_counter() - t2) * 1000)
+
+                    if report.kept == 0:
+                        raise RuntimeError("No funding/compliance requirements passed the relevance gate")
+                    
+                    treasure_hooks = gated
+                    if report.kept < report.total:
+                        warnings.append(f"Relevance gate filtered: kept={report.kept}/{report.total}")
+
+                    # Select hooks
+                    primary: Optional[SelectedHook] = None
+                    secondary: Optional[SelectedHook] = None
+
+                    if use_forced:
+                        # IMPORTANT: Search in ORIGINAL hooks from request, not the re-gated list.
+                        # The user explicitly selected these hooks - trust their judgment.
+                        original_hooks = request.treasure_hooks or []
+                        
+                        if use_hook_ids:
+                            # Preferred: use hook_ids for reliable selection
+                            if len(forced_ids) > 2:
+                                raise RuntimeError("selected_hook_ids must contain at most 2 IDs")
+                            
+                            primary_id = (request.primary_hook_id or "").strip() or forced_ids[0]
+                            secondary_id = None
+                            if len(forced_ids) == 2:
+                                secondary_id = forced_ids[1] if forced_ids[0] == primary_id else forced_ids[0]
+                            
+                            logger.info(f"Hook selection (ID mode): primary_id={primary_id}")
+                            logger.info(f"Hook selection DEBUG: Available {len(original_hooks)} hooks (by ID):")
+                            for idx, h in enumerate(original_hooks):
+                                hook_id = h.hook_id or ""
+                                match_status = "MATCH" if hook_id == primary_id else "no match"
+                                logger.info(f"  Hook {idx}: id={hook_id}, {match_status}, type={h.hook_type}")
+                            
+                            def _find_hook_by_id(hook_id: str):
+                                for h in original_hooks:
+                                    if h.hook_id == hook_id:
+                                        return h
+                                return None
+                            
+                            ph = _find_hook_by_id(primary_id)
+                        else:
+                            # Fallback: use links (deprecated, may have collisions)
+                            if len(forced_links) > 2:
+                                raise RuntimeError("selected_hook_links must contain at most 2 URLs")
+
+                            primary_link = (request.primary_hook_link or "").strip() or forced_links[0]
+                            secondary_link = None
+                            if len(forced_links) == 2:
+                                secondary_link = forced_links[1] if forced_links[0] == primary_link else forced_links[0]
+                            
+                            logger.info(f"Hook selection (LINK mode - deprecated): primary_link={primary_link[:200]}...")
+                            logger.info(f"Hook selection DEBUG: Available {len(original_hooks)} hooks (by link):")
+                            for idx, h in enumerate(original_hooks):
+                                hook_url = h.link or ""
+                                match_status = "MATCH" if hook_url == primary_link else "no match"
+                                logger.info(f"  Hook {idx}: (len={len(hook_url)}) {match_status} - {hook_url[:200]}...")
+                            
+                            def _find_hook(link: str):
+                                for h in original_hooks:
+                                    if h.link == link:
+                                        return h
+                                return None
+
+                            ph = _find_hook(primary_link)
+                        
+                        if not ph:
+                            # Fallback: try gated hooks
+                            for h in treasure_hooks or []:
+                                if use_hook_ids:
+                                    if h.hook_id == primary_id:
+                                        ph = h
+                                        break
+                                else:
+                                    if h.link == primary_link:
+                                        ph = h
+                                        break
+                        
+                        if not ph:
+                            identifier = primary_id if use_hook_ids else primary_link
+                            raise RuntimeError(f"Primary hook not found: {identifier}")
+                        
+                        logger.info(f"Using primary hook: id={ph.hook_id}, type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
+                        primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected"])
+
+                        # Handle secondary hook
+                        sh = None
+                        if use_hook_ids and secondary_id:
+                            sh = _find_hook_by_id(secondary_id)
+                            if not sh:
+                                for h in treasure_hooks or []:
+                                    if h.hook_id == secondary_id:
+                                        sh = h
+                                        break
+                        elif not use_hook_ids and secondary_link:
+                            sh = _find_hook(secondary_link)
+                            if not sh:
+                                for h in treasure_hooks or []:
+                                    if h.link == secondary_link:
+                                            sh = h
+                                            break
+                        
+                        if sh:
+                            logger.info(f"Using secondary hook: id={sh.hook_id}, type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
+                            secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
+                    elif has_cached_hooks:
+                        # User selected cached hooks (from "State-level hooks" section) but not regular hooks
+                        logger.info(f"Email task {task_id}: Using CACHED HOOKS mode ({len(request.selected_cached_hooks)} hooks)")
+                        
+                        cached_webhooks: List[WebHook] = []
+                        for cached in request.selected_cached_hooks:
+                            hook_data = cached.get("hook") if isinstance(cached, dict) else getattr(cached, "hook", None)
+                            if hook_data:
+                                # Convert dict to WebHook if needed
+                                if isinstance(hook_data, dict):
+                                    cached_webhooks.append(WebHook(**hook_data))
+                                elif isinstance(hook_data, WebHook):
+                                    cached_webhooks.append(hook_data)
+                                else:
+                                    # Try to construct from object attributes
+                                    try:
+                                        cached_webhooks.append(WebHook(
+                                            hook_id=getattr(hook_data, "hook_id", None),
+                                            hook_type=getattr(hook_data, "hook_type", "cached"),
+                                            quote=getattr(hook_data, "quote", ""),
+                                            link=getattr(hook_data, "link", ""),
+                                            trigger_excerpt=getattr(hook_data, "trigger_excerpt", None),
+                                            eligibility_excerpt=getattr(hook_data, "eligibility_excerpt", None),
+                                            why_relevant=getattr(hook_data, "why_relevant", None),
+                                            confidence=getattr(hook_data, "confidence", "medium"),
+                                        ))
+                                    except Exception as e:
+                                        logger.warning(f"Failed to convert cached hook to WebHook: {e}")
+                        
+                        if cached_webhooks:
+                            # Use first cached hook as primary
+                            ph = cached_webhooks[0]
+                            logger.info(f"Using cached primary hook: id={ph.hook_id}, type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
+                            primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected_cached"])
+                            
+                            # Use second cached hook as secondary if available
+                            if len(cached_webhooks) > 1:
+                                sh = cached_webhooks[1]
+                                logger.info(f"Using cached secondary hook: id={sh.hook_id}, type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
+                                secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_cached_secondary"])
+                            
+                            # Add cached hooks to treasure_hooks for consistency
+                            if not treasure_hooks:
+                                treasure_hooks = cached_webhooks
+                            else:
+                                treasure_hooks = list(treasure_hooks) + [h for h in cached_webhooks if h not in treasure_hooks]
+                        else:
+                            raise RuntimeError("Selected cached hooks but couldn't extract any WebHook objects")
+                    else:
+                        selected = select_primary_hooks(hooks=list(treasure_hooks), audiences=audiences)
+
+                    # Generate variants
+                    _email_tasks[task_id]["message"] = "Generating emails..."
+                    _email_tasks[task_id]["progress"] = 20
+                    
+                    # Checkpoint: starting email generation
+                    selected_hook_data = _dump_model(primary) if primary else None
+                    await checkpoint_email_task(
+                        "email_writing", 20, "Starting email generation...",
+                        selected_hook_data=selected_hook_data
                     )
-                    stage_ms["evidence_pack"] = int((time.perf_counter() - t0) * 1000)
-
-                    _email_tasks[task_id]["message"] = "Running treasure hunter..."
-                    _email_tasks[task_id]["progress"] = 10
                     
-                    t1 = time.perf_counter()
-                    treasure_hooks = await run_treasure_hunter(
-                        db=db,
+                    variants = []
+                    t4 = time.perf_counter()
+                    
+                    def update_progress(msg: str, pct: float):
+                        """Progress callback for email writer."""
+                        _email_tasks[task_id]["message"] = msg
+                        _email_tasks[task_id]["progress"] = min(95, 20 + int(pct * 0.75))
+                    
+                    # Extract purpose prompt and build supporting context from selected cached hooks
+                    purpose_prompt = request.purpose_prompt
+                    supporting_context: Optional[List[str]] = None
+                    if request.selected_cached_hooks:
+                        supporting_context = []
+                        for cached in request.selected_cached_hooks:
+                            hook_data = cached.get("hook") if isinstance(cached, dict) else getattr(cached, "hook", None)
+                            if hook_data:
+                                if isinstance(hook_data, dict):
+                                    # WebHook-like
+                                    trigger = hook_data.get("trigger_excerpt", "")
+                                    if trigger:
+                                        supporting_context.append(trigger[:300])
+                                elif hasattr(hook_data, "trigger_excerpt"):
+                                    trigger = hook_data.trigger_excerpt
+                                    if trigger:
+                                        supporting_context.append(trigger[:300])
+                                elif hasattr(hook_data, "conference_name"):
+                                    # ConferenceOpportunity
+                                    conf_text = f"Conference: {hook_data.conference_name} ({hook_data.dates}) - {hook_data.relevance}"
+                                    supporting_context.append(conf_text[:300])
+                    
+                    if use_forced:
+                        for aud_idx, aud in enumerate(audiences):
+                            if not primary:
+                                raise RuntimeError("Primary hook selection failed")
+                            _email_tasks[task_id]["message"] = f"Generating email for {aud}..."
+                            _email_tasks[task_id]["progress"] = 20 + int((aud_idx / len(audiences)) * 75)
+                            
+                            variant = await _run_variant(
+                                product=product,
+                                state_code=state_code,
+                                state_full=state_full,
+                                audience=aud,
+                                evidence_pack=evidence_pack,
+                                selected_hook=primary,
+                                secondary_hook=secondary,
+                                treasure_hooks=treasure_hooks,
+                                district_name=request.district_name,
+                                district_url=request.district_url,
+                                purpose_prompt=purpose_prompt,
+                                supporting_context=supporting_context,
+                                on_progress=update_progress,
+                            )
+                            variants.append(variant)
+                    else:
+                        selected = select_primary_hooks(hooks=list(treasure_hooks), audiences=audiences)
+                        for aud_idx, aud in enumerate(audiences):
+                            sel = selected.get(aud)
+                            if not sel and treasure_hooks:
+                                sel = select_primary_hooks(hooks=list(treasure_hooks), audiences=[aud]).get(aud)
+                            if not sel:
+                                raise RuntimeError("No hooks available for email generation")
+                            
+                            _email_tasks[task_id]["message"] = f"Generating email for {aud}..."
+                            _email_tasks[task_id]["progress"] = 20 + int((aud_idx / len(audiences)) * 75)
+                            
+                            variant = await _run_variant(
+                                product=product,
+                                state_code=state_code,
+                                state_full=state_full,
+                                audience=aud,
+                                evidence_pack=evidence_pack,
+                                selected_hook=sel,
+                                secondary_hook=None,
+                                treasure_hooks=treasure_hooks,
+                                district_name=request.district_name,
+                                district_url=request.district_url,
+                                purpose_prompt=purpose_prompt,
+                                supporting_context=supporting_context,
+                                on_progress=update_progress,
+                            )
+                            variants.append(variant)
+                    
+                    stage_ms["write_validate_repair"] = int((time.perf_counter() - t4) * 1000)
+
+                    # Build result
+                    run_id = task_id
+                    started_at = _utcnow()
+                    trace = PipelineTrace(
+                        run_id=run_id,
+                        started_at=started_at,
+                        finished_at=_utcnow(),
+                        stage_ms=stage_ms,
+                        variant_traces=[v.trace for v in variants],
+                    )
+
+                    request_out = PipelineRequestModel(
                         product=product,
-                        state_code=state_code,
+                        state=state_code,
                         state_full=state_full,
+                        audiences=audiences,
                         district_name=request.district_name,
                         district_url=request.district_url,
-                        product_context_text=None,
                     )
-                    stage_ms["treasure_hunter"] = int((time.perf_counter() - t1) * 1000)
 
-                if not treasure_hooks:
-                    raise RuntimeError("No treasure hooks returned (Deep Research returned no results)")
+                    result = PipelineRunResponse(
+                        run_id=run_id,
+                        mode=_mode(request_out),
+                        request=request_out,
+                        evidence_pack=evidence_pack,
+                        treasure_hooks=list(treasure_hooks),
+                        variants=variants,
+                        trace=trace,
+                        warnings=warnings,
+                    )
 
-                # HookGate
-                _email_tasks[task_id]["message"] = "Filtering hooks..."
-                _email_tasks[task_id]["progress"] = 15
-                
-                t2 = time.perf_counter()
-                gated, filtered_reqs, report = gate_treasure_hooks(treasure_hooks, evidence_pack=evidence_pack)
-                stage_ms["hook_gate"] = int((time.perf_counter() - t2) * 1000)
-
-                if report.kept == 0:
-                    raise RuntimeError("No funding/compliance requirements passed the relevance gate")
-                
-                treasure_hooks = gated
-                if report.kept < report.total:
-                    warnings.append(f"Relevance gate filtered: kept={report.kept}/{report.total}")
-
-                # Select hooks
-                primary: Optional[SelectedHook] = None
-                secondary: Optional[SelectedHook] = None
-
-                if use_forced:
-                    # IMPORTANT: Search in ORIGINAL hooks from request, not the re-gated list.
-                    # The user explicitly selected these hooks - trust their judgment.
-                    original_hooks = request.treasure_hooks or []
+                    _email_tasks[task_id]["status"] = "completed"
+                    _email_tasks[task_id]["progress"] = 100
+                    _email_tasks[task_id]["message"] = "Email generation complete!"
+                    _email_tasks[task_id]["result"] = _dump_model(result)
+                    logger.info(f"Email task {task_id} completed successfully")
                     
-                    if use_hook_ids:
-                        # Preferred: use hook_ids for reliable selection
-                        if len(forced_ids) > 2:
-                            raise RuntimeError("selected_hook_ids must contain at most 2 IDs")
-                        
-                        primary_id = (request.primary_hook_id or "").strip() or forced_ids[0]
-                        secondary_id = None
-                        if len(forced_ids) == 2:
-                            secondary_id = forced_ids[1] if forced_ids[0] == primary_id else forced_ids[0]
-                        
-                        logger.info(f"Hook selection (ID mode): primary_id={primary_id}")
-                        logger.info(f"Hook selection DEBUG: Available {len(original_hooks)} hooks (by ID):")
-                        for idx, h in enumerate(original_hooks):
-                            hook_id = h.hook_id or ""
-                            match_status = "MATCH" if hook_id == primary_id else "no match"
-                            logger.info(f"  Hook {idx}: id={hook_id}, {match_status}, type={h.hook_type}")
-                        
-                        def _find_hook_by_id(hook_id: str):
-                            for h in original_hooks:
-                                if h.hook_id == hook_id:
-                                    return h
-                            return None
-                        
-                        ph = _find_hook_by_id(primary_id)
-                    else:
-                        # Fallback: use links (deprecated, may have collisions)
-                        if len(forced_links) > 2:
-                            raise RuntimeError("selected_hook_links must contain at most 2 URLs")
-
-                        primary_link = (request.primary_hook_link or "").strip() or forced_links[0]
-                        secondary_link = None
-                        if len(forced_links) == 2:
-                            secondary_link = forced_links[1] if forced_links[0] == primary_link else forced_links[0]
-                        
-                        logger.info(f"Hook selection (LINK mode - deprecated): primary_link={primary_link[:200]}...")
-                        logger.info(f"Hook selection DEBUG: Available {len(original_hooks)} hooks (by link):")
-                        for idx, h in enumerate(original_hooks):
-                            hook_url = h.link or ""
-                            match_status = "MATCH" if hook_url == primary_link else "no match"
-                            logger.info(f"  Hook {idx}: (len={len(hook_url)}) {match_status} - {hook_url[:200]}...")
-                        
-                        def _find_hook(link: str):
-                            for h in original_hooks:
-                                if h.link == link:
-                                    return h
-                            return None
-
-                        ph = _find_hook(primary_link)
+                    # Update EmailTask DB record as completed
+                    email_task.status = "completed"
+                    email_task.progress = 100
+                    email_task.message = "Email generation complete!"
+                    email_task.result_json = _dump_model(result)
+                    email_task.completed_variants_json = [_dump_model(v) for v in variants]
+                    email_task.completed_at = datetime.utcnow()
+                    email_task.updated_at = datetime.utcnow()
                     
-                    if not ph:
-                        # Fallback: try gated hooks
-                        for h in treasure_hooks or []:
-                            if use_hook_ids:
-                                if h.hook_id == primary_id:
-                                    ph = h
-                                    break
-                            else:
-                                if h.link == primary_link:
-                                    ph = h
-                                    break
-                    
-                    if not ph:
-                        identifier = primary_id if use_hook_ids else primary_link
-                        raise RuntimeError(f"Primary hook not found: {identifier}")
-                    
-                    logger.info(f"Using primary hook: id={ph.hook_id}, type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
-                    primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected"])
-
-                    # Handle secondary hook
-                    sh = None
-                    if use_hook_ids and secondary_id:
-                        sh = _find_hook_by_id(secondary_id)
-                        if not sh:
-                            for h in treasure_hooks or []:
-                                if h.hook_id == secondary_id:
-                                    sh = h
-                                    break
-                    elif not use_hook_ids and secondary_link:
-                        sh = _find_hook(secondary_link)
-                        if not sh:
-                            for h in treasure_hooks or []:
-                                if h.link == secondary_link:
-                                    sh = h
-                                    break
-                    
-                    if sh:
-                        logger.info(f"Using secondary hook: id={sh.hook_id}, type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
-                        secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
-                elif has_cached_hooks:
-                    # User selected cached hooks (from "State-level hooks" section) but not regular hooks
-                    logger.info(f"Email task {task_id}: Using CACHED HOOKS mode ({len(request.selected_cached_hooks)} hooks)")
-                    
-                    cached_webhooks: List[WebHook] = []
-                    for cached in request.selected_cached_hooks:
-                        hook_data = cached.get("hook") if isinstance(cached, dict) else getattr(cached, "hook", None)
-                        if hook_data:
-                            # Convert dict to WebHook if needed
-                            if isinstance(hook_data, dict):
-                                cached_webhooks.append(WebHook(**hook_data))
-                            elif isinstance(hook_data, WebHook):
-                                cached_webhooks.append(hook_data)
-                            else:
-                                # Try to construct from object attributes
-                                try:
-                                    cached_webhooks.append(WebHook(
-                                        hook_id=getattr(hook_data, "hook_id", None),
-                                        hook_type=getattr(hook_data, "hook_type", "cached"),
-                                        quote=getattr(hook_data, "quote", ""),
-                                        link=getattr(hook_data, "link", ""),
-                                        trigger_excerpt=getattr(hook_data, "trigger_excerpt", None),
-                                        eligibility_excerpt=getattr(hook_data, "eligibility_excerpt", None),
-                                        why_relevant=getattr(hook_data, "why_relevant", None),
-                                        confidence=getattr(hook_data, "confidence", "medium"),
-                                    ))
-                                except Exception as e:
-                                    logger.warning(f"Failed to convert cached hook to WebHook: {e}")
-                    
-                    if cached_webhooks:
-                        # Use first cached hook as primary
-                        ph = cached_webhooks[0]
-                        logger.info(f"Using cached primary hook: id={ph.hook_id}, type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
-                        primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected_cached"])
+                    # Auto-save email to SavedEmailRun so user doesn't lose it
+                    try:
+                        from ...db.models import SavedEmailRun
                         
-                        # Use second cached hook as secondary if available
-                        if len(cached_webhooks) > 1:
-                            sh = cached_webhooks[1]
-                            logger.info(f"Using cached secondary hook: id={sh.hook_id}, type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
-                            secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_cached_secondary"])
+                        # Get the first variant's subject for the name
+                        first_variant = variants[0] if variants else None
+                        subject_preview = ""
+                        if first_variant and first_variant.email_draft and first_variant.email_draft.subject_line:
+                            subject_preview = first_variant.email_draft.subject_line[:100]
                         
-                        # Add cached hooks to treasure_hooks for consistency
-                        if not treasure_hooks:
-                            treasure_hooks = cached_webhooks
-                        else:
-                            treasure_hooks = list(treasure_hooks) + [h for h in cached_webhooks if h not in treasure_hooks]
-                    else:
-                        raise RuntimeError("Selected cached hooks but couldn't extract any WebHook objects")
-                else:
-                    selected = select_primary_hooks(hooks=list(treasure_hooks), audiences=audiences)
-
-                # Generate variants
-                _email_tasks[task_id]["message"] = "Generating emails..."
-                _email_tasks[task_id]["progress"] = 20
-                
-                variants = []
-                t4 = time.perf_counter()
-                
-                def update_progress(msg: str, pct: float):
-                    """Progress callback for email writer."""
-                    _email_tasks[task_id]["message"] = msg
-                    _email_tasks[task_id]["progress"] = min(95, 20 + int(pct * 0.75))
-                
-                # Extract purpose prompt and build supporting context from selected cached hooks
-                purpose_prompt = request.purpose_prompt
-                supporting_context: Optional[List[str]] = None
-                if request.selected_cached_hooks:
-                    supporting_context = []
-                    for cached in request.selected_cached_hooks:
-                        hook_data = cached.get("hook") if isinstance(cached, dict) else getattr(cached, "hook", None)
-                        if hook_data:
-                            if isinstance(hook_data, dict):
-                                # WebHook-like
-                                trigger = hook_data.get("trigger_excerpt", "")
-                                if trigger:
-                                    supporting_context.append(trigger[:300])
-                            elif hasattr(hook_data, "trigger_excerpt"):
-                                trigger = hook_data.trigger_excerpt
-                                if trigger:
-                                    supporting_context.append(trigger[:300])
-                            elif hasattr(hook_data, "conference_name"):
-                                # ConferenceOpportunity
-                                conf_text = f"Conference: {hook_data.conference_name} ({hook_data.dates}) - {hook_data.relevance}"
-                                supporting_context.append(conf_text[:300])
-                
-                if use_forced:
-                    for aud_idx, aud in enumerate(audiences):
-                        if not primary:
-                            raise RuntimeError("Primary hook selection failed")
-                        _email_tasks[task_id]["message"] = f"Generating email for {aud}..."
-                        _email_tasks[task_id]["progress"] = 20 + int((aud_idx / len(audiences)) * 75)
-                        
-                        variant = await _run_variant(
-                            product=product,
-                            state_code=state_code,
-                            state_full=state_full,
-                            audience=aud,
-                            evidence_pack=evidence_pack,
-                            selected_hook=primary,
-                            secondary_hook=secondary,
-                            treasure_hooks=treasure_hooks,
-                            district_name=request.district_name,
-                            district_url=request.district_url,
-                            purpose_prompt=purpose_prompt,
-                            supporting_context=supporting_context,
-                            on_progress=update_progress,
-                        )
-                        variants.append(variant)
-                else:
-                    selected = select_primary_hooks(hooks=list(treasure_hooks), audiences=audiences)
-                    for aud_idx, aud in enumerate(audiences):
-                        sel = selected.get(aud)
-                        if not sel and treasure_hooks:
-                            sel = select_primary_hooks(hooks=list(treasure_hooks), audiences=[aud]).get(aud)
-                        if not sel:
-                            raise RuntimeError("No hooks available for email generation")
-                        
-                        _email_tasks[task_id]["message"] = f"Generating email for {aud}..."
-                        _email_tasks[task_id]["progress"] = 20 + int((aud_idx / len(audiences)) * 75)
-                        
-                        variant = await _run_variant(
-                            product=product,
-                            state_code=state_code,
-                            state_full=state_full,
-                            audience=aud,
-                            evidence_pack=evidence_pack,
-                            selected_hook=sel,
-                            secondary_hook=None,
-                            treasure_hooks=treasure_hooks,
-                            district_name=request.district_name,
-                            district_url=request.district_url,
-                            purpose_prompt=purpose_prompt,
-                            supporting_context=supporting_context,
-                            on_progress=update_progress,
-                        )
-                        variants.append(variant)
-                
-                stage_ms["write_validate_repair"] = int((time.perf_counter() - t4) * 1000)
-
-                # Build result
-                run_id = task_id
-                started_at = _utcnow()
-                trace = PipelineTrace(
-                    run_id=run_id,
-                    started_at=started_at,
-                    finished_at=_utcnow(),
-                    stage_ms=stage_ms,
-                    variant_traces=[v.trace for v in variants],
-                )
-
-                request_out = PipelineRequestModel(
-                    product=product,
-                    state=state_code,
-                    state_full=state_full,
-                    audiences=audiences,
-                    district_name=request.district_name,
-                    district_url=request.district_url,
-                )
-
-                result = PipelineRunResponse(
-                    run_id=run_id,
-                    mode=_mode(request_out),
-                    request=request_out,
-                    evidence_pack=evidence_pack,
-                    treasure_hooks=list(treasure_hooks),
-                    variants=variants,
-                    trace=trace,
-                    warnings=warnings,
-                )
-
-                _email_tasks[task_id]["status"] = "completed"
-                _email_tasks[task_id]["progress"] = 100
-                _email_tasks[task_id]["message"] = "Email generation complete!"
-                _email_tasks[task_id]["result"] = _dump_model(result)
-                logger.info(f"Email task {task_id} completed successfully")
-                
-                # Auto-save email to SavedEmailRun so user doesn't lose it
-                try:
-                    from ...db.models import SavedEmailRun
-                    from ...db.database import AsyncSessionLocal
-                    
-                    # Get the first variant's subject for the name
-                    first_variant = variants[0] if variants else None
-                    subject_preview = ""
-                    if first_variant and first_variant.email_draft and first_variant.email_draft.subject_line:
-                        subject_preview = first_variant.email_draft.subject_line[:100]
-                    
-                    async with AsyncSessionLocal() as save_db:
                         # Extract hook IDs from selected_cached_hooks if provided
                         cached_hook_ids = None
                         if request.selected_cached_hooks:
@@ -889,19 +1177,43 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                             selected_hook_links=[primary.hook.link] if primary else [],
                             primary_hook_link=primary.hook.link if primary else None,
                         )
-                        save_db.add(saved_email)
-                        await save_db.commit()
-                        await save_db.refresh(saved_email)
+                        db.add(saved_email)
+                        await db.commit()
+                        await db.refresh(saved_email)
                         _email_tasks[task_id]["saved_run_id"] = saved_email.id
+                        
+                        # Link EmailTask to SavedEmailRun
+                        email_task.saved_run_id = saved_email.id
+                        await db.commit()
+                        
                         logger.info(f"Auto-saved email task {task_id} as SavedEmailRun {saved_email.id}")
-                except Exception as save_err:
-                    logger.warning(f"Failed to auto-save email task {task_id}: {save_err}")
+                    except Exception as save_err:
+                        logger.warning(f"Failed to auto-save email task {task_id}: {save_err}")
+                        # Still commit the EmailTask status update
+                        await db.commit()
 
             except Exception as e:
                 logger.error(f"Email task {task_id} failed: {e}", exc_info=True)
                 _email_tasks[task_id]["status"] = "failed"
                 _email_tasks[task_id]["error"] = str(e)
                 _email_tasks[task_id]["message"] = f"Failed: {str(e)}"
+                
+                # Update EmailTask in DB as failed
+                try:
+                    from ...db.database import AsyncSessionLocal
+                    from ...db.models import EmailTask
+                    async with AsyncSessionLocal() as err_db:
+                        from sqlalchemy import select
+                        result = await err_db.execute(select(EmailTask).where(EmailTask.id == task_id))
+                        err_task = result.scalar_one_or_none()
+                        if err_task:
+                            err_task.status = "failed"
+                            err_task.error = str(e)
+                            err_task.message = f"Failed: {str(e)}"
+                            err_task.updated_at = datetime.utcnow()
+                            await err_db.commit()
+                except Exception as db_err:
+                    logger.warning(f"Failed to update EmailTask {task_id} status in DB: {db_err}")
 
         # Start background task
         asyncio.create_task(run_email_task())
@@ -914,7 +1226,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         }
 
     @router.get("/pipeline/run/status")
-    async def get_email_pipeline_status(task_id: str):
+    async def get_email_pipeline_status(task_id: str, db: AsyncSession = Depends(get_db)):
         """Get the status of an email generation task.
         
         Returns:
@@ -923,26 +1235,63 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         - message: current status message
         - result: full PipelineRunResponse when completed
         - error: error message when failed
+        
+        Checks in-memory first (fast), then falls back to DB (for resumed tasks).
         """
-        if task_id not in _email_tasks:
-            raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+        # Check in-memory first (fast path)
+        if task_id in _email_tasks:
+            task = _email_tasks[task_id]
+            response = {
+                "task_id": task_id,
+                "status": task["status"],
+                "progress": task["progress"],
+                "message": task["message"],
+                "started_at": task.get("started_at"),
+            }
+            
+            if task["status"] == "completed" and task["result"]:
+                response["result"] = task["result"]
+            
+            if task["status"] == "failed" and task["error"]:
+                response["error"] = task["error"]
+            
+            if task.get("saved_run_id"):
+                response["saved_run_id"] = task["saved_run_id"]
+            
+            return response
         
-        task = _email_tasks[task_id]
-        response = {
-            "task_id": task_id,
-            "status": task["status"],
-            "progress": task["progress"],
-            "message": task["message"],
-            "started_at": task.get("started_at"),
-        }
+        # Fallback: check database (for tasks resumed after server restart)
+        try:
+            from ...db.models import EmailTask
+            from sqlalchemy import select
+            
+            result = await db.execute(select(EmailTask).where(EmailTask.id == task_id))
+            db_task = result.scalar_one_or_none()
+            
+            if db_task:
+                response = {
+                    "task_id": task_id,
+                    "status": db_task.status,
+                    "progress": db_task.progress,
+                    "message": db_task.message,
+                    "started_at": db_task.created_at.isoformat() if db_task.created_at else None,
+                    "current_stage": db_task.current_stage,
+                }
+                
+                if db_task.status == "completed" and db_task.result_json:
+                    response["result"] = db_task.result_json
+                
+                if db_task.status == "failed" and db_task.error:
+                    response["error"] = db_task.error
+                
+                if db_task.saved_run_id:
+                    response["saved_run_id"] = db_task.saved_run_id
+                
+                return response
+        except Exception as e:
+            logger.warning(f"DB fallback failed for email task {task_id}: {e}")
         
-        if task["status"] == "completed" and task["result"]:
-            response["result"] = task["result"]
-        
-        if task["status"] == "failed" and task["error"]:
-            response["error"] = task["error"]
-        
-        return response
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
 
     # ---------------------------------------------------------------------------
     # Polling-based research prep (avoids long-running HTTP connections)
