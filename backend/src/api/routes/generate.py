@@ -334,7 +334,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 # - Neither → error
                 
                 has_purpose = bool(request.purpose_prompt and request.purpose_prompt.strip())
-                has_hooks_selected = use_forced  # True if user selected hook_ids or hook_links
+                has_cached_hooks = bool(request.selected_cached_hooks and len(request.selected_cached_hooks) > 0)
+                has_hooks_selected = use_forced or has_cached_hooks  # True if user selected hook_ids, hook_links, OR cached hooks
                 
                 # Validate: at least one input required
                 if not has_purpose and not has_hooks_selected:
@@ -669,6 +670,54 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     if sh:
                         logger.info(f"Using secondary hook: id={sh.hook_id}, type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
                         secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
+                elif has_cached_hooks:
+                    # User selected cached hooks (from "State-level hooks" section) but not regular hooks
+                    logger.info(f"Email task {task_id}: Using CACHED HOOKS mode ({len(request.selected_cached_hooks)} hooks)")
+                    
+                    cached_webhooks: List[WebHook] = []
+                    for cached in request.selected_cached_hooks:
+                        hook_data = cached.get("hook") if isinstance(cached, dict) else getattr(cached, "hook", None)
+                        if hook_data:
+                            # Convert dict to WebHook if needed
+                            if isinstance(hook_data, dict):
+                                cached_webhooks.append(WebHook(**hook_data))
+                            elif isinstance(hook_data, WebHook):
+                                cached_webhooks.append(hook_data)
+                            else:
+                                # Try to construct from object attributes
+                                try:
+                                    cached_webhooks.append(WebHook(
+                                        hook_id=getattr(hook_data, "hook_id", None),
+                                        hook_type=getattr(hook_data, "hook_type", "cached"),
+                                        quote=getattr(hook_data, "quote", ""),
+                                        link=getattr(hook_data, "link", ""),
+                                        trigger_excerpt=getattr(hook_data, "trigger_excerpt", None),
+                                        eligibility_excerpt=getattr(hook_data, "eligibility_excerpt", None),
+                                        why_relevant=getattr(hook_data, "why_relevant", None),
+                                        confidence=getattr(hook_data, "confidence", "medium"),
+                                    ))
+                                except Exception as e:
+                                    logger.warning(f"Failed to convert cached hook to WebHook: {e}")
+                    
+                    if cached_webhooks:
+                        # Use first cached hook as primary
+                        ph = cached_webhooks[0]
+                        logger.info(f"Using cached primary hook: id={ph.hook_id}, type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
+                        primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected_cached"])
+                        
+                        # Use second cached hook as secondary if available
+                        if len(cached_webhooks) > 1:
+                            sh = cached_webhooks[1]
+                            logger.info(f"Using cached secondary hook: id={sh.hook_id}, type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
+                            secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_cached_secondary"])
+                        
+                        # Add cached hooks to treasure_hooks for consistency
+                        if not treasure_hooks:
+                            treasure_hooks = cached_webhooks
+                        else:
+                            treasure_hooks = list(treasure_hooks) + [h for h in cached_webhooks if h not in treasure_hooks]
+                    else:
+                        raise RuntimeError("Selected cached hooks but couldn't extract any WebHook objects")
                 else:
                     selected = select_primary_hooks(hooks=list(treasure_hooks), audiences=audiences)
 
