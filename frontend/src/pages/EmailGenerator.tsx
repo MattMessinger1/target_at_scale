@@ -39,7 +39,7 @@ import { ProductSelector } from '../components/ProductSelector'
 import { StateSelector, SelectedState } from '../components/StateSelector'
 import { AudienceSelector } from '../components/AudienceSelector'
 import { CurationStep } from '../components/CurationStep'
-import { Loader2, ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 
 type Step = 'select' | 'research' | 'curate' | 'generate' | 'done'
 
@@ -1400,10 +1400,10 @@ function EmailGeneratorPipeline() {
   const [includeConferenceResearch, setIncludeConferenceResearch] = useState(false)
   
   // Polling-based research state (robust against browser sleep/network issues)
-  const [researchPhase, setResearchPhase] = useState<'idle' | 'state' | 'district' | 'conferences'>('idle')
-  const [researchTaskId, setResearchTaskId] = useState<string | null>(null)
-  const [researchProgress, setResearchProgress] = useState(0)
-  const [researchMessage, setResearchMessage] = useState('')
+  const [, setResearchPhase] = useState<'idle' | 'state' | 'district' | 'conferences'>('idle')
+  const [, setResearchTaskId] = useState<string | null>(null)
+  const [, setResearchProgress] = useState(0)
+  const [, setResearchMessage] = useState('')
 
   // Custom purpose + cached hooks flow
   const [purposePrompt, setPurposePrompt] = useState('')
@@ -1417,7 +1417,7 @@ function EmailGeneratorPipeline() {
   // Cache status for the current state+product selection
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null)
   const [showReSearchConfirm, setShowReSearchConfirm] = useState(false)
-  const [loadingCachedResults, setLoadingCachedResults] = useState(false)
+  const [, setLoadingCachedResults] = useState(false)
 
   const [result, setResult] = useState<PipelineRunResponse | null>(null)
   const [activeAudience, setActiveAudience] = useState<string | null>(null)
@@ -2315,8 +2315,8 @@ function EmailGeneratorPipeline() {
     })
   }
 
-  // Cancel an in-progress research task
-  const handleCancelResearch = async () => {
+  // Cancel an in-progress research task (kept for potential future use)
+  const _handleCancelResearch = async () => {
     const state = selectedStates[0]?.code
     const product = selectedProducts[0]
     if (!state || !product) return
@@ -2337,6 +2337,7 @@ function EmailGeneratorPipeline() {
       })
     }
   }
+  void _handleCancelResearch // Suppress unused warning
 
   const handleRun = () => {
     if (!canGenerate) return
@@ -3680,8 +3681,8 @@ function EmailGeneratorPipeline() {
                                   <div key={key} className="p-3 rounded border border-slate-700 bg-slate-900/40">
                                     <div className="flex items-start justify-between gap-3">
                                       <div>
-                                        <div className="text-xs text-slate-500 uppercase">{c.name}</div>
-                                        <div className="text-sm text-slate-200 mt-1">{c.summary || c.audience || 'Conference opportunity'}</div>
+                                        <div className="text-xs text-slate-500 uppercase">{c.conference_name}</div>
+                                        <div className="text-sm text-slate-200 mt-1">{c.relevance || 'Conference opportunity'}</div>
                                       </div>
                                       <button
                                         onClick={() => toggleCachedHook({ key, category: 'conference', state_code: st.code, hook: c })}
