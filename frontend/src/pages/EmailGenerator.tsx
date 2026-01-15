@@ -205,6 +205,15 @@ const PENDING_EMAIL_TASK_KEY = 'wceps_pending_email_task_v1'
 const MAX_SAVED_RUNS = 3
 
 // Type for pending email task (auto-save when navigating away)
+interface PendingEmailTaskPrep {
+  evidence_pack: EvidencePack
+  treasure_hooks: WebHook[]
+  filtered_requirements: FilteredRequirement[]
+  district_research?: DistrictResearchResult | null
+  conferences?: ConferenceOpportunity[]
+  warnings: string[]
+}
+
 interface PendingEmailTask {
   taskId: string
   product: string
@@ -215,7 +224,9 @@ interface PendingEmailTask {
   selectedHookLinks: string[]
   primaryHookLink?: string
   startedAt: string
-  prep?: ResearchResponse  // Cached prep data for restoration
+  prep?: PendingEmailTaskPrep  // Cached prep data for restoration
+  hookReasonTags?: Record<string, string[]>
+  hookReasonNotes?: Record<string, string>
 }
 
 const safeJsonParse = <T,>(raw: string | null): T | null => {
@@ -1900,8 +1911,11 @@ function EmailGeneratorPipeline() {
               state_code: pending.stateCode,
               state_full: pending.stateName,
               audiences: [pending.audience],
-              request: status.result.request,
-              result: status.result,
+              pipeline_response: status.result,
+              selected_hook_links: pending.selectedHookLinks || [],
+              primary_hook_link: pending.primaryHookLink || null,
+              hook_reason_tags: pending.hookReasonTags || {},
+              hook_reason_notes: pending.hookReasonNotes || {},
             })
             toast({
               title: 'Email generation complete!',
@@ -1971,8 +1985,11 @@ function EmailGeneratorPipeline() {
                       state_code: pending.stateCode,
                       state_full: pending.stateName,
                       audiences: [pending.audience],
-                      request: pollStatus.result.request,
-                      result: pollStatus.result,
+                      pipeline_response: pollStatus.result,
+                      selected_hook_links: pending.selectedHookLinks || [],
+                      primary_hook_link: pending.primaryHookLink || null,
+                      hook_reason_tags: pending.hookReasonTags || {},
+                      hook_reason_notes: pending.hookReasonNotes || {},
                     })
                     toast({
                       title: 'Email complete & auto-saved!',
@@ -2345,6 +2362,8 @@ function EmailGeneratorPipeline() {
             primaryHookLink: primaryHookLink || undefined,
             startedAt: new Date().toISOString(),
             prep: prep || undefined,
+            hookReasonTags,
+            hookReasonNotes,
           }
           savePendingEmailTask(pendingTask)
         }
