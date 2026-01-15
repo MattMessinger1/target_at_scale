@@ -325,16 +325,26 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 use_forced = use_hook_ids or len(forced_links) > 0
                 
                 # -------------------------------------------------------------------
-                # PURPOSE-ONLY MODE: Skip deep research when user provides only purpose
+                # MODE DETECTION: Purpose-only vs Hook-based vs Both
                 # -------------------------------------------------------------------
-                # If user provides purpose_prompt but hasn't SELECTED any hooks, generate 
-                # directly from KB product context + purpose (no treasure hunting).
-                # Note: treasure_hooks may be passed from cached research, but if user
-                # didn't select any (use_forced=False), we use purpose-only mode.
-                purpose_only_mode = (
-                    request.purpose_prompt and request.purpose_prompt.strip()
-                    and not use_forced  # No hook_ids or hook_links explicitly selected
-                )
+                # User must provide at least ONE of: purpose_prompt OR selected hooks
+                # - Purpose only → generate using purpose as the angle (no deep research)
+                # - Hook only → generate using selected hook (existing flow)
+                # - Both → use hook as opener, purpose as supporting context
+                # - Neither → error
+                
+                has_purpose = bool(request.purpose_prompt and request.purpose_prompt.strip())
+                has_hooks_selected = use_forced  # True if user selected hook_ids or hook_links
+                
+                # Validate: at least one input required
+                if not has_purpose and not has_hooks_selected:
+                    raise RuntimeError(
+                        "Please provide a purpose prompt OR select at least one hook. "
+                        "You can also provide both for more targeted emails."
+                    )
+                
+                # Purpose-only mode: user provided purpose but didn't select any hooks
+                purpose_only_mode = has_purpose and not has_hooks_selected
                 
                 if purpose_only_mode:
                     logger.info(f"Email task {task_id}: Using PURPOSE-ONLY mode (no deep research)")
