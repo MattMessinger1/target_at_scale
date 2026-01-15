@@ -403,6 +403,12 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
 
         model_config = ConfigDict(extra="forbid")
 
+        # Optional: who started this task (for team attribution)
+        created_by: Optional[str] = Field(
+            default=None,
+            description="Name or identifier of the person starting this email generation"
+        )
+
         # Optional: reuse prep outputs to avoid re-running RAG/Perplexity.
         evidence_pack: Optional[EvidencePack] = None
         treasure_hooks: Optional[List[WebHook]] = None
