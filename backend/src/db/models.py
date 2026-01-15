@@ -363,6 +363,9 @@ class GoldenEmail(Base):
     hook_types_used: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # ["state_funding", "compliance"]
     district_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     
+    # Custom purpose prompt (if the email was generated with one)
+    purpose_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
     # Reference back to the review that created this
     review_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
@@ -578,6 +581,12 @@ class SavedEmailRun(Base):
     # Research options (for re-research to remember original settings)
     include_district_research: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     include_conference_research: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    
+    # Custom purpose prompt (for purpose-driven emails)
+    purpose_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # Selected cached hooks (for purpose-driven emails with cached research)
+    selected_cached_hook_ids: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     
     # Full pipeline response (variants, evidence_pack, hooks)
     # For run_type="research": contains evidence_pack and hooks only

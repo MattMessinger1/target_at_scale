@@ -29,6 +29,7 @@ HookType = Literal[
     "monitoring",
     "allowable_use",
     "district_specific",
+    "custom",
 ]
 
 HookConfidence = Literal["high", "medium", "low"]
@@ -238,6 +239,16 @@ class ConferenceOpportunity(BaseModel):
         default="medium",
         description="Confidence level: 'high' for known organizations, 'medium' for others"
     )
+
+
+class SelectedCachedHookRequest(BaseModel):
+    """User-selected cached hook or conference item."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    category: Literal["state", "district", "conference"]
+    state_code: Optional[str] = None
+    hook: WebHook | ConferenceOpportunity
 
 
 class FilteredDistrictHook(BaseModel):

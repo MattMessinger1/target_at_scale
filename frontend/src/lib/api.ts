@@ -362,6 +362,16 @@ export interface PipelineRunStreamRequest extends PipelineRequest {
   primary_hook_link?: string | null       // Deprecated: use primary_hook_id
   selected_hook_ids?: string[] | null     // Preferred: unique hook IDs for reliable selection
   primary_hook_id?: string | null         // Preferred: unique ID of primary hook
+  purpose_prompt?: string | null
+  selected_cached_hooks?: SelectedCachedHookRequest[] | null
+}
+
+export type CachedHookCategory = 'state' | 'district' | 'conference'
+
+export interface SelectedCachedHookRequest {
+  category: CachedHookCategory
+  state_code?: string | null
+  hook: WebHook | ConferenceOpportunity
 }
 
 export interface EvidenceChunkCitation {
@@ -694,6 +704,8 @@ export interface SavedRunFull {
   district_name?: string | null
   include_district_research?: boolean
   include_conference_research?: boolean
+  purpose_prompt?: string | null
+  selected_cached_hook_ids?: string[] | null
   pipeline_response: PipelineRunResponse
   selected_hook_links: string[]
   primary_hook_link?: string | null

@@ -236,6 +236,9 @@ class EmailReviewRequest(BaseModel):
     edited_email_body: str
 
     rubric: EmailRubric
+    
+    # Optional custom purpose prompt (for training context)
+    purpose_prompt: Optional[str] = None
 
 
 class EmailReviewResponse(BaseModel):
@@ -305,6 +308,7 @@ async def submit_email_review(
             source=source,
             rubric_scores=rubric_scores if rubric_scores else None,
             district_name=(req.district_name or "").strip() or None,
+            purpose_prompt=(req.purpose_prompt or "").strip() or None,
             review_id=row.id,
             created_at=_utcnow(),
         )

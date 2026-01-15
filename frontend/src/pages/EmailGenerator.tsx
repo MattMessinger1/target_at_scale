@@ -182,17 +182,22 @@ type ResearchRunSnapshot = {
   selections: ResearchRunSelections
 }
 
-type ActiveResearchTask = {
-  task_id: string
-  status: string
-  phase: 'state' | 'district' | 'conferences'
-  progress: number
-  message: string
+type CachedPrepResult = {
+  evidence_pack: EvidencePack
+  treasure_hooks: WebHook[]
+  filtered_requirements: FilteredRequirement[]
+  district_research?: DistrictResearchResult | null
+  conferences?: ConferenceOpportunity[]
+  warnings: string[]
+}
+
+type CachedHookCategory = 'state' | 'district' | 'conference'
+
+type SelectedCachedHook = {
+  key: string
+  category: CachedHookCategory
   state_code?: string
-  product_key?: string
-  product_display_name?: string
-  include_district_research?: boolean
-  include_conference_research?: boolean
+  hook: WebHook | ConferenceOpportunity
 }
 
 const RESEARCH_RUNS_STORAGE_KEY = 'wceps_emailgen_research_runs_v1'
@@ -1399,7 +1404,15 @@ function EmailGeneratorPipeline() {
   const [researchTaskId, setResearchTaskId] = useState<string | null>(null)
   const [researchProgress, setResearchProgress] = useState(0)
   const [researchMessage, setResearchMessage] = useState('')
-  const [activeResearchTasks, setActiveResearchTasks] = useState<ActiveResearchTask[]>([])
+
+  // Custom purpose + cached hooks flow
+  const [purposePrompt, setPurposePrompt] = useState('')
+  const [cachedPrepByState, setCachedPrepByState] = useState<Record<string, CachedPrepResult | null>>({})
+  const [cachedPrepLoading, setCachedPrepLoading] = useState(false)
+  const [selectedCachedHooks, setSelectedCachedHooks] = useState<SelectedCachedHook[]>([])
+  const [stateHooksExpanded, setStateHooksExpanded] = useState(true)
+  const [districtHooksExpanded, setDistrictHooksExpanded] = useState(false)
+  const [conferenceHooksExpanded, setConferenceHooksExpanded] = useState(false)
 
   // Cache status for the current state+product selection
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null)
@@ -1672,37 +1685,29 @@ function EmailGeneratorPipeline() {
       })
   }, [selectedStates, selectedProducts, wizardStep])
 
-  const normalizeActiveTasks = (active: {
-    task_id?: string | null
-    status?: string
-    phase?: 'state' | 'district' | 'conferences'
-    progress?: number
-    message?: string
-    state_code?: string
-    product_key?: string
-    product_display_name?: string
-    include_district_research?: boolean
-    include_conference_research?: boolean
-    tasks?: ActiveResearchTask[]
-  }): ActiveResearchTask[] => {
-    if (active?.tasks && active.tasks.length > 0) {
-      return active.tasks
+  const loadCachedPrepForStates = async () => {
+    if (!selectedProducts[0] || selectedStates.length === 0) {
+      setCachedPrepByState({})
+      return
     }
-    if (active?.task_id) {
-      return [{
-        task_id: active.task_id,
-        status: active.status || 'in_progress',
-        phase: active.phase || 'state',
-        progress: active.progress || 0,
-        message: active.message || 'Research in progress',
-        state_code: active.state_code,
-        product_key: active.product_key,
-        product_display_name: active.product_display_name,
-        include_district_research: active.include_district_research,
-        include_conference_research: active.include_conference_research,
-      }]
+    setCachedPrepLoading(true)
+    try {
+      const entries = await Promise.all(selectedStates.map(async (st) => {
+        try {
+          const cached = await api.generate.getCachedPrep(st.code, selectedProducts[0])
+          return [st.code, cached.result || null] as const
+        } catch {
+          return [st.code, null] as const
+        }
+      }))
+      const next: Record<string, CachedPrepResult | null> = {}
+      for (const [code, result] of entries) {
+        next[code] = result
+      }
+      setCachedPrepByState(next)
+    } finally {
+      setCachedPrepLoading(false)
     }
-    return []
   }
 
   // On page load: check for any active research and resume if found
@@ -1719,9 +1724,6 @@ function EmailGeneratorPipeline() {
       try {
         const active = await api.generate.pipelinePrepActive()
         if (cancelled) return
-
-        const tasks = normalizeActiveTasks(active)
-        setActiveResearchTasks(tasks)
 
         if (!active.task_id) return
         
@@ -1819,24 +1821,8 @@ function EmailGeneratorPipeline() {
 
   useEffect(() => {
     if (wizardStep !== 2) return
-    let cancelled = false
-
-    const pollActiveTasks = async () => {
-      while (!cancelled) {
-        try {
-          const active = await api.generate.pipelinePrepActive()
-          if (cancelled) break
-          setActiveResearchTasks(normalizeActiveTasks(active))
-        } catch (err) {
-          console.warn('Failed to refresh active research tasks:', err)
-        }
-        await new Promise(resolve => setTimeout(resolve, 5000))
-      }
-    }
-
-    pollActiveTasks()
-    return () => { cancelled = true }
-  }, [wizardStep])
+    loadCachedPrepForStates()
+  }, [wizardStep, selectedProducts, selectedStates])
 
   const toggleReasonTag = (link: string, tag: string) => {
     setHookReasonTags((prev) => {
@@ -2119,11 +2105,19 @@ function EmailGeneratorPipeline() {
         state_full: selectedStates[0]?.name || undefined,
         audiences: [selectedAudience],
       }
+      if (purposePrompt.trim()) {
+        req.purpose_prompt = purposePrompt.trim()
+        req.selected_cached_hooks = selectedCachedHooks.map((item) => ({
+          category: item.category,
+          state_code: item.state_code || null,
+          hook: item.hook,
+        }))
+      }
       if (prep) {
         req.evidence_pack = sanitizeEvidencePack(prep.evidence_pack)
         req.treasure_hooks = prep.treasure_hooks
       }
-      if (selectedHookLinks.length > 0) {
+      if (prep && selectedHookLinks.length > 0) {
         // Send hook IDs (preferred) for reliable selection
         req.selected_hook_ids = selectedHookLinks  // selectedHookLinks now contains hook_id or link
         req.primary_hook_id = (primaryHookLink || selectedHookLinks[0] || '').trim() || undefined
@@ -2259,35 +2253,8 @@ function EmailGeneratorPipeline() {
     setResult(null)
     setActiveAudience(null)
     
-    // If cache is completed, try to load directly (instant!)
-    if (cacheStatus?.status === 'completed') {
-      setLoadingCachedResults(true)
-      try {
-        const cached = await api.generate.getCachedPrep(
-          selectedStates[0]?.code || '',
-          selectedProducts[0] || ''
-        )
-        if (cached.result) {
-          setPrep(cached.result)
-          setDistrictResearchStatus(cached.result.district_research ? 'complete' : 'idle')
-          setWizardStep(3) // Go directly to results
-          toast({
-            title: 'Loaded cached results',
-            description: `Research from ${cached.cache_age_days} day${cached.cache_age_days !== 1 ? 's' : ''} ago`,
-          })
-          return
-        }
-      } catch {
-        // Fall through to normal research flow
-        // This happens if full_prep_json isn't cached yet
-      } finally {
-        setLoadingCachedResults(false)
-      }
-    }
-    
-    // Normal research flow - show progress UI
+    // Custom purpose flow (cached research only)
     setWizardStep(2)
-    prepMutation.mutate()
   }
 
   // Re-search clears the cache first to force fresh Deep Research
@@ -2327,6 +2294,25 @@ function EmailGeneratorPipeline() {
     } else {
       handleReSearchConfirmed()
     }
+  }
+
+  const isCachedHookSelected = (key: string) => selectedCachedHooks.some((h) => h.key === key)
+
+  const toggleCachedHook = (hook: SelectedCachedHook) => {
+    setSelectedCachedHooks((prev) => {
+      const exists = prev.some((h) => h.key === hook.key)
+      if (exists) {
+        return prev.filter((h) => h.key !== hook.key)
+      }
+      if (prev.length >= 2) {
+        toast({
+          title: 'Selection limit reached',
+          description: 'You can include up to 2 cached items total.',
+        })
+        return prev
+      }
+      return [...prev, hook]
+    })
   }
 
   // Cancel an in-progress research task
@@ -2427,11 +2413,11 @@ function EmailGeneratorPipeline() {
           <div className="flex items-center gap-3">
             <div className="text-sm font-medium text-slate-400">Validation</div>
             <div className={`text-xs px-2 py-0.5 rounded ${
-              v.passed ? 'bg-emerald-900/50 text-emerald-300 border border-emerald-700/50' : 'bg-amber-900/40 text-amber-300 border border-amber-700/50'
-            }`}>
+            v.passed ? 'bg-emerald-900/50 text-emerald-300 border border-emerald-700/50' : 'bg-amber-900/40 text-amber-300 border border-amber-700/50'
+          }`}>
               {v.passed ? 'PASS' : `FAIL${failureCount > 0 ? ` (${failureCount} issue${failureCount > 1 ? 's' : ''})` : ''}`}
-            </div>
           </div>
+        </div>
           {validationExpanded ? (
             <ChevronUp className="h-4 w-4 text-slate-500" />
           ) : (
@@ -2443,45 +2429,45 @@ function EmailGeneratorPipeline() {
         {validationExpanded && (
           <div className="px-4 pb-4 border-t border-slate-700/50">
             <div className="mt-3 text-xs text-slate-400">
-              Words: {v.word_count} · Bullets: {v.bullet_count} · Bullet words: {v.bullet_word_counts.join(', ') || 'n/a'}
-            </div>
-            {!v.passed && v.failures?.length > 0 && (
-              <ul className="mt-3 space-y-1 text-sm text-slate-300">
-                {v.failures.map((f, i) => (
-                  <li key={`${f.code}-${i}`}>
-                    <span className="text-amber-300 font-mono text-xs">{f.code}</span>
-                    <span className="ml-2">{f.message}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {activeVariant.trace?.attempts?.length > 0 && (
-              <div className="mt-4">
-                <div className="text-xs text-slate-500 uppercase tracking-wide">Repair trace</div>
-                <div className="mt-2 space-y-2">
-                  {activeVariant.trace.attempts.map((a) => (
-                    <div key={a.iteration} className="p-3 rounded border border-slate-700 bg-slate-900/30">
-                      <div className="flex items-center justify-between">
-                        <div className="text-sm text-slate-200">Attempt {a.iteration}</div>
-                        <div className={`text-xs px-2 py-1 rounded ${
-                          a.validation.passed ? 'bg-emerald-900/50 text-emerald-300' : 'bg-slate-700/50 text-slate-300'
-                        }`}>
-                          {a.validation.passed ? 'PASS' : 'FAIL'}
-                        </div>
-                      </div>
-                      {a.stopped && (
-                        <div className="mt-1 text-xs text-slate-400">
-                          stopped: <span className="font-mono">{a.stop_reason || 'unknown'}</span>
-                        </div>
-                      )}
-                      {!a.validation.passed && a.validation.failures?.length > 0 && (
-                        <div className="mt-2 text-xs text-slate-400">
-                          failures: {a.validation.failures.map((f) => f.code).join(', ')}
-                        </div>
-                      )}
+          Words: {v.word_count} · Bullets: {v.bullet_count} · Bullet words: {v.bullet_word_counts.join(', ') || 'n/a'}
+        </div>
+        {!v.passed && v.failures?.length > 0 && (
+          <ul className="mt-3 space-y-1 text-sm text-slate-300">
+            {v.failures.map((f, i) => (
+              <li key={`${f.code}-${i}`}>
+                <span className="text-amber-300 font-mono text-xs">{f.code}</span>
+                <span className="ml-2">{f.message}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {activeVariant.trace?.attempts?.length > 0 && (
+          <div className="mt-4">
+            <div className="text-xs text-slate-500 uppercase tracking-wide">Repair trace</div>
+            <div className="mt-2 space-y-2">
+              {activeVariant.trace.attempts.map((a) => (
+                <div key={a.iteration} className="p-3 rounded border border-slate-700 bg-slate-900/30">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-slate-200">Attempt {a.iteration}</div>
+                    <div className={`text-xs px-2 py-1 rounded ${
+                      a.validation.passed ? 'bg-emerald-900/50 text-emerald-300' : 'bg-slate-700/50 text-slate-300'
+                    }`}>
+                      {a.validation.passed ? 'PASS' : 'FAIL'}
                     </div>
-                  ))}
+                  </div>
+                  {a.stopped && (
+                    <div className="mt-1 text-xs text-slate-400">
+                      stopped: <span className="font-mono">{a.stop_reason || 'unknown'}</span>
+                    </div>
+                  )}
+                  {!a.validation.passed && a.validation.failures?.length > 0 && (
+                    <div className="mt-2 text-xs text-slate-400">
+                      failures: {a.validation.failures.map((f) => f.code).join(', ')}
+                    </div>
+                  )}
                 </div>
+              ))}
+            </div>
               </div>
             )}
           </div>
@@ -3397,7 +3383,7 @@ function EmailGeneratorPipeline() {
               </div>
               
               <ProductSelector selectedProducts={selectedProducts} onSelect={setSelectedProducts} />
-              <StateSelector selectedStates={selectedStates} onSelect={setSelectedStates} singleSelect />
+              <StateSelector selectedStates={selectedStates} onSelect={setSelectedStates} />
 
               <div>
                 <AudienceSelector selectedAudience={selectedAudience} onSelect={setSelectedAudience} />
@@ -3464,7 +3450,7 @@ function EmailGeneratorPipeline() {
                           Expires in {cacheStatus.expires_in_days} days.
                         </div>
                         <div className="mt-2 text-xs text-emerald-200/60">
-                          Click "Find Requirements" to view them instantly, or "Re-search" to run fresh research (5-30 min).
+                          Cached research is ready. Click Continue to add purpose and optionally include cached items.
                         </div>
                       </div>
                     </div>
@@ -3479,15 +3465,7 @@ function EmailGeneratorPipeline() {
                           Research in progress!
                         </div>
                         <div className="mt-1 text-sm text-amber-200/80">
-                          Started {cacheStatus.elapsed_minutes} minutes ago. Click "Find Requirements" to resume viewing progress.
-                        </div>
-                        <div className="mt-2 flex gap-2">
-                          <button
-                            onClick={handleCancelResearch}
-                            className="text-xs px-3 py-1 rounded bg-amber-800/50 text-amber-300 hover:bg-amber-800 transition-colors"
-                          >
-                            Cancel Research
-                          </button>
+                          Research is in progress. Cached items will appear once it completes.
                         </div>
                       </div>
                     </div>
@@ -3502,7 +3480,7 @@ function EmailGeneratorPipeline() {
                       <div>
                         <div className="text-sm font-medium text-red-300">Previous research failed</div>
                         <div className="mt-1 text-sm text-red-200/80">
-                          {cacheStatus.error || 'Unknown error'}. Click "Find Requirements" to try again.
+                          {cacheStatus.error || 'Unknown error'}. You can still proceed with a purpose-only email.
                         </div>
                       </div>
                     </div>
@@ -3520,36 +3498,16 @@ function EmailGeneratorPipeline() {
                   🚀 Batch Research
                 </button>
                 <div className="flex gap-3">
-                  {cacheStatus?.status === 'completed' && (
-                    <button
-                      onClick={handleReSearch}
-                      disabled={!canPrep}
-                      className="px-4 py-2 rounded-lg font-medium text-slate-300 border border-slate-600 hover:bg-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Re-search (Fresh)
-                    </button>
-                  )}
                   <button
                     onClick={handlePrep}
-                    disabled={!canPrep || loadingCachedResults}
+                    disabled={!canPrep}
                     className={`px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                      !canPrep || loadingCachedResults
+                      !canPrep
                         ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
                         : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                     }`}
                   >
-                    {loadingCachedResults ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Loading...
-                      </>
-                    ) : cacheStatus?.status === 'completed' ? (
-                      'View Cached Results →'
-                    ) : cacheStatus?.status === 'in_progress' ? (
-                      'View Progress →'
-                    ) : (
-                      'Find Requirements →'
-                    )}
+                    Continue →
                   </button>
                 </div>
               </div>
@@ -3557,175 +3515,222 @@ function EmailGeneratorPipeline() {
           </div>
         )}
 
-        {/* Step 2: Research (loading state) */}
+        {/* Step 2: Purpose + Optional Cached Hooks */}
         {wizardStep === 2 && (
           <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
-            <h2 className="text-lg font-medium text-slate-200 mb-4">Researching Funding & Compliance Requirements...</h2>
-            
-            {/* Phase Indicator Banner - Prominent display of current phase */}
-            <div className={`mb-6 p-4 rounded-lg border ${
-              researchPhase === 'conferences' 
-                ? 'border-indigo-600/50 bg-indigo-900/20'
-                : researchPhase === 'district' 
-                  ? 'border-amber-600/50 bg-amber-900/20' 
-                  : 'border-emerald-600/50 bg-emerald-900/20'
-            }`}>
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    researchPhase === 'conferences'
-                      ? 'bg-indigo-600/30'
-                      : researchPhase === 'district' 
-                        ? 'bg-amber-600/30' 
-                        : 'bg-emerald-600/30'
-                  }`}>
-                    {researchPhase === 'conferences' ? (
-                      <svg className="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                    ) : researchPhase === 'district' ? (
-                      <svg className="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                      </svg>
-                    ) : (
-                      <svg className="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
-                      </svg>
-                    )}
+            <h2 className="text-lg font-medium text-slate-200 mb-2">Purpose of the Email</h2>
+            <p className="text-sm text-slate-400 mb-4">
+              Enter the reason for the outreach. Cached research is optional — include up to 2 items total.
+            </p>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Purpose (required)
+              </label>
+              <textarea
+                value={purposePrompt}
+                onChange={(e) => setPurposePrompt(e.target.value)}
+                placeholder="e.g., Let Hawaii districts know CARE Coaching is now available after we won the RFP."
+                rows={4}
+                className="w-full px-3 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
+              />
+              <div className="mt-2 text-xs text-slate-500">
+                Keep it specific: audience, context, and desired outcome.
                   </div>
-                  <div>
-                    <div className={`text-lg font-semibold ${
-                      researchPhase === 'conferences' ? 'text-indigo-300' : researchPhase === 'district' ? 'text-amber-300' : 'text-emerald-300'
-                    }`}>
-                      {researchPhase === 'conferences'
-                        ? `Phase 3 of 3: Conferences`
-                        : researchPhase === 'district' 
-                          ? `Phase 2 of 3: District Research` 
-                          : `Phase 1 of 3: State Research`
-                      }
                     </div>
-                    <div className="text-sm text-slate-400">
-                      {selectedProducts[0] || 'Product'} | {selectedStates[0]?.name || 'State'}
+
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-sm font-medium text-slate-200">Optional cached research</div>
+              <div className="text-xs text-slate-400">{selectedCachedHooks.length}/2 selected</div>
                     </div>
-                  </div>
+            <div className="text-xs text-slate-500 mb-4">
+              Uses monthly cached research only. If no cache exists for a state, hooks will be unavailable.
                 </div>
                 
-                {/* Cancel Button */}
+            <div className="space-y-3">
+              <div className="rounded-lg border border-slate-700 bg-slate-900/30">
                 <button
-                  onClick={async () => {
-                    if (researchTaskId) {
-                      try {
-                        await api.generate.pipelinePrepCancel(researchTaskId)
-                        setResearchPhase('idle')
-                        setResearchTaskId(null)
-                        setWizardStep(1)
-                        toast({ title: 'Research cancelled' })
-                      } catch (e) {
-                        toast({ 
-                          title: 'Failed to cancel', 
-                          description: e instanceof Error ? e.message : 'Unknown error',
-                          variant: 'destructive' 
-                        })
-                      }
-                    } else {
-                      setWizardStep(1)
-                    }
-                  }}
-                  className="px-3 py-1.5 text-sm text-slate-300 hover:text-white border border-slate-600 hover:border-slate-500 rounded-lg transition-colors"
+                  onClick={() => setStateHooksExpanded((v) => !v)}
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm text-slate-200"
                 >
-                  Cancel
+                  <span>State-level hooks</span>
+                  {stateHooksExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </button>
-              </div>
-              
-              {/* Progress Bar */}
+                {stateHooksExpanded && (
+                  <div className="px-4 pb-4 space-y-3">
+                    {cachedPrepLoading && (
+                      <div className="text-xs text-slate-500">Loading cached research…</div>
+                    )}
+                    {!cachedPrepLoading && selectedStates.map((st) => {
+                      const cached = cachedPrepByState[st.code]
+                      const hooks = cached?.treasure_hooks || []
+                      return (
+                        <div key={`state-${st.code}`}>
+                          <div className="text-xs text-slate-500 mb-1">{st.name}</div>
+                          {hooks.length === 0 ? (
+                            <div className="text-xs text-slate-600">No cached state hooks.</div>
+                          ) : (
               <div className="space-y-2">
-                <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-                  <div 
-                    className={`h-full transition-all duration-500 ${
-                      researchPhase === 'conferences' ? 'bg-indigo-500' : researchPhase === 'district' ? 'bg-amber-500' : 'bg-emerald-500'
-                    }`}
-                    style={{ width: `${researchProgress}%` }}
-                  />
+                              {hooks.map((h) => {
+                                const key = `state:${st.code}:${getHookKey(h)}`
+                                const selected = isCachedHookSelected(key)
+                                return (
+                                  <div key={key} className="p-3 rounded border border-slate-700 bg-slate-900/40">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <div className="text-xs text-slate-500 uppercase">{h.hook_type}</div>
+                                        <div className="text-sm text-slate-200 mt-1">"{cleanQuoteText(h.quote)}"</div>
+                                      </div>
+                                      <button
+                                        onClick={() => toggleCachedHook({ key, category: 'state', state_code: st.code, hook: h })}
+                                        className={`px-2 py-1 text-xs rounded border ${
+                                          selected ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'border-slate-600 text-slate-300'
+                                        }`}
+                                      >
+                                        {selected ? 'Selected' : 'Select'}
+                                      </button>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-300">{researchMessage || 'Starting research...'}</span>
-                  <span className={`font-medium ${
-                    researchPhase === 'conferences' ? 'text-indigo-400' : researchPhase === 'district' ? 'text-amber-400' : 'text-emerald-400'
-                  }`}>{Math.round(researchProgress)}%</span>
                 </div>
+                                )
+                              })}
               </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
             </div>
             
-            {/* Additional info */}
-            <div className="mb-6 p-3 rounded-lg border border-slate-700 bg-slate-900/30">
-              <div className="text-sm text-slate-400">
-                {researchPhase === 'conferences' ? (
-                  <>Searching for relevant professional conferences in {selectedStates[0]?.name || 'your state'} and the surrounding region...</>
-                ) : researchPhase === 'district' ? (
-                  <>Surveying top districts in {selectedStates[0]?.name || 'your state'} for additional funding opportunities...</>
-                ) : (
-                  <>This thorough research typically takes <span className="font-medium text-slate-300">5-30 minutes</span>. 
-                  Results are saved for <span className="font-medium text-slate-300">30 days</span>.</>
+              <div className="rounded-lg border border-slate-700 bg-slate-900/30">
+                <button
+                  onClick={() => setDistrictHooksExpanded((v) => !v)}
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm text-slate-200"
+                >
+                  <span>District-level hooks</span>
+                  {districtHooksExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                {districtHooksExpanded && (
+                  <div className="px-4 pb-4 space-y-3">
+                    {!cachedPrepLoading && selectedStates.map((st) => {
+                      const cached = cachedPrepByState[st.code]
+                      const hooks = cached?.district_research?.passed_hooks || []
+                      return (
+                        <div key={`district-${st.code}`}>
+                          <div className="text-xs text-slate-500 mb-1">{st.name}</div>
+                          {hooks.length === 0 ? (
+                            <div className="text-xs text-slate-600">No cached district hooks.</div>
+                          ) : (
+                            <div className="space-y-2">
+                              {hooks.map((h) => {
+                                const key = `district:${st.code}:${getHookKey(h)}`
+                                const selected = isCachedHookSelected(key)
+                                return (
+                                  <div key={key} className="p-3 rounded border border-slate-700 bg-slate-900/40">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <div className="text-xs text-slate-500 uppercase">{h.district_name || 'District'}</div>
+                                        <div className="text-sm text-slate-200 mt-1">"{cleanQuoteText(h.quote)}"</div>
+                                      </div>
+                                      <button
+                                        onClick={() => toggleCachedHook({ key, category: 'district', state_code: st.code, hook: h })}
+                                        className={`px-2 py-1 text-xs rounded border ${
+                                          selected ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'border-slate-600 text-slate-300'
+                                        }`}
+                                      >
+                                        {selected ? 'Selected' : 'Select'}
+                                      </button>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
                 )}
+              </div>
+                      )
+                    })}
+                  </div>
+                )}
+            </div>
+            
+              <div className="rounded-lg border border-slate-700 bg-slate-900/30">
+                <button
+                  onClick={() => setConferenceHooksExpanded((v) => !v)}
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm text-slate-200"
+                >
+                  <span>Conference info</span>
+                  {conferenceHooksExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+                {conferenceHooksExpanded && (
+                  <div className="px-4 pb-4 space-y-3">
+                    {!cachedPrepLoading && selectedStates.map((st) => {
+                      const cached = cachedPrepByState[st.code]
+                      const conferences = cached?.conferences || []
+                    return (
+                        <div key={`conference-${st.code}`}>
+                          <div className="text-xs text-slate-500 mb-1">{st.name}</div>
+                          {conferences.length === 0 ? (
+                            <div className="text-xs text-slate-600">No cached conference info.</div>
+                          ) : (
+                            <div className="space-y-2">
+                              {conferences.map((c) => {
+                                const key = `conference:${st.code}:${c.website}`
+                                const selected = isCachedHookSelected(key)
+                                return (
+                                  <div key={key} className="p-3 rounded border border-slate-700 bg-slate-900/40">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <div className="text-xs text-slate-500 uppercase">{c.name}</div>
+                                        <div className="text-sm text-slate-200 mt-1">{c.summary || c.audience || 'Conference opportunity'}</div>
+                                      </div>
+                                      <button
+                                        onClick={() => toggleCachedHook({ key, category: 'conference', state_code: st.code, hook: c })}
+                                        className={`px-2 py-1 text-xs rounded border ${
+                                          selected ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'border-slate-600 text-slate-300'
+                                        }`}
+                                      >
+                                        {selected ? 'Selected' : 'Select'}
+                                      </button>
+                                    </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                          )}
+                        </div>
+                      )
+                    })}
+              </div>
+            )}
               </div>
             </div>
 
-            {activeResearchTasks.length > 0 && (
-              <div className="mb-6 p-4 rounded-lg border border-slate-700 bg-slate-900/30">
-                <div className="text-xs text-slate-500 uppercase tracking-wide mb-3">Active searches</div>
-                <div className="space-y-3">
-                  {activeResearchTasks.map((task) => {
-                    const phaseLabel = task.phase === 'conferences'
-                      ? 'Conferences'
-                      : task.phase === 'district'
-                        ? 'District Research'
-                        : 'State Research'
-                    const phaseColor = task.phase === 'conferences'
-                      ? 'bg-indigo-500'
-                      : task.phase === 'district'
-                        ? 'bg-amber-500'
-                        : 'bg-emerald-500'
-                    return (
-                      <div key={task.task_id} className="p-3 rounded-lg border border-slate-700 bg-slate-900/40">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm text-slate-200">
-                            {task.product_display_name || task.product_key || 'Product'} | {task.state_code || 'State'}
-                          </div>
-                          <div className="text-xs text-slate-500">{task.status}</div>
-                        </div>
-                        <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
-                          <span>{phaseLabel}</span>
-                          <span>{Math.round(task.progress)}%</span>
-                        </div>
-                        <div className="mt-1 h-1 bg-slate-700 rounded-full overflow-hidden">
-                          <div className={`h-full transition-all duration-500 ${phaseColor}`} style={{ width: `${task.progress}%` }} />
-                        </div>
-                        {task.message && (
-                          <div className="mt-2 text-xs text-slate-500">{task.message}</div>
-                        )}
-                      </div>
-                    )
-                  })}
+            <div className="mt-6">
+              {!purposePrompt.trim() && (
+                <div className="mb-3 text-xs text-amber-400/80">
+                  Enter a purpose above to generate an email. Cached hooks are optional.
                 </div>
+              )}
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setWizardStep(1)}
+                  className="px-4 py-2 rounded-lg text-slate-300 border border-slate-600 hover:bg-slate-700"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={() => {
+                    if (!purposePrompt.trim()) return
+                    setWizardStep(4)
+                    pipelineMutation.mutate()
+                  }}
+                  disabled={!purposePrompt.trim()}
+                  className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Generate Email →
+                </button>
               </div>
-            )}
-            
-            {traceEvents.length > 0 && (
-              <div className="p-4 rounded-lg border border-slate-700 bg-slate-900/30 max-h-48 overflow-y-auto">
-                <div className="text-xs text-slate-500 uppercase tracking-wide mb-2">Activity Log</div>
-                <div className="space-y-1">
-                  {filterTraceEventsForLog(traceEvents).map((e, i) => {
-                    const displayText = getEventDisplayText(e, researchStartTime)
-                    return (
-                      <div key={`${e.type}-${i}`} className="text-xs text-slate-400 flex items-start gap-2">
-                        <span className="text-slate-600">•</span>
-                        <span>{displayText}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         )}
 

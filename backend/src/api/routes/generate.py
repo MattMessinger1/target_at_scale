@@ -49,12 +49,14 @@ try:
         PipelineRequest,
         PipelineRunResponse,
         WebHook,
+        SelectedCachedHookRequest,
     )
 except Exception:
     PipelineRequest = None  # type: ignore
     PipelineRunResponse = None  # type: ignore
     EvidencePack = None  # type: ignore
-    WebHook = None  # type: ignore
+        WebHook = None  # type: ignore
+        SelectedCachedHookRequest = None  # type: ignore
     FilteredRequirement = None  # type: ignore
     FilteredDistrictHook = None  # type: ignore
     DistrictResearchResult = None  # type: ignore
@@ -248,6 +250,15 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             default=False,
             description="If true, run conference research to find relevant conferences."
         )
+
+        # Optional: custom purpose prompt (skip research, use cached context)
+        purpose_prompt: Optional[str] = Field(
+            default=None,
+            description="Custom purpose text to drive the email opener and overall context."
+        )
+
+        # Optional: cached hooks/conference items selected by user
+        selected_cached_hooks: Optional[List[SelectedCachedHookRequest]] = None
 
     # ---------------------------------------------------------------------------
     # Polling-based email generation (avoids long-running HTTP connections)
@@ -475,6 +486,28 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     _email_tasks[task_id]["message"] = msg
                     _email_tasks[task_id]["progress"] = min(95, 20 + int(pct * 0.75))
                 
+                # Extract purpose prompt and build supporting context from selected cached hooks
+                purpose_prompt = request.purpose_prompt
+                supporting_context: Optional[List[str]] = None
+                if request.selected_cached_hooks:
+                    supporting_context = []
+                    for cached in request.selected_cached_hooks:
+                        hook_data = cached.get("hook") if isinstance(cached, dict) else getattr(cached, "hook", None)
+                        if hook_data:
+                            if isinstance(hook_data, dict):
+                                # WebHook-like
+                                trigger = hook_data.get("trigger_excerpt", "")
+                                if trigger:
+                                    supporting_context.append(trigger[:300])
+                            elif hasattr(hook_data, "trigger_excerpt"):
+                                trigger = hook_data.trigger_excerpt
+                                if trigger:
+                                    supporting_context.append(trigger[:300])
+                            elif hasattr(hook_data, "conference_name"):
+                                # ConferenceOpportunity
+                                conf_text = f"Conference: {hook_data.conference_name} ({hook_data.dates}) - {hook_data.relevance}"
+                                supporting_context.append(conf_text[:300])
+                
                 if use_forced:
                     for aud_idx, aud in enumerate(audiences):
                         if not primary:
@@ -493,6 +526,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                             treasure_hooks=treasure_hooks,
                             district_name=request.district_name,
                             district_url=request.district_url,
+                            purpose_prompt=purpose_prompt,
+                            supporting_context=supporting_context,
                             on_progress=update_progress,
                         )
                         variants.append(variant)
@@ -519,6 +554,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                             treasure_hooks=treasure_hooks,
                             district_name=request.district_name,
                             district_url=request.district_url,
+                            purpose_prompt=purpose_prompt,
+                            supporting_context=supporting_context,
                             on_progress=update_progress,
                         )
                         variants.append(variant)
@@ -574,6 +611,17 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         subject_preview = first_variant.active.subject[:100]
                     
                     async with AsyncSessionLocal() as save_db:
+                        # Extract hook IDs from selected_cached_hooks if provided
+                        cached_hook_ids = None
+                        if request.selected_cached_hooks:
+                            cached_hook_ids = []
+                            for cached in request.selected_cached_hooks:
+                                hook_data = cached.get("hook") if isinstance(cached, dict) else getattr(cached, "hook", None)
+                                if hook_data:
+                                    hook_id = hook_data.get("hook_id") if isinstance(hook_data, dict) else getattr(hook_data, "hook_id", None)
+                                    if hook_id:
+                                        cached_hook_ids.append(hook_id)
+                        
                         saved_email = SavedEmailRun(
                             run_type="email",
                             name=f"{product} - {state_full or state_code} (auto-saved)",
@@ -583,14 +631,16 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                             state_full=state_full,
                             audiences=audiences,
                             district_name=request.district_name,
+                            purpose_prompt=request.purpose_prompt,
+                            selected_cached_hook_ids=cached_hook_ids,
                             pipeline_response={
                                 "evidence_pack": _dump_model(evidence_pack),
                                 "hooks": [_dump_model(h) for h in treasure_hooks],
+                                "variants": [_dump_model(v) for v in variants],
+                                "subject_preview": subject_preview,
                             },
-                            email_variants=[_dump_model(v) for v in variants],
-                            selected_hook_links=[primary.link] if primary else [],
-                            primary_hook_link=primary.link if primary else None,
-                            subject_preview=subject_preview,
+                            selected_hook_links=[primary.hook.link] if primary else [],
+                            primary_hook_link=primary.hook.link if primary else None,
                         )
                         save_db.add(saved_email)
                         await save_db.commit()
@@ -2108,6 +2158,28 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             variants = []
             t4 = time.perf_counter()
             
+            # Extract purpose prompt and build supporting context from selected cached hooks
+            purpose_prompt = request.purpose_prompt
+            supporting_context: Optional[List[str]] = None
+            if request.selected_cached_hooks:
+                supporting_context = []
+                for cached in request.selected_cached_hooks:
+                    hook_data = cached.get("hook") if isinstance(cached, dict) else getattr(cached, "hook", None)
+                    if hook_data:
+                        if isinstance(hook_data, dict):
+                            # WebHook-like
+                            trigger = hook_data.get("trigger_excerpt", "")
+                            if trigger:
+                                supporting_context.append(trigger[:300])
+                        elif hasattr(hook_data, "trigger_excerpt"):
+                            trigger = hook_data.trigger_excerpt
+                            if trigger:
+                                supporting_context.append(trigger[:300])
+                        elif hasattr(hook_data, "conference_name"):
+                            # ConferenceOpportunity
+                            conf_text = f"Conference: {hook_data.conference_name} ({hook_data.dates}) - {hook_data.relevance}"
+                            supporting_context.append(conf_text[:300])
+            
             # Set up progress queue for keepalive events during email generation
             import asyncio
             email_progress_queue: asyncio.Queue = asyncio.Queue()
@@ -2139,6 +2211,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     treasure_hooks=treasure_hooks,
                     district_name=request.district_name,
                     district_url=request.district_url,
+                    purpose_prompt=purpose_prompt,
+                    supporting_context=supporting_context,
                     on_progress=email_progress_callback,
                 )
             

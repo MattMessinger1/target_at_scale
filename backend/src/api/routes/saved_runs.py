@@ -44,6 +44,10 @@ class SaveRunRequest(BaseModel):
     primary_hook_link: Optional[str] = None
     hook_reason_tags: Dict[str, List[str]] = Field(default_factory=dict)
     hook_reason_notes: Dict[str, str] = Field(default_factory=dict)
+    
+    # Custom purpose prompt (for purpose-driven emails)
+    purpose_prompt: Optional[str] = None
+    selected_cached_hook_ids: Optional[List[str]] = None
 
 
 class SaveResearchRequest(BaseModel):
@@ -71,6 +75,10 @@ class SaveResearchRequest(BaseModel):
     
     # Optional batch job reference
     batch_job_id: Optional[int] = None
+    
+    # Custom purpose prompt (for purpose-driven emails)
+    purpose_prompt: Optional[str] = None
+    selected_cached_hook_ids: Optional[List[str]] = None
 
 
 class SavedRunSummary(BaseModel):
@@ -105,6 +113,8 @@ class SavedRunFull(BaseModel):
     district_name: Optional[str]
     include_district_research: bool = False
     include_conference_research: bool = False
+    purpose_prompt: Optional[str] = None
+    selected_cached_hook_ids: Optional[List[str]] = None
     pipeline_response: Dict[str, Any]
     selected_hook_links: List[str]
     primary_hook_link: Optional[str]
@@ -150,6 +160,8 @@ async def save_run(
         state_full=request.state_full,
         audiences=request.audiences,
         district_name=request.district_name,
+        purpose_prompt=request.purpose_prompt,
+        selected_cached_hook_ids=request.selected_cached_hook_ids,
         pipeline_response=request.pipeline_response,
         selected_hook_links=request.selected_hook_links,
         primary_hook_link=request.primary_hook_link,
@@ -172,6 +184,8 @@ async def save_run(
         district_name=run.district_name,
         include_district_research=getattr(run, 'include_district_research', False),
         include_conference_research=getattr(run, 'include_conference_research', False),
+        purpose_prompt=run.purpose_prompt,
+        selected_cached_hook_ids=run.selected_cached_hook_ids,
         pipeline_response=run.pipeline_response,
         selected_hook_links=run.selected_hook_links,
         primary_hook_link=run.primary_hook_link,
@@ -213,6 +227,8 @@ async def save_research_run(
         district_name=request.district_name,
         include_district_research=request.include_district_research,
         include_conference_research=request.include_conference_research,
+        purpose_prompt=request.purpose_prompt,
+        selected_cached_hook_ids=request.selected_cached_hook_ids,
         pipeline_response=pipeline_response,
         selected_hook_links=[],
         primary_hook_link=None,
@@ -236,6 +252,8 @@ async def save_research_run(
         district_name=run.district_name,
         include_district_research=run.include_district_research,
         include_conference_research=run.include_conference_research,
+        purpose_prompt=run.purpose_prompt,
+        selected_cached_hook_ids=run.selected_cached_hook_ids,
         pipeline_response=run.pipeline_response,
         selected_hook_links=run.selected_hook_links,
         primary_hook_link=run.primary_hook_link,
@@ -436,6 +454,8 @@ async def get_run(
         district_name=run.district_name,
         include_district_research=getattr(run, 'include_district_research', False),
         include_conference_research=getattr(run, 'include_conference_research', False),
+        purpose_prompt=getattr(run, 'purpose_prompt', None),
+        selected_cached_hook_ids=getattr(run, 'selected_cached_hook_ids', None),
         pipeline_response=run.pipeline_response,
         selected_hook_links=run.selected_hook_links,
         primary_hook_link=run.primary_hook_link,

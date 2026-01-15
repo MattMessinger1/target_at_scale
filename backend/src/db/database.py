@@ -87,6 +87,12 @@ async def run_migrations():
         # Add research options to saved_email_runs for re-research to remember settings
         ("saved_email_runs", "include_district_research", "BOOLEAN DEFAULT FALSE NOT NULL"),
         ("saved_email_runs", "include_conference_research", "BOOLEAN DEFAULT FALSE NOT NULL"),
+        # Add purpose_prompt to golden_emails for training context
+        ("golden_emails", "purpose_prompt", "TEXT"),
+        # Add purpose_prompt to saved_email_runs for persistence
+        ("saved_email_runs", "purpose_prompt", "TEXT"),
+        # Add selected_cached_hook_ids to saved_email_runs for persistence
+        ("saved_email_runs", "selected_cached_hook_ids", "JSON"),
     ]
     
     async with engine.begin() as conn:
