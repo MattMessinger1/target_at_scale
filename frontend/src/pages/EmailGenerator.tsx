@@ -1417,7 +1417,6 @@ function EmailGeneratorPipeline() {
   // Cache status for the current state+product selection
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null)
   const [showReSearchConfirm, setShowReSearchConfirm] = useState(false)
-  const [, setLoadingCachedResults] = useState(false)
 
   const [result, setResult] = useState<PipelineRunResponse | null>(null)
   const [activeAudience, setActiveAudience] = useState<string | null>(null)
