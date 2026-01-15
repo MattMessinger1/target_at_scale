@@ -55,8 +55,8 @@ except Exception:
     PipelineRequest = None  # type: ignore
     PipelineRunResponse = None  # type: ignore
     EvidencePack = None  # type: ignore
-        WebHook = None  # type: ignore
-        SelectedCachedHookRequest = None  # type: ignore
+    WebHook = None  # type: ignore
+    SelectedCachedHookRequest = None  # type: ignore
     FilteredRequirement = None  # type: ignore
     FilteredDistrictHook = None  # type: ignore
     DistrictResearchResult = None  # type: ignore
