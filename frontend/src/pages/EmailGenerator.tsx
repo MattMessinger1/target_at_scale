@@ -201,8 +201,12 @@ type SelectedCachedHook = {
 }
 
 const RESEARCH_RUNS_STORAGE_KEY = 'wceps_emailgen_research_runs_v1'
-const PENDING_EMAIL_TASK_KEY = 'wceps_pending_email_task_v1'
+const PENDING_EMAIL_TASK_KEY_V1 = 'wceps_pending_email_task_v1'  // Legacy - for migration
+const PENDING_EMAIL_TASKS_KEY = 'wceps_pending_email_tasks_v2'   // New: map of tasks by taskId
 const MAX_SAVED_RUNS = 3
+
+// Map of pending email tasks keyed by taskId
+type PendingEmailTasksMap = Record<string, PendingEmailTask>
 
 // Type for pending email task (auto-save when navigating away)
 interface PendingEmailTaskPrep {
@@ -268,27 +272,63 @@ const saveRuns = (runs: ResearchRunSnapshot[]) => {
 }
 
 // Pending email task helpers (for auto-save on navigate away)
+// Now supports multiple concurrent tasks stored as a map by taskId
+
+const loadAllPendingEmailTasks = (): PendingEmailTasksMap => {
+  try {
+    // First, check for and migrate legacy v1 single-task format
+    const legacyRaw = window.localStorage.getItem(PENDING_EMAIL_TASK_KEY_V1)
+    if (legacyRaw) {
+      const legacyTask = JSON.parse(legacyRaw) as PendingEmailTask
+      window.localStorage.removeItem(PENDING_EMAIL_TASK_KEY_V1)
+      // Migrate to v2 format
+      const migrated: PendingEmailTasksMap = { [legacyTask.taskId]: legacyTask }
+      window.localStorage.setItem(PENDING_EMAIL_TASKS_KEY, JSON.stringify(migrated))
+      return migrated
+    }
+    
+    // Load v2 format
+    const raw = window.localStorage.getItem(PENDING_EMAIL_TASKS_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as PendingEmailTasksMap
+    return typeof parsed === 'object' && parsed !== null ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
 const savePendingEmailTask = (task: PendingEmailTask) => {
   try {
-    window.localStorage.setItem(PENDING_EMAIL_TASK_KEY, JSON.stringify(task))
+    const existing = loadAllPendingEmailTasks()
+    existing[task.taskId] = task
+    window.localStorage.setItem(PENDING_EMAIL_TASKS_KEY, JSON.stringify(existing))
   } catch {
     // Ignore storage quota errors
   }
 }
 
-const loadPendingEmailTask = (): PendingEmailTask | null => {
+const loadPendingEmailTask = (taskId: string): PendingEmailTask | null => {
   try {
-    const raw = window.localStorage.getItem(PENDING_EMAIL_TASK_KEY)
-    if (!raw) return null
-    return JSON.parse(raw) as PendingEmailTask
+    const all = loadAllPendingEmailTasks()
+    return all[taskId] || null
   } catch {
     return null
   }
 }
 
-const clearPendingEmailTask = () => {
+const clearPendingEmailTask = (taskId: string) => {
   try {
-    window.localStorage.removeItem(PENDING_EMAIL_TASK_KEY)
+    const existing = loadAllPendingEmailTasks()
+    delete existing[taskId]
+    window.localStorage.setItem(PENDING_EMAIL_TASKS_KEY, JSON.stringify(existing))
+  } catch {
+    // Ignore
+  }
+}
+
+const clearAllPendingEmailTasks = () => {
+  try {
+    window.localStorage.removeItem(PENDING_EMAIL_TASKS_KEY)
   } catch {
     // Ignore
   }
@@ -1477,6 +1517,8 @@ function EmailGeneratorPipeline() {
   const [traceEvents, setTraceEvents] = useState<PipelineStreamEvent[]>([])
   const [researchStartTime, setResearchStartTime] = useState<Date | null>(null)
   const [emailProgress, setEmailProgress] = useState<{ progress: number; message: string } | null>(null)
+  const [currentEmailTaskId, setCurrentEmailTaskId] = useState<string | null>(null)  // Track current task for clearing
+  const [backgroundEmailTasks, setBackgroundEmailTasks] = useState<PendingEmailTasksMap>({})  // Track all pending tasks
   const [prep, setPrep] = useState<{ evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; district_research?: DistrictResearchResult | null; conferences?: ConferenceOpportunity[]; warnings: string[] } | null>(null)
   const [blockedFilteredRequirements, setBlockedFilteredRequirements] = useState<FilteredRequirement[]>([])
   // Use hook_id for reliable selection (handles multiple hooks with same URL)
@@ -1871,161 +1913,165 @@ function EmailGeneratorPipeline() {
     return () => { cancelled = true }
   }, []) // Only run once on mount
 
-  // On page load: check for pending email generation and resume polling
+  // On page load: check for ALL pending email generations and handle them
+  // Supports multiple concurrent tasks - auto-saves completed ones, clears failed ones
   useEffect(() => {
     let cancelled = false
     
-    const checkPendingEmail = async () => {
-      const pending = loadPendingEmailTask()
-      if (!pending) return
+    const checkAllPendingEmails = async () => {
+      const allPending = loadAllPendingEmailTasks()
+      const taskIds = Object.keys(allPending)
+      if (taskIds.length === 0) return
       
-      // Check if the task is still in progress
-      try {
-        const status = await api.generate.pipelineRunStatus(pending.taskId)
-        if (cancelled) return
+      // Initialize background tasks state
+      setBackgroundEmailTasks(allPending)
+      
+      let completedCount = 0
+      let failedCount = 0
+      let inProgressCount = 0
+      
+      // Check status of each pending task
+      for (const taskId of taskIds) {
+        if (cancelled) break
+        const pending = allPending[taskId]
         
-        if (status.status === 'completed' && status.result) {
-          // Task completed while we were away - auto-save!
-          clearPendingEmailTask()
+        try {
+          const status = await api.generate.pipelineRunStatus(taskId)
+          if (cancelled) break
           
-          // Restore state from pending task
-          setSelectedProducts([pending.product])
-          setSelectedStates([{ code: pending.stateCode, name: pending.stateName }])
-          setSelectedAudience(pending.audience)
-          if (pending.purposePrompt) setPurposePrompt(pending.purposePrompt)
-          if (pending.selectedHookLinks) setSelectedHookLinks(pending.selectedHookLinks)
-          if (pending.primaryHookLink) setPrimaryHookLink(pending.primaryHookLink)
-          if (pending.prep) setPrep(pending.prep)
-          
-          // Set the result and go to review step
-          setResult(status.result)
-          const first = status.result.variants?.[0]?.audience
-          setActiveAudience(first || null)
-          setWizardStep(5)
-          
-          // Auto-save to backend
-          try {
-            await api.savedRuns.save({
-              name: `Auto-saved: ${pending.product} - ${pending.stateName}`,
-              product: pending.product,
-              state_code: pending.stateCode,
-              state_full: pending.stateName,
-              audiences: [pending.audience],
-              pipeline_response: status.result,
-              selected_hook_links: pending.selectedHookLinks || [],
-              primary_hook_link: pending.primaryHookLink || null,
-              hook_reason_tags: pending.hookReasonTags || {},
-              hook_reason_notes: pending.hookReasonNotes || {},
+          if (status.status === 'completed' && status.result) {
+            // Task completed - auto-save!
+            clearPendingEmailTask(taskId)
+            setBackgroundEmailTasks(prev => {
+              const next = { ...prev }
+              delete next[taskId]
+              return next
             })
-            toast({
-              title: 'Email generation complete!',
-              description: 'Your email was auto-saved while you were away.',
-            })
-          } catch {
-            toast({
-              title: 'Email generation complete!',
-              description: 'Navigate to review your generated email.',
-            })
-          }
-          return
-        }
-        
-        if (status.status === 'failed') {
-          clearPendingEmailTask()
-          toast({
-            title: 'Email generation failed',
-            description: status.error || 'The email generation that was running failed.',
-            variant: 'destructive',
-          })
-          return
-        }
-        
-        if (status.status === 'in_progress' || status.status === 'queued') {
-          // Resume polling
-          toast({
-            title: 'Resuming email generation',
-            description: `Reconnecting to ${pending.product} / ${pending.stateName}...`,
-          })
-          
-          // Restore state
-          setSelectedProducts([pending.product])
-          setSelectedStates([{ code: pending.stateCode, name: pending.stateName }])
-          setSelectedAudience(pending.audience)
-          if (pending.purposePrompt) setPurposePrompt(pending.purposePrompt)
-          if (pending.selectedHookLinks) setSelectedHookLinks(pending.selectedHookLinks)
-          if (pending.primaryHookLink) setPrimaryHookLink(pending.primaryHookLink)
-          if (pending.prep) setPrep(pending.prep)
-          setWizardStep(4) // Go to generate step
-          setEmailProgress({ progress: status.progress, message: status.message })
-          
-          // Resume polling
-          const pollForCompletion = async () => {
-            while (!cancelled) {
-              await new Promise(resolve => setTimeout(resolve, 3000))
-              if (cancelled) break
-              
-              try {
-                const pollStatus = await api.generate.pipelineRunStatus(pending.taskId)
-                if (cancelled) break
-                
-                setEmailProgress({ progress: pollStatus.progress, message: pollStatus.message })
-                
-                if (pollStatus.status === 'completed' && pollStatus.result) {
-                  clearPendingEmailTask()
-                  setResult(pollStatus.result)
-                  const first = pollStatus.result.variants?.[0]?.audience
-                  setActiveAudience(first || null)
-                  setWizardStep(5)
-                  
-                  // Auto-save to backend
-                  try {
-                    await api.savedRuns.save({
-                      name: `Auto-saved: ${pending.product} - ${pending.stateName}`,
-                      product: pending.product,
-                      state_code: pending.stateCode,
-                      state_full: pending.stateName,
-                      audiences: [pending.audience],
-                      pipeline_response: pollStatus.result,
-                      selected_hook_links: pending.selectedHookLinks || [],
-                      primary_hook_link: pending.primaryHookLink || null,
-                      hook_reason_tags: pending.hookReasonTags || {},
-                      hook_reason_notes: pending.hookReasonNotes || {},
-                    })
-                    toast({
-                      title: 'Email complete & auto-saved!',
-                      description: 'Your email has been saved to Saved Runs.',
-                    })
-                  } catch {
-                    toast({ title: 'Email generation complete!' })
-                  }
-                  break
-                }
-                
-                if (pollStatus.status === 'failed') {
-                  clearPendingEmailTask()
-                  toast({
-                    title: 'Email generation failed',
-                    description: pollStatus.error,
-                    variant: 'destructive',
-                  })
-                  setWizardStep(3)
-                  break
-                }
-              } catch (e) {
-                console.warn('Failed to poll email status:', e)
-              }
+            completedCount++
+            
+            // Auto-save to backend
+            try {
+              await api.savedRuns.save({
+                name: `Auto-saved: ${pending.product} - ${pending.stateName}`,
+                product: pending.product,
+                state_code: pending.stateCode,
+                state_full: pending.stateName,
+                audiences: [pending.audience],
+                pipeline_response: status.result,
+                selected_hook_links: pending.selectedHookLinks || [],
+                primary_hook_link: pending.primaryHookLink || null,
+                hook_reason_tags: pending.hookReasonTags || {},
+                hook_reason_notes: pending.hookReasonNotes || {},
+              })
+            } catch {
+              // Silent fail - still saved locally
             }
+          } else if (status.status === 'failed') {
+            clearPendingEmailTask(taskId)
+            setBackgroundEmailTasks(prev => {
+              const next = { ...prev }
+              delete next[taskId]
+              return next
+            })
+            failedCount++
+          } else if (status.status === 'in_progress' || status.status === 'queued') {
+            inProgressCount++
+            // Start background polling for this task
+            pollBackgroundTask(taskId, pending)
           }
-          
-          pollForCompletion()
+        } catch (e) {
+          console.warn(`Failed to check pending email task ${taskId}:`, e)
+          // Clear stale/invalid tasks
+          clearPendingEmailTask(taskId)
+          setBackgroundEmailTasks(prev => {
+            const next = { ...prev }
+            delete next[taskId]
+            return next
+          })
         }
-      } catch (e) {
-        console.warn('Failed to check pending email task:', e)
-        clearPendingEmailTask()
+      }
+      
+      // Show summary notification
+      if (completedCount > 0 || failedCount > 0 || inProgressCount > 0) {
+        const parts = []
+        if (completedCount > 0) parts.push(`${completedCount} completed & saved`)
+        if (failedCount > 0) parts.push(`${failedCount} failed`)
+        if (inProgressCount > 0) parts.push(`${inProgressCount} still running`)
+        
+        toast({
+          title: 'Background emails',
+          description: parts.join(', '),
+          variant: failedCount > 0 && completedCount === 0 ? 'destructive' : 'default',
+        })
       }
     }
     
-    checkPendingEmail()
+    // Poll a single background task until completion
+    const pollBackgroundTask = async (taskId: string, pending: PendingEmailTask) => {
+      while (!cancelled) {
+        await new Promise(resolve => setTimeout(resolve, 5000)) // Poll every 5s for background
+        if (cancelled) break
+        
+        try {
+          const status = await api.generate.pipelineRunStatus(taskId)
+          if (cancelled) break
+          
+          if (status.status === 'completed' && status.result) {
+            clearPendingEmailTask(taskId)
+            setBackgroundEmailTasks(prev => {
+              const next = { ...prev }
+              delete next[taskId]
+              return next
+            })
+            
+            // Auto-save
+            try {
+              await api.savedRuns.save({
+                name: `Auto-saved: ${pending.product} - ${pending.stateName}`,
+                product: pending.product,
+                state_code: pending.stateCode,
+                state_full: pending.stateName,
+                audiences: [pending.audience],
+                pipeline_response: status.result,
+                selected_hook_links: pending.selectedHookLinks || [],
+                primary_hook_link: pending.primaryHookLink || null,
+                hook_reason_tags: pending.hookReasonTags || {},
+                hook_reason_notes: pending.hookReasonNotes || {},
+              })
+              toast({
+                title: 'Background email complete!',
+                description: `${pending.product} - ${pending.stateName} has been auto-saved.`,
+              })
+            } catch {
+              toast({
+                title: 'Background email complete!',
+                description: `${pending.product} - ${pending.stateName} finished.`,
+              })
+            }
+            break
+          }
+          
+          if (status.status === 'failed') {
+            clearPendingEmailTask(taskId)
+            setBackgroundEmailTasks(prev => {
+              const next = { ...prev }
+              delete next[taskId]
+              return next
+            })
+            toast({
+              title: 'Background email failed',
+              description: `${pending.product} - ${pending.stateName}: ${status.error || 'Unknown error'}`,
+              variant: 'destructive',
+            })
+            break
+          }
+        } catch (e) {
+          console.warn(`Failed to poll background task ${taskId}:`, e)
+        }
+      }
+    }
+    
+    checkAllPendingEmails()
     
     return () => { cancelled = true }
   }, []) // Only run once on mount
@@ -2366,12 +2412,23 @@ function EmailGeneratorPipeline() {
             hookReasonNotes,
           }
           savePendingEmailTask(pendingTask)
+          setCurrentEmailTaskId(taskId)  // Track for clearing on success/error
+          // Update background tasks state
+          setBackgroundEmailTasks(prev => ({ ...prev, [taskId]: pendingTask }))
         }
       )
     },
     onSuccess: (data) => {
       // Clear pending task - email completed successfully
-      clearPendingEmailTask()
+      if (currentEmailTaskId) {
+        clearPendingEmailTask(currentEmailTaskId)
+        setBackgroundEmailTasks(prev => {
+          const next = { ...prev }
+          delete next[currentEmailTaskId]
+          return next
+        })
+      }
+      setCurrentEmailTaskId(null)
       setReviewDrafts({})
       setResult(data)
       const first = data.variants?.[0]?.audience
@@ -2419,7 +2476,15 @@ function EmailGeneratorPipeline() {
     },
     onError: (error) => {
       // Clear pending task - email failed
-      clearPendingEmailTask()
+      if (currentEmailTaskId) {
+        clearPendingEmailTask(currentEmailTaskId)
+        setBackgroundEmailTasks(prev => {
+          const next = { ...prev }
+          delete next[currentEmailTaskId]
+          return next
+        })
+      }
+      setCurrentEmailTaskId(null)
       toast({
         title: 'Email generation failed',
         description: error instanceof Error ? error.message : 'Unknown error',
@@ -3220,6 +3285,15 @@ function EmailGeneratorPipeline() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Background email tasks indicator */}
+            {Object.keys(backgroundEmailTasks).length > 0 && (
+              <div className="px-3 py-2 rounded-lg bg-amber-900/50 border border-amber-700/50 flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                <span className="text-sm text-amber-200">
+                  {Object.keys(backgroundEmailTasks).length} email{Object.keys(backgroundEmailTasks).length > 1 ? 's' : ''} generating
+                </span>
+              </div>
+            )}
             <Link
               to="/saved-runs"
               className="px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-500 transition-colors flex items-center gap-2"
