@@ -2057,7 +2057,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
           to avoid incurring costs for large batch re-research.
         """
         from ...research.product_briefs import normalize_product_key
-        from ...db.models import DeepResearchCache, DistrictResearchCache
+        from ...db.models import DeepResearchCache, DistrictResearchCache, SavedEmailRun
         
         product_key = normalize_product_key(product)
         state_code = state.strip().upper()
@@ -2084,7 +2084,49 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 "cached_at": cached.created_at.isoformat(),
             }
 
+        # If DeepResearchCache has no usable record, fall back to most recent Saved Research run.
         if not cached or not (cached.results_json and isinstance(cached.results_json, dict) and cached.results_json):
+            saved_result = await db.execute(
+                select(SavedEmailRun)
+                .where(SavedEmailRun.product == product)
+                .where(SavedEmailRun.state_code == state_code)
+                .order_by(SavedEmailRun.created_at.desc())
+                .limit(1)
+            )
+            saved = saved_result.scalar_one_or_none()
+            if saved and isinstance(saved.pipeline_response, dict):
+                pr: Dict[str, Any] = dict(saved.pipeline_response or {})
+                hooks = pr.get("treasure_hooks") or pr.get("hooks") or []
+                
+                # Minimal evidence pack if missing (not required for cached-hook selection mode)
+                evidence_pack = pr.get("evidence_pack")
+                if not isinstance(evidence_pack, dict):
+                    evidence_pack = {
+                        "product": product,
+                        "product_key": product_key,
+                        "state": state_code,
+                        "retrieved_chunks": [],
+                        "micro_offer_candidates": [],
+                        "case_study_chunks": [],
+                        "supplemental_brief": None,
+                    }
+                
+                result_payload = {
+                    "evidence_pack": evidence_pack,
+                    "treasure_hooks": hooks if isinstance(hooks, list) else [],
+                    "filtered_requirements": pr.get("filtered_requirements") if isinstance(pr.get("filtered_requirements"), list) else [],
+                    "district_research": pr.get("district_research"),
+                    "conferences": pr.get("conferences") if isinstance(pr.get("conferences"), list) else [],
+                    "warnings": pr.get("warnings") if isinstance(pr.get("warnings"), list) else [],
+                }
+                cache_age = datetime.utcnow() - saved.created_at
+                return {
+                    "cached": True,
+                    "result": result_payload,
+                    "cache_age_days": cache_age.days,
+                    "cached_at": saved.created_at.isoformat(),
+                }
+            
             raise HTTPException(status_code=404, detail="No cached prep available")
 
         # --------------------------------------------------------------------
@@ -3470,6 +3512,41 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             raise HTTPException(status_code=400, detail="Both state and product are required")
         
         status = await get_cache_status(db, state_code=state_code, product_key=product_key)
+        
+        # Fallback: if no DeepResearchCache entry exists, use most recent Saved Research run
+        # so the UI can still show "cached results available" for legacy data.
+        if status.get("status") == "not_found":
+            try:
+                from ...db.models import SavedEmailRun
+                saved_result = await db.execute(
+                    select(SavedEmailRun)
+                    .where(SavedEmailRun.product == product)
+                    .where(SavedEmailRun.state_code == state_code)
+                    .order_by(SavedEmailRun.created_at.desc())
+                    .limit(1)
+                )
+                saved = saved_result.scalar_one_or_none()
+                if saved and isinstance(saved.pipeline_response, dict):
+                    pr = saved.pipeline_response or {}
+                    hooks = pr.get("treasure_hooks") or pr.get("hooks") or []
+                    hook_count = len(hooks) if isinstance(hooks, list) else 0
+                    age_days = (datetime.utcnow() - saved.created_at).days
+                    
+                    # Mirror DeepResearchCache TTL semantics for the UI messaging
+                    ttl_days = 30
+                    expires_in_days = max(0, ttl_days - age_days)
+                    derived_status = "completed" if age_days < ttl_days else "expired"
+                    
+                    return {
+                        "status": derived_status,
+                        "cache_age_days": age_days,
+                        "cached_at": saved.created_at.isoformat(),
+                        "expires_in_days": expires_in_days,
+                        "hook_count": hook_count,
+                    }
+            except Exception:
+                pass
+        
         return status
 
     @router.post("/pipeline/cancel")

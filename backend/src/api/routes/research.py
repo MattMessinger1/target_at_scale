@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 
 from ...db import get_db
-from ...db.models import KnowledgeBaseItem, DeepResearchCache, DistrictResearchCache
+from ...db.models import KnowledgeBaseItem, DeepResearchCache, DistrictResearchCache, SavedEmailRun
 
 logger = logging.getLogger(__name__)
 
@@ -507,7 +507,7 @@ async def get_research_coverage(
     Returns:
         Coverage matrix with status for each research type per state
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime
     from ...research.product_briefs import normalize_product_key
     
     # Normalize product key
@@ -527,6 +527,7 @@ async def get_research_coverage(
         .where(DeepResearchCache.product_key == product_key)
         .where(DeepResearchCache.status == "completed")
         .where(DeepResearchCache.is_archived.is_(False))
+        .order_by(DeepResearchCache.created_at.desc())
     )
     deep_cache_entries = deep_cache_result.scalars().all()
     
@@ -534,7 +535,9 @@ async def get_research_coverage(
     deep_cache_map = {}
     for entry in deep_cache_entries:
         key = (entry.state_code, entry.research_type)
-        deep_cache_map[key] = entry
+        # Keep most recent per key (query is ordered desc)
+        if key not in deep_cache_map:
+            deep_cache_map[key] = entry
     
     # Query all district research cache entries for this product (exclude archived)
     district_cache_result = await db.execute(
@@ -542,11 +545,74 @@ async def get_research_coverage(
         .where(DistrictResearchCache.product_key == product_key)
         .where(DistrictResearchCache.status == "completed")
         .where(DistrictResearchCache.is_archived.is_(False))
+        .order_by(DistrictResearchCache.created_at.desc())
     )
     district_cache_entries = district_cache_result.scalars().all()
     
     # Index by state_code
-    district_cache_map = {entry.state_code: entry for entry in district_cache_entries}
+    district_cache_map = {}
+    for entry in district_cache_entries:
+        if entry.state_code not in district_cache_map:
+            district_cache_map[entry.state_code] = entry
+
+    # -------------------------------------------------------------------------
+    # Legacy fallback: Saved Research runs may exist even when cache tables are empty.
+    # We use the most recent SavedEmailRun per state for each research type.
+    # -------------------------------------------------------------------------
+    saved_summary: dict = {}
+    try:
+        saved_result = await db.execute(
+            select(SavedEmailRun)
+            .where(SavedEmailRun.product == product)
+            .where(SavedEmailRun.state_code.in_(states_to_check))
+            .order_by(SavedEmailRun.created_at.desc())
+        )
+        saved_runs = saved_result.scalars().all()
+        
+        for run in saved_runs:
+            try:
+                state_code = run.state_code
+                pr = run.pipeline_response or {}
+                if not isinstance(pr, dict):
+                    continue
+                
+                entry = saved_summary.get(state_code) or {"state": None, "district": None, "conference": None}
+                
+                # State-level hooks
+                if entry["state"] is None:
+                    hooks = pr.get("treasure_hooks") or pr.get("hooks") or []
+                    if isinstance(hooks, list) and hooks:
+                        entry["state"] = {
+                            "created_at": run.created_at,
+                            "hook_count": len(hooks),
+                        }
+                
+                # District research
+                if entry["district"] is None:
+                    dr = pr.get("district_research")
+                    if isinstance(dr, dict):
+                        passed = dr.get("passed_hooks") or []
+                        surveyed = dr.get("districts_surveyed") or []
+                        entry["district"] = {
+                            "created_at": run.created_at,
+                            "hook_count": len(passed) if isinstance(passed, list) else 0,
+                            "districts_surveyed": len(surveyed) if isinstance(surveyed, list) else 0,
+                        }
+                
+                # Conferences
+                if entry["conference"] is None:
+                    confs = pr.get("conferences") or []
+                    if isinstance(confs, list) and confs:
+                        entry["conference"] = {
+                            "created_at": run.created_at,
+                            "conference_count": len(confs),
+                        }
+                
+                saved_summary[state_code] = entry
+            except Exception:
+                continue
+    except Exception:
+        saved_summary = {}
     
     # Build coverage matrix
     states_coverage = []
@@ -556,41 +622,74 @@ async def get_research_coverage(
     
     for state_code in states_to_check:
         state_name = STATE_NAMES.get(state_code, state_code)
+        saved = saved_summary.get(state_code) or {}
         
         # Check state research (funding_compliance)
         state_entry = deep_cache_map.get((state_code, "funding_compliance"))
         state_research = None
+        # Prefer the newest of: DeepResearchCache or Saved runs
+        state_best_created_at = None
+        state_best_payload = None
         if state_entry:
-            age_days = (datetime.utcnow() - state_entry.created_at).days
-            state_research = {
-                "status": "completed",
-                "age_days": age_days,
-                "hook_count": len((state_entry.results_json or {}).get("funding_items", [])) + 
-                             len((state_entry.results_json or {}).get("compliance_items", [])),
+            state_best_created_at = state_entry.created_at
+            state_best_payload = {
+                "hook_count": len((state_entry.results_json or {}).get("funding_items", [])) +
+                              len((state_entry.results_json or {}).get("compliance_items", [])),
             }
+        saved_state = saved.get("state")
+        if isinstance(saved_state, dict) and saved_state.get("created_at"):
+            if state_best_created_at is None or saved_state["created_at"] > state_best_created_at:
+                state_best_created_at = saved_state["created_at"]
+                state_best_payload = {
+                    "hook_count": int(saved_state.get("hook_count") or 0),
+                }
+        if state_best_created_at and state_best_payload is not None:
+            age_days = (datetime.utcnow() - state_best_created_at).days
+            state_research = {"status": "completed", "age_days": age_days, **state_best_payload}
         
         # Check district research
         district_entry = district_cache_map.get(state_code)
         district_research = None
+        district_best_created_at = None
+        district_best_payload = None
         if district_entry:
-            age_days = (datetime.utcnow() - district_entry.created_at).days
-            district_research = {
-                "status": "completed",
-                "age_days": age_days,
+            district_best_created_at = district_entry.created_at
+            district_best_payload = {
                 "districts_surveyed": len(district_entry.districts_surveyed or []),
                 "hook_count": len((district_entry.results_json or {}).get("passed_hooks", [])),
             }
+        saved_district = saved.get("district")
+        if isinstance(saved_district, dict) and saved_district.get("created_at"):
+            if district_best_created_at is None or saved_district["created_at"] > district_best_created_at:
+                district_best_created_at = saved_district["created_at"]
+                district_best_payload = {
+                    "districts_surveyed": int(saved_district.get("districts_surveyed") or 0),
+                    "hook_count": int(saved_district.get("hook_count") or 0),
+                }
+        if district_best_created_at and district_best_payload is not None:
+            age_days = (datetime.utcnow() - district_best_created_at).days
+            district_research = {"status": "completed", "age_days": age_days, **district_best_payload}
         
         # Check conference research
         conf_entry = deep_cache_map.get((state_code, "conference"))
         conference_research = None
+        conf_best_created_at = None
+        conf_best_payload = None
         if conf_entry:
-            age_days = (datetime.utcnow() - conf_entry.created_at).days
-            conference_research = {
-                "status": "completed",
-                "age_days": age_days,
+            conf_best_created_at = conf_entry.created_at
+            conf_best_payload = {
                 "conference_count": len((conf_entry.results_json or {}).get("conferences", [])),
             }
+        saved_conf = saved.get("conference")
+        if isinstance(saved_conf, dict) and saved_conf.get("created_at"):
+            if conf_best_created_at is None or saved_conf["created_at"] > conf_best_created_at:
+                conf_best_created_at = saved_conf["created_at"]
+                conf_best_payload = {
+                    "conference_count": int(saved_conf.get("conference_count") or 0),
+                }
+        if conf_best_created_at and conf_best_payload is not None:
+            age_days = (datetime.utcnow() - conf_best_created_at).days
+            conference_research = {"status": "completed", "age_days": age_days, **conf_best_payload}
         
         # Determine overall status
         has_state = state_research is not None
