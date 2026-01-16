@@ -225,6 +225,7 @@ async def resume_research_task(task_id: str):
         logger.error(f"Error resuming research task {task_id}: {e}", exc_info=True)
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -369,15 +370,25 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
 
 
     def _dump_model(obj: Any) -> Any:
+        """Convert objects to JSON-safe structures for DB JSON columns and API payloads.
+        
+        Critical: SQLAlchemy JSON columns must not contain datetime objects (or other
+        non-JSON-native types). Use FastAPI's jsonable_encoder to normalize.
+        """
         if obj is None:
             return None
-        if dataclasses.is_dataclass(obj):
-            return dataclasses.asdict(obj)
-        if hasattr(obj, "model_dump"):
-            return obj.model_dump()
-        if hasattr(obj, "dict"):
-            return obj.dict()  # type: ignore[no-any-return]
-        return obj
+        try:
+            encoded = jsonable_encoder(obj)
+        except Exception:
+            # Last resort: never fail serialization on the hot path
+            encoded = str(obj)
+        # Pre-flight: ensure it is JSON-serializable (no datetime leaks, etc.)
+        try:
+            json.dumps(encoded, ensure_ascii=False)
+            return encoded
+        except TypeError:
+            # Absolute last resort: stringify whatever is left
+            return jsonable_encoder(str(encoded))
 
 
     def _json_serializer(obj):
@@ -576,6 +587,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     has_purpose = bool(request.purpose_prompt and request.purpose_prompt.strip())
                     has_cached_hooks = bool(request.selected_cached_hooks and len(request.selected_cached_hooks) > 0)
                     has_hooks_selected = use_forced or has_cached_hooks  # True if user selected hook_ids, hook_links, OR cached hooks
+                    # Treat cached-hook selection as explicit/forced selection (same semantics as selected_hook_ids/links)
+                    use_explicit_selection = use_forced or has_cached_hooks
                     
                     # Validate: at least one input required
                     if not has_purpose and not has_hooks_selected:
@@ -1073,7 +1086,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                     conf_text = f"Conference: {hook_data.conference_name} ({hook_data.dates}) - {hook_data.relevance}"
                                     supporting_context.append(conf_text[:300])
                     
-                    if use_forced:
+                    if use_explicit_selection:
                         for aud_idx, aud in enumerate(audiences):
                             if not primary:
                                 raise RuntimeError("Primary hook selection failed")

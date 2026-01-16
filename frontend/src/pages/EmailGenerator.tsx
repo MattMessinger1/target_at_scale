@@ -3685,41 +3685,7 @@ function EmailGeneratorPipeline() {
                 <AudienceSelector selectedAudience={selectedAudience} onSelect={setSelectedAudience} />
               </div>
 
-              {/* District Research Toggle */}
-              <div className="flex items-center gap-3 p-4 bg-slate-800/50 rounded-lg border border-slate-700">
-                <input 
-                  type="checkbox" 
-                  id="district-research"
-                  checked={includeDistrictResearch}
-                  onChange={(e) => setIncludeDistrictResearch(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-600 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-900"
-                />
-                <label htmlFor="district-research" className="flex-1 cursor-pointer">
-                  <span className="text-sm font-medium text-slate-200">Include District Research</span>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Survey top 30 districts by EL population for incremental opportunities 
-                    (adds ~10-20 min, runs automatically after state research)
-                  </p>
-                </label>
-              </div>
-
-              {/* Conference Research Toggle */}
-              <div className="flex items-center gap-3 p-4 bg-slate-800/50 rounded-lg border border-slate-700">
-                <input 
-                  type="checkbox" 
-                  id="conference-research"
-                  checked={includeConferenceResearch}
-                  onChange={(e) => setIncludeConferenceResearch(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-600 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-900"
-                />
-                <label htmlFor="conference-research" className="flex-1 cursor-pointer">
-                  <span className="text-sm font-medium text-slate-200">Include Conference Research</span>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Find relevant professional conferences (TESOL affiliates, EL summits, etc.) for marketing opportunities
-                    (adds ~5-15 min)
-                  </p>
-                </label>
-              </div>
+              {/* District/Conference research toggles removed from UI (keeping backend capability) */}
 
               {/* Cache status notification */}
               {cacheStatus && cacheStatus.status !== 'not_found' && cacheStatus.status !== 'loading' && (
