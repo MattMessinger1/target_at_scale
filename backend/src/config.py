@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5.2"
     # Pro model for email generation with extended reasoning (uses Responses API)
     openai_pro_model: str = "gpt-5.2-pro"
+    # Email generation: False = Chat Completions (cheap), True = Responses API (expensive)
+    use_email_reasoning: bool = False
     firecrawl_api_key: str = ""
     perplexity_api_key: str = ""
     admin_token: str = ""

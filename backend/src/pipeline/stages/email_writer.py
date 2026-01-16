@@ -994,104 +994,139 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     
-    # Use GPT-5.2 Pro with Responses API for extended reasoning
+    # Use GPT-5.2 Pro (toggle between Chat Completions and Responses API via USE_EMAIL_REASONING)
     full_prompt = f"Return only valid JSON. No markdown.\n\n{prompt}"
     
     # Log before API call
+    api_mode = "Responses API (reasoning)" if settings.use_email_reasoning else "Chat Completions"
     logger.info(
-        "EmailWriter: Starting GPT-5.2-Pro high call for %s/%s (audience=%s, prompt_len=%d)",
-        state_code, product, audience, len(full_prompt)
+        "EmailWriter: Starting %s call for %s/%s (audience=%s, prompt_len=%d)",
+        api_mode, state_code, product, audience, len(full_prompt)
     )
     start_time = time.perf_counter()
     
-    try:
-        # Start task in background mode (returns immediately with task ID)
-        # This avoids HTTP timeout issues for long-running xhigh reasoning
-        resp = await client.responses.create(
-            model=settings.openai_pro_model,  # gpt-5.2-pro
-            input=full_prompt,
-            reasoning={"effort": "high"},  # High reasoning depth (faster than xhigh)
-            background=True,  # Non-blocking, returns task ID for polling
-        )
-        
-        logger.info(
-            "EmailWriter: Task started id=%s, status=%s for %s/%s (audience=%s)",
-            resp.id, resp.status, state_code, product, audience
-        )
-        
-        # Poll for completion (xhigh can take 2-5 minutes)
-        poll_interval = 15  # seconds
-        max_polls = 40  # 10 minutes max (40 * 15s = 600s)
-        
-        for poll_count in range(max_polls):
-            # Check if completed
-            if resp.status == "completed":
+    # Toggle between expensive Responses API (with reasoning) and cheap Chat Completions
+    raw = ""
+    
+    if settings.use_email_reasoning:
+        # ---- EXPENSIVE: Responses API with extended reasoning ----
+        try:
+            # Start task in background mode (returns immediately with task ID)
+            # This avoids HTTP timeout issues for long-running xhigh reasoning
+            resp = await client.responses.create(
+                model=settings.openai_pro_model,  # gpt-5.2-pro
+                input=full_prompt,
+                reasoning={"effort": "high"},  # High reasoning depth (faster than xhigh)
+                background=True,  # Non-blocking, returns task ID for polling
+            )
+            
+            logger.info(
+                "EmailWriter: Task started id=%s, status=%s for %s/%s (audience=%s)",
+                resp.id, resp.status, state_code, product, audience
+            )
+            
+            # Poll for completion (xhigh can take 2-5 minutes)
+            poll_interval = 15  # seconds
+            max_polls = 40  # 10 minutes max (40 * 15s = 600s)
+            
+            for poll_count in range(max_polls):
+                # Check if completed
+                if resp.status == "completed":
+                    elapsed = time.perf_counter() - start_time
+                    logger.info(
+                        "EmailWriter: Task completed in %.1fs for %s/%s (audience=%s)",
+                        elapsed, state_code, product, audience
+                    )
+                    if on_progress:
+                        on_progress(f"Email generation complete ({int(elapsed)}s)", 100.0)
+                    break
+                
+                # Check for failure
+                if resp.status in ("failed", "cancelled"):
+                    elapsed = time.perf_counter() - start_time
+                    error_obj = getattr(resp, 'error', None)
+                    logger.error(
+                        "EmailWriter: Task %s after %.1fs for %s/%s (audience=%s): %s",
+                        resp.status, elapsed, state_code, product, audience, error_obj
+                    )
+                    raise RuntimeError(f"Email generation {resp.status}: {error_obj}")
+                
+                # Send progress callback every poll to keep frontend alive
                 elapsed = time.perf_counter() - start_time
-                logger.info(
-                    "EmailWriter: Task completed in %.1fs for %s/%s (audience=%s)",
+                progress_pct = min(95.0, 10.0 + (poll_count / max_polls) * 85.0)  # 10-95% during polling
+                if on_progress:
+                    on_progress(f"Generating email... {int(elapsed)}s elapsed", progress_pct)
+                
+                # Log progress every 60s (every 4 polls)
+                if poll_count > 0 and poll_count % 4 == 0:
+                    logger.info(
+                        "EmailWriter: Polling... %.0fs elapsed, status=%s for %s/%s (audience=%s)",
+                        elapsed, resp.status, state_code, product, audience
+                    )
+                
+                # Wait before polling again
+                await asyncio.sleep(poll_interval)
+                
+                # Poll for updated status
+                resp = await client.responses.retrieve(resp.id)
+            else:
+                # Loop exhausted without completion
+                elapsed = time.perf_counter() - start_time
+                logger.error(
+                    "EmailWriter: Task TIMED OUT after %.1fs for %s/%s (audience=%s)",
                     elapsed, state_code, product, audience
                 )
-                if on_progress:
-                    on_progress(f"Email generation complete ({int(elapsed)}s)", 100.0)
-                break
+                raise RuntimeError(f"Email generation timed out after {max_polls * poll_interval}s")
             
-            # Check for failure
-            if resp.status in ("failed", "cancelled"):
-                elapsed = time.perf_counter() - start_time
-                error_obj = getattr(resp, 'error', None)
-                logger.error(
-                    "EmailWriter: Task %s after %.1fs for %s/%s (audience=%s): %s",
-                    resp.status, elapsed, state_code, product, audience, error_obj
-                )
-                raise RuntimeError(f"Email generation {resp.status}: {error_obj}")
-            
-            # Send progress callback every poll to keep frontend alive
-            elapsed = time.perf_counter() - start_time
-            progress_pct = min(95.0, 10.0 + (poll_count / max_polls) * 85.0)  # 10-95% during polling
-            if on_progress:
-                on_progress(f"Generating email... {int(elapsed)}s elapsed", progress_pct)
-            
-            # Log progress every 60s (every 4 polls)
-            if poll_count > 0 and poll_count % 4 == 0:
-                logger.info(
-                    "EmailWriter: Polling... %.0fs elapsed, status=%s for %s/%s (audience=%s)",
-                    elapsed, resp.status, state_code, product, audience
-                )
-            
-            # Wait before polling again
-            await asyncio.sleep(poll_interval)
-            
-            # Poll for updated status
-            resp = await client.responses.retrieve(resp.id)
-        else:
-            # Loop exhausted without completion
+        except Exception as e:
             elapsed = time.perf_counter() - start_time
             logger.error(
-                "EmailWriter: Task TIMED OUT after %.1fs for %s/%s (audience=%s)",
+                "EmailWriter: OpenAI call FAILED after %.1fs for %s/%s (audience=%s): %s",
+                elapsed, state_code, product, audience, str(e)
+            )
+            raise
+        
+        # Extract output from Responses API format (background mode uses output_text)
+        raw = resp.output_text or ""
+        if not raw and hasattr(resp, 'output') and resp.output:
+            # Fallback: try extracting from output content items
+            for item in resp.output:
+                if hasattr(item, 'content') and item.content:
+                    for content_item in item.content:
+                        if hasattr(content_item, 'text'):
+                            raw = content_item.text.strip()
+                            break
+                if raw:
+                    break
+    else:
+        # ---- CHEAP: Standard Chat Completions API (no extended reasoning) ----
+        try:
+            if on_progress:
+                on_progress("Generating email...", 50.0)
+            
+            resp = await client.chat.completions.create(
+                model=settings.openai_pro_model,  # gpt-5.2-pro
+                messages=[{"role": "user", "content": full_prompt}],
+            )
+            
+            elapsed = time.perf_counter() - start_time
+            logger.info(
+                "EmailWriter: Chat completion done in %.1fs for %s/%s (audience=%s)",
                 elapsed, state_code, product, audience
             )
-            raise RuntimeError(f"Email generation timed out after {max_polls * poll_interval}s")
-        
-    except Exception as e:
-        elapsed = time.perf_counter() - start_time
-        logger.error(
-            "EmailWriter: OpenAI call FAILED after %.1fs for %s/%s (audience=%s): %s",
-            elapsed, state_code, product, audience, str(e)
-        )
-        raise
-    
-    # Extract output from Responses API format (background mode uses output_text)
-    raw = resp.output_text or ""
-    if not raw and hasattr(resp, 'output') and resp.output:
-        # Fallback: try extracting from output content items
-        for item in resp.output:
-            if hasattr(item, 'content') and item.content:
-                for content_item in item.content:
-                    if hasattr(content_item, 'text'):
-                        raw = content_item.text.strip()
-                        break
-            if raw:
-                break
+            if on_progress:
+                on_progress(f"Email generation complete ({int(elapsed)}s)", 100.0)
+            
+            # Extract output from Chat Completions format
+            raw = resp.choices[0].message.content or ""
+            
+        except Exception as e:
+            elapsed = time.perf_counter() - start_time
+            logger.error(
+                "EmailWriter: Chat completion FAILED after %.1fs for %s/%s (audience=%s): %s",
+                elapsed, state_code, product, audience, str(e)
+            )
+            raise
 
     logger.info(
         "EmailWriter: Got response for %s/%s (raw_len=%d)",
