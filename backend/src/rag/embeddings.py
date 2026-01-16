@@ -261,6 +261,7 @@ async def embed_kb_items(db: AsyncSession, batch_size: int = 50) -> Dict[str, An
             "subcategory": item.subcategory or "",
             "product_name": item.product_name or "",
             "document_type": item.document_type or "",
+            "file_name": item.file_name or "",
             "applicable_states": ",".join(item.applicable_states) if item.applicable_states else "",
             "title": item.title or "",
             "source_id": item.id,  # Track original item
@@ -346,6 +347,7 @@ async def embed_kb_item_by_id(db: AsyncSession, item_id: str) -> Dict[str, Any]:
         "subcategory": item.subcategory or "",
         "product_name": item.product_name or "",
         "document_type": item.document_type or "",
+        "file_name": item.file_name or "",
         "applicable_states": ",".join(item.applicable_states) if item.applicable_states else "",
         "title": item.title or "",
         "source_id": item.id,

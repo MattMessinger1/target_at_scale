@@ -68,3 +68,12 @@ avoid_phrases:
   - "Did you know"
   - "If you aren't"
   - "You should have"
+
+# Optional: tune which KB documents/chunks get prioritized for evidence retrieval.
+# Use `file_name` values shown in the UI evidence panel (preferred over UUIDs).
+kb_curation:
+  max_total_chunks: 18
+  max_chunks_per_source: 2
+  boosts: []
+  must_include: []
+  exclude: []

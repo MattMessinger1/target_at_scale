@@ -2932,6 +2932,16 @@ function EmailGeneratorPipeline() {
               {(result.evidence_pack?.retrieved_chunks || []).slice(0, 20).map((c: EvidenceChunkCitation) => (
                 <div key={c.chunk_id} className="p-3 rounded border border-slate-700 bg-slate-900/30">
                   <div className="text-xs text-slate-400 font-mono">{c.chunk_id}</div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                    {c.source_kb_id && <span className="font-mono">kb:{c.source_kb_id}</span>}
+                    {c.file_name && <span className="truncate">file: {c.file_name}</span>}
+                    {typeof c.adjusted_score === 'number' && (
+                      <span className="font-mono">
+                        score:{c.adjusted_score.toFixed(3)}
+                        {typeof c.boost === 'number' && c.boost !== 0 ? ` (boost ${c.boost > 0 ? '+' : ''}${c.boost.toFixed(2)})` : ''}
+                      </span>
+                    )}
+                  </div>
                   {c.title && <div className="text-sm text-slate-200 mt-1">{c.title}</div>}
                   <div className="text-sm text-slate-300 mt-1">{c.excerpt}</div>
                 </div>

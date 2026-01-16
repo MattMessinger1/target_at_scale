@@ -84,6 +84,8 @@ class EvidenceChunkCitation(BaseModel):
     source_kb_id: Optional[str] = Field(default=None, description="Original KnowledgeBaseItem.id (metadata.source_id).")
 
     title: Optional[str] = None
+    file_name: Optional[str] = Field(default=None, description="Original file name for this KB item (if known).")
+    document_type: Optional[str] = Field(default=None, description="Document type (e.g., pdf, docx) if known.")
     excerpt: str = Field(..., description="Short excerpt from the chunk used as evidence.")
 
     category: Optional[str] = None
@@ -93,6 +95,18 @@ class EvidenceChunkCitation(BaseModel):
 
     chunk_index: Optional[int] = None
     total_chunks: Optional[int] = None
+    similarity: Optional[float] = Field(
+        default=None,
+        description="Vector similarity score (0-1) from retrieval, if available.",
+    )
+    adjusted_score: Optional[float] = Field(
+        default=None,
+        description="Score after any curation/boosting, if available.",
+    )
+    boost: Optional[float] = Field(
+        default=None,
+        description="Manual boost applied from kb_curation, if any.",
+    )
 
 
 class MicroOfferCandidate(BaseModel):

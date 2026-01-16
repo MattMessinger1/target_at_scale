@@ -63,3 +63,12 @@ states:
   FL:
     state_fit_notes:
       - "Florida districts can align coaching cycles to ESOL endorsement/in-service requirements and school improvement planning processes."
+
+# Optional: tune which KB documents/chunks get prioritized for evidence retrieval.
+# Use `file_name` values shown in the UI evidence panel (preferred over UUIDs).
+kb_curation:
+  max_total_chunks: 18
+  max_chunks_per_source: 2
+  boosts: []
+  must_include: []
+  exclude: []

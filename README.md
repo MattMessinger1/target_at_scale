@@ -38,10 +38,47 @@ npm run dev
 
 ### 3. Process Knowledge Base
 
+The KB has two parts:
+- **SQL rows** (`knowledge_base` table) for metadata + keyword search
+- **Chroma embeddings** for semantic retrieval (“Product chunks (KB)” in the UI)
+
+#### Index KB export into the database
+This loads the JSON export into the SQL table.
+- `POST /api/kb/index`
+
+Example:
+
 ```bash
-cd backend
-python -m src.kb.loader
+curl -X POST "http://localhost:8000/api/kb/index"
 ```
+
+Notes:
+- Indexing replaces export-backed rows but preserves uploads (ids starting with `kb-upl-`).
+- To point at a new export file, set `KNOWLEDGE_BASE_PATH` (see `backend/src/config.py`).
+
+#### Build embeddings (Chroma)
+This chunks and embeds the KB into Chroma.
+- `POST /api/kb/embed`
+
+Example:
+
+```bash
+curl -X POST "http://localhost:8000/api/kb/embed"
+```
+
+#### Verify embedding readiness
+- `GET /api/kb/embed/status`
+
+Example:
+
+```bash
+curl "http://localhost:8000/api/kb/embed/status"
+```
+
+Production note:
+Set `CHROMA_PERSIST_DIR` to a mounted volume (see `backend/RUNBOOK_RAILWAY.md`) so embeddings survive deploys.
+
+More details (uploads, weighting, evaluation): `backend/KB_RUNBOOK.md`
 
 ## Project Structure
 

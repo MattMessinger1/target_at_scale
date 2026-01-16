@@ -65,3 +65,10 @@ The V2 pipeline will **fail fast** with a clear 503 error telling you to:
 - set `CHROMA_PERSIST_DIR`
 - run `POST /api/kb/embed`
 
+## KB refresh (new export)
+When you update the KB export, run:
+- `POST /api/kb/index`
+- `POST /api/kb/embed`
+
+See `backend/KB_RUNBOOK.md` for the full workflow and ongoing tuning cadence.
+

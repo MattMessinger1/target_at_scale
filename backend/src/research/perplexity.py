@@ -1272,7 +1272,13 @@ Focus on:
 
 Treasure constraints (exclude table stakes):
 - Do NOT restate generic obligations like “districts must provide EL services” without a specific deadline, monitoring/audit trigger, or clear consequence.
-- Prefer time-bound or risk-bound triggers that create urgency:\n  - monitoring cycles / compliance reviews / CAP requirements\n  - reporting windows and deadlines (ESSA/state reporting)\n  - audit findings / corrective action language\n  - new or updated guidance in the past 12 months\n  - explicit consequences (funding hold, required plan submission, sanctions, etc.)\n+- Prefer official sources (state DOE/SEA guidance, admin code, audit reports). Open web is allowed, but lower confidence for non-official sources.\n+
+- Prefer time-bound or risk-bound triggers that create urgency:
+  - monitoring cycles / compliance reviews / CAP requirements
+  - reporting windows and deadlines (ESSA/state reporting)
+  - audit findings / corrective action language
+  - new or updated guidance in the past 12 months
+  - explicit consequences (funding hold, required plan submission, sanctions, etc.)
+- Prefer official sources (state DOE/SEA guidance, admin code, audit reports). Open web is allowed, but lower confidence for non-official sources.
 For each requirement:
 - Requirement name
 - Deadline or frequency

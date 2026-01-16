@@ -7,7 +7,7 @@ Product briefs (stored/overrides) may be included only as supplemental context.
 from __future__ import annotations
 
 import re
-from typing import List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,6 +68,116 @@ def _micro_offers_from_offerings(offerings: Sequence[str]) -> List[str]:
     return list(dict.fromkeys([o for o in offers if o and o.strip()]))
 
 
+def _safe_float(v: Any) -> Optional[float]:
+    try:
+        if v is None:
+            return None
+        return float(v)
+    except Exception:
+        return None
+
+
+def _parse_kb_curation_config(brief: Optional[dict]) -> Dict[str, Any]:
+    """Parse optional kb_curation config embedded in product override YAML.
+
+    Supported formats (intentionally forgiving):
+    - boosts: { "<file_name>": 0.1, ... } OR
+      boosts: [ {file_name: "...", boost: 0.1}, {source_kb_id: "...", boost: 0.05} ]
+    - exclude: [ "<file_name>", {file_name: "..."} , {source_kb_id: "..."} ]
+    - must_include: same as exclude
+    - max_total_chunks: int
+    - max_chunks_per_source: int
+    """
+    cfg = (brief or {}).get("kb_curation")
+    if not isinstance(cfg, dict):
+        cfg = {}
+
+    boost_by_file: Dict[str, float] = {}
+    boost_by_source: Dict[str, float] = {}
+    exclude_files: set[str] = set()
+    exclude_sources: set[str] = set()
+    must_files: List[str] = []
+    must_sources: List[str] = []
+
+    # --- boosts ---
+    raw_boosts = cfg.get("boosts")
+    if isinstance(raw_boosts, dict):
+        for k, v in raw_boosts.items():
+            if not k:
+                continue
+            boost = _safe_float(v)
+            if boost is None:
+                continue
+            key = str(k).strip()
+            if key:
+                boost_by_file[key] = boost
+    elif isinstance(raw_boosts, list):
+        for entry in raw_boosts:
+            if isinstance(entry, dict):
+                boost = _safe_float(entry.get("boost"))
+                if boost is None:
+                    continue
+                fn = str(entry.get("file_name") or "").strip()
+                sid = str(entry.get("source_kb_id") or "").strip()
+                if fn:
+                    boost_by_file[fn] = boost
+                elif sid:
+                    boost_by_source[sid] = boost
+
+    # --- exclude / must_include ---
+    def _collect_keys(raw: Any) -> Tuple[List[str], List[str]]:
+        files: List[str] = []
+        sources: List[str] = []
+        if not isinstance(raw, list):
+            return files, sources
+        for it in raw:
+            if isinstance(it, str):
+                s = it.strip()
+                if s:
+                    files.append(s)
+            elif isinstance(it, dict):
+                fn = str(it.get("file_name") or "").strip()
+                sid = str(it.get("source_kb_id") or "").strip()
+                if fn:
+                    files.append(fn)
+                if sid:
+                    sources.append(sid)
+        return files, sources
+
+    raw_exclude = cfg.get("exclude")
+    ex_files, ex_sources = _collect_keys(raw_exclude)
+    exclude_files.update(ex_files)
+    exclude_sources.update(ex_sources)
+
+    raw_must = cfg.get("must_include")
+    must_files, must_sources = _collect_keys(raw_must)
+
+    # --- limits ---
+    max_total_chunks = cfg.get("max_total_chunks")
+    max_chunks_per_source = cfg.get("max_chunks_per_source")
+    try:
+        max_total_chunks_i = int(max_total_chunks) if max_total_chunks is not None else 18
+    except Exception:
+        max_total_chunks_i = 18
+    try:
+        max_chunks_per_source_i = int(max_chunks_per_source) if max_chunks_per_source is not None else 2
+    except Exception:
+        max_chunks_per_source_i = 2
+    max_total_chunks_i = max(1, min(50, max_total_chunks_i))
+    max_chunks_per_source_i = max(1, min(8, max_chunks_per_source_i))
+
+    return {
+        "boost_by_file": boost_by_file,
+        "boost_by_source": boost_by_source,
+        "exclude_files": exclude_files,
+        "exclude_sources": exclude_sources,
+        "must_files": must_files,
+        "must_sources": must_sources,
+        "max_total_chunks": max_total_chunks_i,
+        "max_chunks_per_source": max_chunks_per_source_i,
+    }
+
+
 async def build_product_evidence_pack(
     *,
     db: AsyncSession,
@@ -85,12 +195,35 @@ async def build_product_evidence_pack(
     from ...rag.query import RAGService
 
     product_key = normalize_product_key(product_display_name)
+    state_norm = (state_code or "").strip().upper()
+
+    # Supplemental brief (no on-demand GPT build) — used only to improve retrieval
+    # and micro-offer generation, not as the primary evidence source.
+    supplemental_brief = await get_product_brief(
+        db,
+        product_display_name,
+        state_code=state_norm or None,
+        allow_on_demand_build=False,
+    )
 
     # RAG-first retrieval (chunk-level)
-    query_text = (
-        f"{product_display_name} deliverables artifacts documentation checklist "
-        f"implementation coaching cycles PD evidence budget narrative"
-    )
+    offerings = _brief_offerings(supplemental_brief)
+    offerings_text = " ".join(offerings[:8])
+    audience_text = " ".join([a for a in (audiences or []) if a])[:200]
+
+    # Seed retrieval with verified product language (offerings) to increase precision.
+    # If no brief/offerings are available, this collapses to the original generic query.
+    query_text = " ".join(
+        [
+            product_display_name,
+            offerings_text,
+            audience_text,
+            "deliverables artifacts documentation checklist",
+            "implementation coaching cycles professional development PD evidence",
+            "budget narrative allowable use compliance monitoring CAP",
+            "CSI TSI ATSI school improvement",
+        ]
+    ).strip()
     service = RAGService()
 
     # Fail fast if embeddings are missing (common in production when Chroma isn't on a Volume).
@@ -117,11 +250,14 @@ async def build_product_evidence_pack(
             ),
         )
 
+    # When state filtering is applied post-query, pull a larger candidate set so we
+    # don't starve after excluding other-state docs.
+    candidate_n = 60 if state_norm else 24
     rag_results = service.query(
         query_text=query_text,
-        n_results=18,
+        n_results=candidate_n,
         filter_product=product_key,
-        filter_state=state_code,
+        filter_state=state_norm or None,
         filter_category=None,
     )
     # If we got nothing after state filtering, fall back to product-only retrieval.
@@ -129,7 +265,7 @@ async def build_product_evidence_pack(
     if not rag_results:
         rag_results = service.query(
             query_text=query_text,
-            n_results=18,
+            n_results=candidate_n,
             filter_product=product_key,
             filter_state=None,
             filter_category=None,
@@ -147,15 +283,88 @@ async def build_product_evidence_pack(
             ),
         )
 
-    citations: List[EvidenceChunkCitation] = []
+    # Optional per-product curation (YAML) for weighting/excluding/must-include.
+    curation = _parse_kb_curation_config(supplemental_brief)
+    boost_by_file: Dict[str, float] = curation["boost_by_file"]
+    boost_by_source: Dict[str, float] = curation["boost_by_source"]
+    exclude_files: set[str] = curation["exclude_files"]
+    exclude_sources: set[str] = curation["exclude_sources"]
+    must_files: List[str] = curation["must_files"]
+    must_sources: List[str] = curation["must_sources"]
+
+    # Diversity: cap the number of chunks per source KB item to avoid flooding the
+    # evidence pack with near-duplicate chunks from the same long document.
+    max_chunks_per_source: int = curation["max_chunks_per_source"]
+    max_total_chunks: int = curation["max_total_chunks"]
+
+    # Score candidates with simple additive boosts.
+    candidates: List[Dict[str, Any]] = []
     for r in rag_results or []:
         meta = r.get("metadata") or {}
-        content = r.get("content") or ""
+        src = str(meta.get("source_id") or "") or str(r.get("id") or "")
+        if not src:
+            continue
+        fn_raw = meta.get("file_name")
+        file_name = str(fn_raw).strip() if fn_raw else ""
+
+        if file_name and file_name in exclude_files:
+            continue
+        if src in exclude_sources:
+            continue
+
+        sim = r.get("similarity")
+        sim_f = float(sim) if isinstance(sim, (int, float)) else 0.0
+
+        boost = 0.0
+        if file_name and file_name in boost_by_file:
+            boost += float(boost_by_file[file_name])
+        if src in boost_by_source:
+            boost += float(boost_by_source[src])
+
+        # Small preference for in-state content when explicitly tagged.
+        states = _split_states(meta.get("applicable_states") or "")
+        state_bonus = 0.03 if (state_norm and states and state_norm in states) else 0.0
+
+        adjusted = sim_f + boost + state_bonus
+
+        candidates.append(
+            {
+                **r,
+                "_source_id": src,
+                "_file_name": file_name or None,
+                "_boost": boost,
+                "_adjusted": adjusted,
+            }
+        )
+
+    # Highest adjusted score first
+    candidates.sort(key=lambda x: (x.get("_adjusted", 0), x.get("similarity", 0)), reverse=True)
+
+    citations: List[EvidenceChunkCitation] = []
+    chunks_by_source: dict[str, int] = {}
+    used_chunk_ids: set[str] = set()
+
+    def _can_take(src_id: str) -> bool:
+        return chunks_by_source.get(src_id, 0) < max_chunks_per_source
+
+    def _add_candidate(c: Dict[str, Any], *, force: bool = False) -> None:
+        meta = c.get("metadata") or {}
+        src_id = str(c.get("_source_id") or meta.get("source_id") or c.get("id") or "")
+        chunk_id = str(c.get("id") or "")
+        if not src_id or not chunk_id:
+            return
+        if chunk_id in used_chunk_ids:
+            return
+        if not force and not _can_take(src_id):
+            return
+        content = c.get("content") or ""
         citations.append(
             EvidenceChunkCitation(
-                chunk_id=str(r.get("id") or ""),
+                chunk_id=chunk_id,
                 source_kb_id=meta.get("source_id") or None,
                 title=meta.get("title") or None,
+                file_name=meta.get("file_name") or None,
+                document_type=meta.get("document_type") or None,
                 excerpt=_excerpt(content, 360),
                 category=meta.get("category") or None,
                 subcategory=meta.get("subcategory") or None,
@@ -163,17 +372,70 @@ async def build_product_evidence_pack(
                 applicable_states=_split_states(meta.get("applicable_states") or ""),
                 chunk_index=meta.get("chunk_index"),
                 total_chunks=meta.get("total_chunks"),
+                similarity=c.get("similarity"),
+                adjusted_score=c.get("_adjusted"),
+                boost=c.get("_boost"),
             )
         )
+        used_chunk_ids.add(chunk_id)
+        chunks_by_source[src_id] = chunks_by_source.get(src_id, 0) + 1
 
-    # Supplemental brief (no on-demand GPT build)
-    supplemental_brief = await get_product_brief(
-        db,
-        product_display_name,
-        state_code=state_code,
-        allow_on_demand_build=False,
-    )
-    
+    # Must-include (if present): try to pull at least one chunk for each declared file/source.
+    if must_files or must_sources:
+        best_by_file: Dict[str, Dict[str, Any]] = {}
+        best_by_source: Dict[str, Dict[str, Any]] = {}
+        for c in candidates:
+            fn = str(c.get("_file_name") or "").strip()
+            sid = str(c.get("_source_id") or "").strip()
+            if fn and fn in must_files and fn not in best_by_file:
+                best_by_file[fn] = c
+            if sid and sid in must_sources and sid not in best_by_source:
+                best_by_source[sid] = c
+
+        # If a must-include file isn't present in candidates (rare), try a targeted query by filename.
+        for fn in must_files:
+            if fn in best_by_file:
+                continue
+            extra = service.query(
+                query_text=fn,
+                n_results=20,
+                filter_product=product_key,
+                filter_state=state_norm or None,
+                filter_category=None,
+            )
+            for r in extra or []:
+                m = r.get("metadata") or {}
+                got_fn = str(m.get("file_name") or "").strip()
+                if got_fn and got_fn == fn:
+                    # Score similarly to main candidates
+                    sim = r.get("similarity")
+                    sim_f = float(sim) if isinstance(sim, (int, float)) else 0.0
+                    boost = float(boost_by_file.get(fn, 0.0))
+                    states = _split_states(m.get("applicable_states") or "")
+                    state_bonus = 0.03 if (state_norm and states and state_norm in states) else 0.0
+                    best_by_file[fn] = {
+                        **r,
+                        "_source_id": str(m.get("source_id") or "") or str(r.get("id") or ""),
+                        "_file_name": fn,
+                        "_boost": boost,
+                        "_adjusted": sim_f + boost + state_bonus,
+                    }
+                    break
+
+        for fn, c in best_by_file.items():
+            _add_candidate(c, force=True)
+        for sid, c in best_by_source.items():
+            _add_candidate(c, force=True)
+
+    # Fill the remaining slots with best-scoring candidates (respecting diversity caps).
+    for c in candidates:
+        if len(citations) >= max_total_chunks:
+            break
+        src_id = str(c.get("_source_id") or "")
+        if not src_id:
+            continue
+        _add_candidate(c, force=False)
+
     # Case studies / testimonials retrieval (for social proof)
     case_study_query = f"{product_display_name} case study testimonial results outcomes success"
     case_study_results = service.query(
@@ -203,6 +465,8 @@ async def build_product_evidence_pack(
                 chunk_id=str(r.get("id") or ""),
                 source_kb_id=meta.get("source_id") or None,
                 title=meta.get("title") or None,
+                file_name=meta.get("file_name") or None,
+                document_type=meta.get("document_type") or None,
                 excerpt=_excerpt(content, 400),  # Slightly longer for case studies
                 category=meta.get("category") or None,
                 subcategory=meta.get("subcategory") or None,
@@ -210,6 +474,9 @@ async def build_product_evidence_pack(
                 applicable_states=_split_states(meta.get("applicable_states") or ""),
                 chunk_index=meta.get("chunk_index"),
                 total_chunks=meta.get("total_chunks"),
+                similarity=r.get("similarity"),
+                adjusted_score=r.get("similarity"),
+                boost=None,
             )
         )
 

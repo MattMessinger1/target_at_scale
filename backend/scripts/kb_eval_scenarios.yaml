@@ -1,0 +1,26 @@
+scenarios:
+  # Add/edit scenarios over time. The key metric to watch early is:
+  # - Are we retrieving diverse, high-signal sources (not many chunks from one doc)?
+  # - Do your expected "authoritative" docs show up in top evidence?
+  #
+  # Tip: Use the Evidence panel in the UI to copy/paste `file:` names into expectations.
+  - id: care_coaching_FL_titleiii
+    product: "CARE Coaching"
+    state: "FL"
+    audiences:
+      - "Title III Coordinators"
+      - "ELL/Multilingual Directors"
+    expected:
+      must_have_files: []
+      avoid_files: []
+
+  - id: wida_model_CO_assessment
+    product: "WIDA MODEL Online"
+    state: "CO"
+    audiences:
+      - "District assessment coordinators"
+      - "Title III Coordinators"
+    expected:
+      must_have_files: []
+      avoid_files: []
+

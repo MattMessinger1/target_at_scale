@@ -378,6 +378,8 @@ export interface EvidenceChunkCitation {
   chunk_id: string
   source_kb_id?: string | null
   title?: string | null
+  file_name?: string | null
+  document_type?: string | null
   excerpt: string
   category?: string | null
   subcategory?: string | null
@@ -385,6 +387,9 @@ export interface EvidenceChunkCitation {
   applicable_states?: string[] | null
   chunk_index?: number | null
   total_chunks?: number | null
+  similarity?: number | null
+  adjusted_score?: number | null
+  boost?: number | null
 }
 
 export interface MicroOfferCandidate {
