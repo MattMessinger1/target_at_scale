@@ -1129,10 +1129,20 @@ export const api = {
       return fetchApi<CoverageResponse>(`/research/coverage?${params.toString()}`)
     },
     archiveAllCache: () => {
-      return fetchApi<{ deep_research_archived: number; district_research_archived: number }>(
-        '/research/cache/archive',
-        { method: 'POST' }
-      )
+      return fetchApi<{
+        deep_research_archived?: number
+        district_research_archived?: number
+        archived_deep_research?: number
+        archived_district_research?: number
+      }>('/research/cache/archive', { method: 'POST' })
+    },
+    restoreAllCache: () => {
+      return fetchApi<{
+        deep_research_restored?: number
+        district_research_restored?: number
+        restored_deep_research?: number
+        restored_district_research?: number
+      }>('/research/cache/restore', { method: 'POST' })
     },
   },
 

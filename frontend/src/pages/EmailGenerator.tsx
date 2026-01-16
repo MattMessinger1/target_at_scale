@@ -39,7 +39,7 @@ import { ProductSelector } from '../components/ProductSelector'
 import { StateSelector, SelectedState } from '../components/StateSelector'
 import { AudienceSelector } from '../components/AudienceSelector'
 import { CurationStep } from '../components/CurationStep'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
 
 type Step = 'select' | 'research' | 'curate' | 'generate' | 'done'
 
@@ -2575,7 +2575,7 @@ function EmailGeneratorPipeline() {
   // Show confirmation before re-searching if there are completed results
   const handleReSearch = () => {
     if (!canPrep) return
-    if (cacheStatus?.status === 'completed' || prep) {
+    if (cacheStatus?.status === 'completed' || cacheStatus?.status === 'expired' || prep) {
       setShowReSearchConfirm(true)
     } else {
       handleReSearchConfirmed()
@@ -3694,6 +3694,8 @@ function EmailGeneratorPipeline() {
                     ? 'border-emerald-700/50 bg-emerald-900/20'
                     : cacheStatus.status === 'in_progress'
                     ? 'border-amber-700/50 bg-amber-900/20'
+                    : cacheStatus.status === 'expired'
+                    ? 'border-amber-700/50 bg-amber-900/10'
                     : 'border-slate-700 bg-slate-800/50'
                 }`}>
                   {cacheStatus.status === 'completed' && (
@@ -3713,6 +3715,25 @@ function EmailGeneratorPipeline() {
                         </div>
                         <div className="mt-2 text-xs text-emerald-200/60">
                           Cached research is ready. Click Continue to add purpose and optionally include cached items.
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {cacheStatus.status === 'expired' && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-full bg-amber-600/20 flex items-center justify-center flex-shrink-0">
+                        <AlertCircle className="w-4 h-4 text-amber-400" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-amber-300">
+                          Stale cached results available
+                        </div>
+                        <div className="mt-1 text-sm text-amber-200/80">
+                          Found {typeof cacheStatus.hook_count === 'number' ? cacheStatus.hook_count : 'cached'} requirements {cacheStatus.cache_age_days === 0 ? 'today' : `${cacheStatus.cache_age_days} days ago`}.
+                          These results are older than 30 days, but you can still reuse them to avoid new research costs.
+                        </div>
+                        <div className="mt-2 text-xs text-amber-200/60">
+                          Click Continue to select optional cached items, or Re-search if you need fresh results.
                         </div>
                       </div>
                     </div>
@@ -3806,7 +3827,7 @@ function EmailGeneratorPipeline() {
               <div className="text-xs text-slate-400">{selectedCachedHooks.length}/2 selected</div>
                     </div>
             <div className="text-xs text-slate-500 mb-4">
-              Uses monthly cached research only. If no cache exists for a state, hooks will be unavailable.
+              Uses cached research (may be stale). If no cache exists for a state, hooks will be unavailable.
                 </div>
                 
             <div className="space-y-3">

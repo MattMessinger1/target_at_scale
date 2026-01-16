@@ -448,11 +448,9 @@ async def get_cache_status(
     if not entry:
         return {"status": "not_found"}
     
-    # Check if it's expired (older than TTL)
+    # Compute cache age (TTL uses days granularity)
     cache_age = datetime.utcnow() - entry.created_at
-    if cache_age.days >= CACHE_TTL_DAYS:
-        return {"status": "expired", "cache_age_days": cache_age.days}
-    
+
     response = {
         "status": entry.status,
         "cache_age_days": cache_age.days,
@@ -468,7 +466,12 @@ async def get_cache_status(
             len(results.get("state_interventions", []))
         )
         response["hook_count"] = hook_count
-        response["expires_in_days"] = CACHE_TTL_DAYS - cache_age.days
+        response["expires_in_days"] = max(0, CACHE_TTL_DAYS - cache_age.days)
+        
+        # If it's older than TTL, keep it usable but mark as expired/stale for UI messaging.
+        if cache_age.days >= CACHE_TTL_DAYS:
+            response["status"] = "expired"
+            response["expires_in_days"] = 0
     
     elif entry.status == "in_progress":
         started = entry.started_at or entry.created_at
@@ -478,6 +481,11 @@ async def get_cache_status(
     
     elif entry.status == "failed":
         response["error"] = entry.error_message
+    
+    # If expired but not completed (rare), still surface age + cached_at for transparency.
+    if cache_age.days >= CACHE_TTL_DAYS and entry.status == "completed":
+        response["status"] = "expired"
+        response["expires_in_days"] = 0
     
     return response
 

@@ -35,6 +35,7 @@ export default function ResearchCoverage() {
   const [selectedStates, setSelectedStates] = useState<Set<string>>(new Set())
   const [widaOnly, setWidaOnly] = useState(true)
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false)
   const queryClient = useQueryClient()
 
   // Fetch coverage data
@@ -50,10 +51,27 @@ export default function ResearchCoverage() {
       // Refetch coverage to show clean slate
       queryClient.invalidateQueries({ queryKey: ['research-coverage'] })
       setShowArchiveConfirm(false)
-      alert(`Archived ${data.deep_research_archived} state research + ${data.district_research_archived} district research entries`)
+      const deep = data.deep_research_archived ?? data.archived_deep_research ?? 0
+      const district = data.district_research_archived ?? data.archived_district_research ?? 0
+      alert(`Archived ${deep} state research + ${district} district research entries`)
     },
     onError: (error) => {
       alert(`Failed to archive: ${error}`)
+    }
+  })
+  
+  // Restore mutation
+  const restoreMutation = useMutation({
+    mutationFn: () => api.research.restoreAllCache(),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['research-coverage'] })
+      setShowRestoreConfirm(false)
+      const deep = data.deep_research_restored ?? data.restored_deep_research ?? 0
+      const district = data.district_research_restored ?? data.restored_district_research ?? 0
+      alert(`Restored ${deep} state research + ${district} district research entries`)
+    },
+    onError: (error) => {
+      alert(`Failed to restore: ${error}`)
     }
   })
 
@@ -170,6 +188,12 @@ export default function ResearchCoverage() {
               >
                 <Archive className="w-4 h-4" />
                 Archive All Cache
+              </button>
+              <button
+                onClick={() => setShowRestoreConfirm(true)}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-300 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                Restore Cache
               </button>
               <button
                 onClick={() => refetch()}
@@ -400,11 +424,11 @@ export default function ResearchCoverage() {
         <div className="mt-6 flex items-center justify-center gap-6 text-sm text-slate-400">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>Completed (cached for 30 days)</span>
+            <span>Completed (cached; age shown)</span>
           </div>
           <div className="flex items-center gap-2">
             <XCircle className="w-4 h-4 text-red-400" />
-            <span>Missing or expired</span>
+            <span>Missing (no cache)</span>
           </div>
         </div>
       </main>
@@ -434,6 +458,34 @@ export default function ResearchCoverage() {
                 className="px-4 py-2 text-sm bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition-colors disabled:opacity-50"
               >
                 {archiveMutation.isPending ? 'Archiving...' : 'Archive All'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Restore Confirmation Modal */}
+      {showRestoreConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 max-w-md mx-4 shadow-2xl">
+            <h3 className="text-lg font-semibold text-slate-100 mb-2">Restore Archived Research Cache?</h3>
+            <p className="text-slate-400 text-sm mb-4">
+              This will un-archive all previously archived research cache entries. They will reappear in the coverage matrix
+              and become eligible for reuse.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowRestoreConfirm(false)}
+                className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200 hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => restoreMutation.mutate()}
+                disabled={restoreMutation.isPending}
+                className="px-4 py-2 text-sm bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors disabled:opacity-50"
+              >
+                {restoreMutation.isPending ? 'Restoring...' : 'Restore All'}
               </button>
             </div>
           </div>

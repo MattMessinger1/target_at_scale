@@ -2050,14 +2050,30 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         
         This enables instant loads for previously-completed research.
         Returns 404 if no cached prep is available.
+        
+        IMPORTANT:
+        - This endpoint is intentionally more permissive than Deep Research TTL logic.
+        - It allows reusing the most recent cached results even if older than TTL,
+          to avoid incurring costs for large batch re-research.
         """
-        from ...research.deep_research import get_cached_research
         from ...research.product_briefs import normalize_product_key
+        from ...db.models import DeepResearchCache, DistrictResearchCache
         
         product_key = normalize_product_key(product)
         state_code = state.strip().upper()
         
-        cached = await get_cached_research(db, state_code, product_key)
+        # Fetch the most recent completed state research cache (ignore TTL; exclude archived)
+        deep_result = await db.execute(
+            select(DeepResearchCache)
+            .where(DeepResearchCache.state_code == state_code)
+            .where(DeepResearchCache.product_key == product_key)
+            .where(DeepResearchCache.research_type == "funding_compliance")
+            .where(DeepResearchCache.status == "completed")
+            .where(DeepResearchCache.is_archived.is_(False))
+            .order_by(DeepResearchCache.created_at.desc())
+            .limit(1)
+        )
+        cached = deep_result.scalar_one_or_none()
         
         if cached and cached.full_prep_json:
             cache_age = datetime.utcnow() - cached.created_at
@@ -2067,8 +2083,174 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 "cache_age_days": cache_age.days,
                 "cached_at": cached.created_at.isoformat(),
             }
-        
-        raise HTTPException(status_code=404, detail="No cached prep available")
+
+        if not cached or not (cached.results_json and isinstance(cached.results_json, dict) and cached.results_json):
+            raise HTTPException(status_code=404, detail="No cached prep available")
+
+        # --------------------------------------------------------------------
+        # Legacy cache fallback: reconstruct prep payload from results_json.
+        # Avoids any dependency on embeddings/RAG availability.
+        # --------------------------------------------------------------------
+        from ...pipeline.hook_gate import gate_treasure_hooks
+        from ...pipeline.schemas import (
+            EvidencePack,
+            WebHook,
+            FilteredRequirement as FilteredRequirementModel,
+            DistrictResearchResult as DistrictResearchResultModel,
+            FilteredDistrictHook as FilteredDistrictHookModel,
+            ConferenceOpportunity as ConferenceOpportunityModel,
+        )
+        from ...research.deep_research import convert_to_webhooks
+        from ...research.quality_gate import filter_conferences
+
+        # Minimal evidence pack (no RAG required)
+        evidence_pack = EvidencePack(
+            product=product,
+            product_key=product_key,
+            state=state_code,
+            retrieved_chunks=[],
+            micro_offer_candidates=[],
+            case_study_chunks=[],
+            supplemental_brief=None,
+        )
+
+        # Convert deep research results to hook dicts, then to typed WebHooks
+        hook_dicts = await convert_to_webhooks(cached.results_json, product_key)
+        hooks: List[WebHook] = []
+        for item in hook_dicts or []:
+            try:
+                hooks.append(WebHook(**(item or {})))
+            except Exception:
+                continue
+
+        gated, filtered_reqs, _report = gate_treasure_hooks(hooks, evidence_pack=evidence_pack)
+        filtered_requirements_models = [
+            FilteredRequirementModel(hook=fr.hook, reason=fr.reason, reason_label=fr.reason_label)
+            for fr in (filtered_reqs or [])
+        ]
+
+        # Optional: attach cached district research (ignore TTL; exclude archived)
+        district_research_result = None
+        try:
+            district_result = await db.execute(
+                select(DistrictResearchCache)
+                .where(DistrictResearchCache.state_code == state_code)
+                .where(DistrictResearchCache.product_key == product_key)
+                .where(DistrictResearchCache.status == "completed")
+                .where(DistrictResearchCache.is_archived.is_(False))
+                .order_by(DistrictResearchCache.created_at.desc())
+                .limit(1)
+            )
+            district_entry = district_result.scalar_one_or_none()
+            if district_entry and isinstance(district_entry.results_json, dict) and district_entry.results_json:
+                district_data: Dict[str, Any] = dict(district_entry.results_json or {})
+                if isinstance(district_entry.filtered_items_json, list):
+                    district_data["filtered_hooks"] = district_entry.filtered_items_json
+
+                # Convert passed_hooks to WebHook models
+                passed_webhooks: List[WebHook] = []
+                for h in (district_data.get("passed_hooks") or []):
+                    try:
+                        if isinstance(h, dict):
+                            passed_webhooks.append(WebHook(**h))
+                    except Exception:
+                        continue
+
+                # Convert filtered_hooks to FilteredDistrictHook models
+                filtered_hooks: List[FilteredDistrictHookModel] = []
+                for fh in (district_data.get("filtered_hooks") or []):
+                    try:
+                        if not isinstance(fh, dict):
+                            continue
+                        hook_data = fh.get("hook", {})
+                        if not isinstance(hook_data, dict):
+                            hook_data = {}
+                        filtered_hooks.append(
+                            FilteredDistrictHookModel(
+                                hook=WebHook(
+                                    hook_id=hook_data.get("hook_id"),
+                                    hook_type=hook_data.get("hook_type"),
+                                    quote=hook_data.get("quote", ""),
+                                    link=hook_data.get("link", ""),
+                                    trigger_excerpt=hook_data.get("trigger_excerpt", ""),
+                                    eligibility_excerpt=hook_data.get("eligibility_excerpt"),
+                                    why_relevant=hook_data.get("why_relevant", ""),
+                                    confidence=hook_data.get("confidence", "medium"),
+                                    source_quality_reason=hook_data.get("source_quality_reason"),
+                                    source_level=hook_data.get("source_level", "district"),
+                                    district_name=hook_data.get("district_name"),
+                                    why_district_specific=hook_data.get("why_district_specific"),
+                                    deadline_warning=hook_data.get("deadline_warning"),
+                                ),
+                                filter_reason=str(fh.get("filter_reason", "")),
+                                filter_detail=str(fh.get("filter_detail", "")),
+                            )
+                        )
+                    except Exception:
+                        continue
+
+                district_research_result = DistrictResearchResultModel(
+                    districts_surveyed=(district_data.get("districts_surveyed") or district_entry.districts_surveyed or []),
+                    passed_hooks=passed_webhooks,
+                    filtered_hooks=filtered_hooks,
+                    status=str(district_data.get("status", "completed")),
+                    research_summary=district_data.get("research_summary"),
+                )
+        except Exception:
+            # Non-critical: proceed without district research
+            district_research_result = None
+
+        # Optional: attach cached conferences (ignore TTL; exclude archived)
+        conferences: List[ConferenceOpportunityModel] = []
+        try:
+            conf_result = await db.execute(
+                select(DeepResearchCache)
+                .where(DeepResearchCache.state_code == state_code)
+                .where(DeepResearchCache.product_key == product_key)
+                .where(DeepResearchCache.research_type == "conference")
+                .where(DeepResearchCache.status == "completed")
+                .where(DeepResearchCache.is_archived.is_(False))
+                .order_by(DeepResearchCache.created_at.desc())
+                .limit(1)
+            )
+            conf_entry = conf_result.scalar_one_or_none()
+            if conf_entry and isinstance(conf_entry.results_json, dict) and conf_entry.results_json:
+                raw_conferences = conf_entry.results_json.get("conferences", []) or []
+                passed_confs, _ = filter_conferences(raw_conferences, product_key)
+                for c in passed_confs or []:
+                    try:
+                        if isinstance(c, dict):
+                            conferences.append(ConferenceOpportunityModel(**c))
+                    except Exception:
+                        continue
+        except Exception:
+            conferences = []
+
+        # Build final payload (JSON-safe)
+        result_payload = {
+            "evidence_pack": _dump_model(evidence_pack),
+            "treasure_hooks": [_dump_model(h) for h in (gated or [])],
+            "filtered_requirements": [_dump_model(fr) for fr in (filtered_requirements_models or [])],
+            "district_research": _dump_model(district_research_result) if district_research_result else None,
+            "conferences": [_dump_model(c) for c in (conferences or [])],
+            "warnings": [],
+        }
+
+        # Best-effort: persist reconstructed prep for instant future loads
+        try:
+            cached.full_prep_json = result_payload
+            await db.commit()
+        except Exception as e:
+            logger.warning(f"Failed to persist reconstructed full_prep_json for {state_code}/{product_key}: {e}")
+            await db.rollback()
+
+        cache_age = datetime.utcnow() - cached.created_at
+        return {
+            "cached": True,
+            "result": result_payload,
+            "cache_age_days": cache_age.days,
+            "cached_at": cached.created_at.isoformat(),
+        }
 
     @router.get("/pipeline/prep/active")
     async def get_active_research():

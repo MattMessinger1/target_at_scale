@@ -515,17 +515,17 @@ async def get_research_coverage(
     
     # Determine which states to check
     states_to_check = WIDA_STATES if wida_only else list(STATE_NAMES.keys())
-    
-    # Cache TTL (30 days)
-    cache_ttl_days = 30
-    cutoff_date = datetime.utcnow() - timedelta(days=cache_ttl_days)
-    
+
+    # NOTE: We intentionally do NOT apply a TTL cutoff here.
+    # Coverage is used to understand what exists in cache (even if stale),
+    # so teams can reuse existing results without triggering new paid research.
+    # Archived entries remain hidden (restore is available via /research/cache/restore).
+
     # Query all deep research cache entries for this product (exclude archived)
     deep_cache_result = await db.execute(
         select(DeepResearchCache)
         .where(DeepResearchCache.product_key == product_key)
         .where(DeepResearchCache.status == "completed")
-        .where(DeepResearchCache.created_at > cutoff_date)
         .where(DeepResearchCache.is_archived.is_(False))
     )
     deep_cache_entries = deep_cache_result.scalars().all()
@@ -541,7 +541,6 @@ async def get_research_coverage(
         select(DistrictResearchCache)
         .where(DistrictResearchCache.product_key == product_key)
         .where(DistrictResearchCache.status == "completed")
-        .where(DistrictResearchCache.created_at > cutoff_date)
         .where(DistrictResearchCache.is_archived.is_(False))
     )
     district_cache_entries = district_cache_result.scalars().all()
@@ -673,6 +672,56 @@ async def archive_all_cache(
     
     return {
         "message": "Research cache archived successfully",
+        # Legacy keys (kept for backward compatibility)
         "archived_deep_research": deep_count,
         "archived_district_research": district_count,
+        # Preferred keys (used by frontend)
+        "deep_research_archived": deep_count,
+        "district_research_archived": district_count,
+    }
+
+
+@router.post("/cache/restore")
+async def restore_all_cache(
+    db: AsyncSession = Depends(get_db),
+):
+    """Restore (un-archive) all archived research cache records.
+    
+    This marks all archived cache entries as active again so they will:
+    - appear in the coverage matrix
+    - be eligible for cache lookups (subject to any TTL rules)
+    
+    Returns:
+        Count of restored records for each cache type
+    """
+    from sqlalchemy import update
+    
+    # Restore deep research cache entries
+    deep_result = await db.execute(
+        update(DeepResearchCache)
+        .where(DeepResearchCache.is_archived.is_(True))
+        .values(is_archived=False)
+    )
+    deep_count = deep_result.rowcount
+    
+    # Restore district research cache entries
+    district_result = await db.execute(
+        update(DistrictResearchCache)
+        .where(DistrictResearchCache.is_archived.is_(True))
+        .values(is_archived=False)
+    )
+    district_count = district_result.rowcount
+    
+    await db.commit()
+    
+    logger.info(f"Restored {deep_count} deep research entries and {district_count} district research entries")
+    
+    return {
+        "message": "Research cache restored successfully",
+        # Preferred keys (used by frontend)
+        "deep_research_restored": deep_count,
+        "district_research_restored": district_count,
+        # Legacy-style keys (if any downstream expects this pattern)
+        "restored_deep_research": deep_count,
+        "restored_district_research": district_count,
     }
