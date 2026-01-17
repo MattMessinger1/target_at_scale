@@ -1019,7 +1019,7 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
             resp = await client.responses.create(
                 model=settings.openai_pro_model,  # gpt-5.2-pro
                 input=full_prompt,
-                reasoning={"effort": "medium"},  # Normal reasoning depth (faster than high)
+                reasoning={"effort": "low"},  # Low reasoning (faster ~2-3 min vs 5-10 min medium)
                 background=True,  # Non-blocking, returns task ID for polling
             )
             
