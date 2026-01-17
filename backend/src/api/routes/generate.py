@@ -718,11 +718,12 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                             _email_tasks[task_id]["progress"] = min(95, 20 + int(pct * 0.75))
                         
                         async def on_openai_started(response_id: str, aud: str):
-                            """Checkpoint OpenAI response_id for recovery."""
+                            """Checkpoint OpenAI response_id AND selected_hook for recovery."""
                             await checkpoint_email_task(
                                 "email_generation_polling", 25, f"Email generation in progress ({aud})...",
                                 openai_response_id=response_id,
-                                openai_audience=aud
+                                openai_audience=aud,
+                                selected_hook_data=_dump_model(primary)
                             )
                         
                         for aud_idx, aud in enumerate(audiences):
@@ -1084,11 +1085,12 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         _email_tasks[task_id]["progress"] = min(95, 20 + int(pct * 0.75))
                     
                     async def on_openai_started(response_id: str, aud: str):
-                        """Checkpoint OpenAI response_id for recovery."""
+                        """Checkpoint OpenAI response_id AND selected_hook for recovery."""
                         await checkpoint_email_task(
                             "email_generation_polling", 25, f"Email generation in progress ({aud})...",
                             openai_response_id=response_id,
-                            openai_audience=aud
+                            openai_audience=aud,
+                            selected_hook_data=selected_hook_data
                         )
                     
                     # Extract purpose prompt and build supporting context from selected cached hooks
