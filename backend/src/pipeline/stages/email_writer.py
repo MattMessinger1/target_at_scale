@@ -1012,14 +1012,12 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
     raw = ""
     
     if settings.use_email_reasoning:
-        # ---- EXPENSIVE: Responses API with extended reasoning ----
+        # ---- Responses API (gpt-5.2-pro without explicit reasoning) ----
         try:
             # Start task in background mode (returns immediately with task ID)
-            # This avoids HTTP timeout issues for long-running xhigh reasoning
             resp = await client.responses.create(
                 model=settings.openai_pro_model,  # gpt-5.2-pro
                 input=full_prompt,
-                reasoning={"effort": "low"},  # Low reasoning (faster ~2-3 min vs 5-10 min medium)
                 background=True,  # Non-blocking, returns task ID for polling
             )
             
