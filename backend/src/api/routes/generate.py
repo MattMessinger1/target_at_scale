@@ -717,6 +717,14 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                             _email_tasks[task_id]["message"] = msg
                             _email_tasks[task_id]["progress"] = min(95, 20 + int(pct * 0.75))
                         
+                        async def on_openai_started(response_id: str, aud: str):
+                            """Checkpoint OpenAI response_id for recovery."""
+                            await checkpoint_email_task(
+                                "email_generation_polling", 25, f"Email generation in progress ({aud})...",
+                                openai_response_id=response_id,
+                                openai_audience=aud
+                            )
+                        
                         for aud_idx, aud in enumerate(audiences):
                             _email_tasks[task_id]["message"] = f"Generating email for {aud}..."
                             _email_tasks[task_id]["progress"] = 20 + int((aud_idx / max(len(audiences), 1)) * 75)
@@ -735,6 +743,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                 purpose_prompt=purpose_text,
                                 supporting_context=supporting_context,
                                 on_progress=update_progress,
+                                on_openai_started=on_openai_started,
                             )
                             variants.append(variant)
                         
@@ -1074,6 +1083,14 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         _email_tasks[task_id]["message"] = msg
                         _email_tasks[task_id]["progress"] = min(95, 20 + int(pct * 0.75))
                     
+                    async def on_openai_started(response_id: str, aud: str):
+                        """Checkpoint OpenAI response_id for recovery."""
+                        await checkpoint_email_task(
+                            "email_generation_polling", 25, f"Email generation in progress ({aud})...",
+                            openai_response_id=response_id,
+                            openai_audience=aud
+                        )
+                    
                     # Extract purpose prompt and build supporting context from selected cached hooks
                     purpose_prompt = request.purpose_prompt
                     supporting_context: Optional[List[str]] = None
@@ -1117,6 +1134,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                 purpose_prompt=purpose_prompt,
                                 supporting_context=supporting_context,
                                 on_progress=update_progress,
+                                on_openai_started=on_openai_started,
                             )
                             variants.append(variant)
                     else:
@@ -1145,6 +1163,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                 purpose_prompt=purpose_prompt,
                                 supporting_context=supporting_context,
                                 on_progress=update_progress,
+                                on_openai_started=on_openai_started,
                             )
                             variants.append(variant)
                     

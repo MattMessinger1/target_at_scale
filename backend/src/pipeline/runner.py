@@ -15,7 +15,7 @@ import logging
 import time
 from datetime import datetime, timezone
 from uuid import uuid4
-from typing import Callable, List, Optional, Tuple
+from typing import Awaitable, Callable, List, Optional, Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -103,6 +103,7 @@ async def _run_variant(
     supporting_context: Optional[List[str]] = None,
     on_progress: Optional[Callable[[str, float], None]] = None,
     golden_examples_text: Optional[str] = None,
+    on_openai_started: Optional[Callable[[str, str], Awaitable[None]]] = None,
 ) -> AudienceVariantResult:
     logger.info(
         "Pipeline: Starting email generation for %s/%s (audience=%s)",
@@ -132,6 +133,7 @@ async def _run_variant(
         prior_email_body=None,
         on_progress=on_progress,
         golden_examples_text=golden_examples_text,
+        on_openai_started=on_openai_started,
     )
     variant_trace.stage_ms["email_writer_0"] = int((time.perf_counter() - t0) * 1000)
 
@@ -174,6 +176,7 @@ async def _run_variant(
             prior_email_body=prev_email,
             on_progress=on_progress,
             golden_examples_text=golden_examples_text,
+            on_openai_started=on_openai_started,
         )
         variant_trace.stage_ms[f"email_writer_{it}"] = int((time.perf_counter() - t1) * 1000)
 

@@ -15,7 +15,7 @@ import json
 import logging
 import re
 import time
-from typing import Callable, List, Optional, Tuple
+from typing import Awaitable, Callable, List, Optional, Tuple
 
 from openai import AsyncOpenAI
 from sqlalchemy import select, or_
@@ -912,12 +912,15 @@ async def write_email_variant(
     prior_email_body: Optional[str] = None,
     on_progress: Optional[Callable[[str, float], None]] = None,
     golden_examples_text: Optional[str] = None,
+    on_openai_started: Optional[Callable[[str, str], Awaitable[None]]] = None,
 ) -> Tuple[EmailDraft, List[ClaimsMapEntry]]:
     """Write or minimally repair an email variant.
     
     Args:
         golden_examples_text: Optional formatted text of approved emails to use as few-shot examples.
                               Retrieved via get_golden_examples() and formatted via format_golden_examples().
+        on_openai_started: Optional async callback called with (response_id, audience) immediately after
+                           OpenAI background task starts. Used to checkpoint the response_id for recovery.
     """
     if not settings.openai_api_key:
         raise RuntimeError("OPENAI_API_KEY is not set")
@@ -1024,6 +1027,10 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
                 "EmailWriter: Task started id=%s, status=%s for %s/%s (audience=%s)",
                 resp.id, resp.status, state_code, product, audience
             )
+            
+            # Checkpoint the response_id immediately so recovery can resume polling
+            if on_openai_started:
+                await on_openai_started(resp.id, audience)
             
             # Poll for completion (xhigh can take 2-5 minutes)
             poll_interval = 15  # seconds
