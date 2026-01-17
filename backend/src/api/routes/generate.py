@@ -1217,6 +1217,71 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                     if hook_id:
                                         cached_hook_ids.append(hook_id)
                         
+                        def _minimal_hook_payload(selected: Optional[SelectedHook]) -> Optional[dict]:
+                            """Minimal, always-JSON-safe representation of the selected hook for fallback saves."""
+                            try:
+                                if not selected or not getattr(selected, "hook", None):
+                                    return None
+                                h = selected.hook
+                                return {
+                                    "hook": {
+                                        "hook_id": getattr(h, "hook_id", None),
+                                        "hook_type": getattr(h, "hook_type", None),
+                                        "quote": getattr(h, "quote", None),
+                                        "link": getattr(h, "link", None),
+                                        "trigger_excerpt": getattr(h, "trigger_excerpt", None),
+                                        "eligibility_excerpt": getattr(h, "eligibility_excerpt", None),
+                                        "why_relevant": getattr(h, "why_relevant", None),
+                                        "confidence": getattr(h, "confidence", None),
+                                    },
+                                    "rank": getattr(selected, "rank", None),
+                                    "reasons": getattr(selected, "reasons", None),
+                                }
+                            except Exception:
+                                return None
+
+                        def _minimal_variants_payload(vs) -> list:
+                            """Minimal, always-JSON-safe variants payload (preserves subject/body + selected hook)."""
+                            out: list = []
+                            for v in vs or []:
+                                try:
+                                    draft = getattr(v, "email_draft", None)
+                                    out.append(
+                                        {
+                                            "audience": getattr(v, "audience", None),
+                                            "selected_hook": _minimal_hook_payload(getattr(v, "selected_hook", None)),
+                                            "secondary_hook": _minimal_hook_payload(getattr(v, "secondary_hook", None)),
+                                            "email_draft": {
+                                                "subject_line": getattr(draft, "subject_line", ""),
+                                                "email_body": getattr(draft, "email_body", ""),
+                                            },
+                                        }
+                                    )
+                                except Exception:
+                                    # Keep going; never fail fallback payload build
+                                    continue
+                            return out
+
+                        # Build the full pipeline_response payload; if it still can't be JSON-serialized,
+                        # fall back to a minimal payload so we never lose the email draft.
+                        pipeline_response_payload = {
+                            "evidence_pack": _dump_model(evidence_pack),
+                            "hooks": [_dump_model(h) for h in treasure_hooks],
+                            "variants": [_dump_model(v) for v in variants],
+                            "subject_preview": subject_preview,
+                        }
+                        try:
+                            json.dumps(pipeline_response_payload, ensure_ascii=False)
+                        except TypeError:
+                            pipeline_response_payload = {
+                                "variants": _minimal_variants_payload(variants),
+                                "selected_hook_links": [primary.hook.link] if primary and primary.hook and getattr(primary.hook, "link", None) else [],
+                                "primary_hook_link": primary.hook.link if primary and primary.hook and getattr(primary.hook, "link", None) else None,
+                                "subject_preview": subject_preview,
+                                "warnings": warnings,
+                                "_minimal": True,
+                            }
+
                         saved_email = SavedEmailRun(
                             run_type="email",
                             name=f"{product} - {state_full or state_code} (auto-saved)",
@@ -1228,12 +1293,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                             district_name=request.district_name,
                             purpose_prompt=request.purpose_prompt,
                             selected_cached_hook_ids=cached_hook_ids,
-                            pipeline_response={
-                                "evidence_pack": _dump_model(evidence_pack),
-                                "hooks": [_dump_model(h) for h in treasure_hooks],
-                                "variants": [_dump_model(v) for v in variants],
-                                "subject_preview": subject_preview,
-                            },
+                            pipeline_response=pipeline_response_payload,
                             selected_hook_links=[primary.hook.link] if primary else [],
                             primary_hook_link=primary.hook.link if primary else None,
                         )
@@ -1251,12 +1311,57 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         logger.warning(f"Failed to auto-save email task {task_id}: {save_err}")
                         # Rollback the failed transaction before trying again
                         await db.rollback()
-                        # Re-fetch the email_task since rollback may have expired it
+
+                        # Second attempt: minimal SavedEmailRun payload (subject/body + selected hook)
+                        try:
+                            from ...db.models import SavedEmailRun
+
+                            minimal_payload = {
+                                "variants": _minimal_variants_payload(variants),
+                                "selected_hook_links": [primary.hook.link] if primary and primary.hook and getattr(primary.hook, "link", None) else [],
+                                "primary_hook_link": primary.hook.link if primary and primary.hook and getattr(primary.hook, "link", None) else None,
+                                "subject_preview": subject_preview,
+                                "warnings": warnings,
+                                "_minimal": True,
+                            }
+                            saved_email = SavedEmailRun(
+                                run_type="email",
+                                name=f"{product} - {state_full or state_code} (auto-saved)",
+                                created_by=request.created_by,
+                                product=product,
+                                state_code=state_code,
+                                state_full=state_full,
+                                audiences=audiences,
+                                district_name=request.district_name,
+                                purpose_prompt=request.purpose_prompt,
+                                selected_cached_hook_ids=cached_hook_ids,
+                                pipeline_response=minimal_payload,
+                                selected_hook_links=minimal_payload.get("selected_hook_links", []),
+                                primary_hook_link=minimal_payload.get("primary_hook_link"),
+                            )
+                            db.add(saved_email)
+                            await db.commit()
+                            await db.refresh(saved_email)
+                            _email_tasks[task_id]["saved_run_id"] = saved_email.id
+
+                            # Link EmailTask to SavedEmailRun
+                            email_task.saved_run_id = saved_email.id
+                            await db.commit()
+                            logger.info(
+                                f"Auto-saved email task {task_id} with MINIMAL payload as SavedEmailRun {saved_email.id}"
+                            )
+                        except Exception as fallback_save_err:
+                            logger.error(
+                                f"Minimal auto-save also failed for email task {task_id}: {fallback_save_err}",
+                                exc_info=True,
+                            )
+                            await db.rollback()
+
+                        # Re-fetch the email_task since rollback may have expired it, then at least persist completion status
                         from sqlalchemy import select as sql_select
                         result_stmt = await db.execute(sql_select(EmailTask).where(EmailTask.id == task_id))
                         email_task = result_stmt.scalar_one_or_none()
                         if email_task:
-                            # Update just the status fields (without the SavedEmailRun link)
                             email_task.status = "completed"
                             email_task.progress = 100
                             email_task.message = "Email generation complete!"
