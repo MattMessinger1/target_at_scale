@@ -77,3 +77,6 @@ data/processed/
 rag_chunk_samples/
 backend/chroma_db/
 *.docx
+
+# Source document library (large binaries; keep locally, not in git deploys)
+State Research and Documents/

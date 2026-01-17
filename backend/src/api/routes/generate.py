@@ -586,19 +586,29 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     
                     has_purpose = bool(request.purpose_prompt and request.purpose_prompt.strip())
                     has_cached_hooks = bool(request.selected_cached_hooks and len(request.selected_cached_hooks) > 0)
-                    has_hooks_selected = use_forced or has_cached_hooks  # True if user selected hook_ids, hook_links, OR cached hooks
-                    # Treat cached-hook selection as explicit/forced selection (same semantics as selected_hook_ids/links)
-                    use_explicit_selection = use_forced or has_cached_hooks
+
+                    # "Selected hooks" here means *opener-driving requirement selection* (funding/compliance hooks),
+                    # i.e., explicit hook_ids/links from the Research stage. Cached hooks on the Purpose step are
+                    # optional *supporting context* and should NOT force a deep-research re-run during email creation.
+                    has_hooks_selected = use_forced  # True only if user selected hook_ids or hook_links
+
+                    # Treat only explicit hook selection as "forced" selection for mode semantics.
+                    # Cached hooks remain supporting context (handled in purpose-only mode as well).
+                    use_explicit_selection = use_forced
                     
                     # Validate: at least one input required
-                    if not has_purpose and not has_hooks_selected:
+                    # - purpose prompt (Purpose step), OR
+                    # - explicit hook selection (Select step), OR
+                    # - cached hooks (legacy/edge flows)
+                    if not has_purpose and not has_hooks_selected and not has_cached_hooks:
                         raise RuntimeError(
                             "Please provide a purpose prompt OR select at least one hook. "
                             "You can also provide both for more targeted emails."
                         )
                     
-                    # Purpose-only mode: user provided purpose but didn't select any hooks
-                    purpose_only_mode = has_purpose and not has_hooks_selected
+                    # Purpose-only mode: user provided purpose and did NOT explicitly select opener hooks.
+                    # NOTE: cached hooks are allowed here and treated as supporting context.
+                    purpose_only_mode = has_purpose and not use_forced
                     
                     # Helper to checkpoint EmailTask to DB
                     async def checkpoint_email_task(
