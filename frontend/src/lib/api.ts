@@ -579,6 +579,7 @@ export interface RubricItem {
 
 export interface EmailRubric {
   subject_line: RubricItem
+  hook_usage: RubricItem  // Is the funding/compliance hook present and connected?
   product_relevance: RubricItem
   tone: RubricItem
   flow: RubricItem
@@ -599,6 +600,7 @@ export interface EmailReviewRequest {
   edited_subject_line: string
   edited_email_body: string
   rubric: EmailRubric
+  evidence_chunks_used?: string[] | null  // Chunk IDs used in generating this email
 }
 
 export interface EmailReviewResponse {
@@ -661,6 +663,86 @@ export interface GoldenEmailDetail {
   rubric_scores?: Record<string, number> | null
   hook_types_used?: string[] | null
   review_id?: number | null
+}
+
+// Negative Email Examples (anti-patterns)
+export interface NegativeEmailListItem {
+  id: number
+  created_at?: string | null
+  product: string
+  product_key?: string | null
+  state_code: string
+  audience: string
+  district_name?: string | null
+  subject_line: string
+  low_score_categories: string[]
+  rubric_scores?: Record<string, number> | null
+  weight: number
+  review_id?: number | null
+}
+
+export interface NegativeEmailListResponse {
+  total: number
+  items: NegativeEmailListItem[]
+}
+
+export interface NegativeEmailDetail {
+  id: number
+  created_at?: string | null
+  product: string
+  product_key?: string | null
+  state_code: string
+  audience: string
+  district_name?: string | null
+  subject_line: string
+  email_body: string
+  low_score_categories: string[]
+  rubric_scores?: Record<string, number> | null
+  weight: number
+  purpose_prompt?: string | null
+  review_id?: number | null
+}
+
+// Quality Metrics (dashboard)
+export interface QualityMetrics {
+  total_reviews: number
+  total_golden: number
+  total_negative: number
+  avg_scores_by_category: Record<string, number>
+  low_score_categories_frequency: Record<string, number>
+}
+
+// Chunk Feedback (flagging)
+export interface ChunkFlagRequest {
+  chunk_id: string
+  source_kb_id?: string | null
+  file_name?: string | null
+  product_key: string
+  state_code?: string | null
+  flag_reason?: string
+  notes?: string | null
+  review_id?: number | null
+}
+
+export interface ChunkFeedbackListItem {
+  id: number
+  created_at?: string | null
+  chunk_id: string
+  source_kb_id?: string | null
+  file_name?: string | null
+  product_key: string
+  state_code?: string | null
+  flag_reason: string
+  notes?: string | null
+  review_id?: number | null
+  resolved: boolean
+  resolved_at?: string | null
+  resolution_notes?: string | null
+}
+
+export interface ChunkFeedbackListResponse {
+  total: number
+  items: ChunkFeedbackListItem[]
 }
 
 // ----------------------------------------------------------------------------
@@ -1516,6 +1598,46 @@ export const api = {
       return fetchApi<GoldenEmailListResponse>(`/feedback/golden-emails${query ? `?${query}` : ''}`)
     },
     getGoldenEmail: (id: number) => fetchApi<GoldenEmailDetail>(`/feedback/golden-emails/${id}`),
+    
+    // Negative email examples
+    listNegativeEmails: (params?: { product?: string; state_code?: string; audience?: string; limit?: number; offset?: number }) => {
+      const searchParams = new URLSearchParams()
+      if (params?.product) searchParams.set('product', params.product)
+      if (params?.state_code) searchParams.set('state_code', params.state_code)
+      if (params?.audience) searchParams.set('audience', params.audience)
+      if (params?.limit) searchParams.set('limit', String(params.limit))
+      if (params?.offset) searchParams.set('offset', String(params.offset))
+      const query = searchParams.toString()
+      return fetchApi<NegativeEmailListResponse>(`/feedback/negative-emails${query ? `?${query}` : ''}`)
+    },
+    getNegativeEmail: (id: number) => fetchApi<NegativeEmailDetail>(`/feedback/negative-emails/${id}`),
+    
+    // Quality metrics
+    getMetrics: (params?: { product?: string; state_code?: string }) => {
+      const searchParams = new URLSearchParams()
+      if (params?.product) searchParams.set('product', params.product)
+      if (params?.state_code) searchParams.set('state_code', params.state_code)
+      const query = searchParams.toString()
+      return fetchApi<QualityMetrics>(`/feedback/metrics${query ? `?${query}` : ''}`)
+    },
+    
+    // Chunk flagging
+    flagChunk: (data: ChunkFlagRequest) =>
+      fetchApi<{ id: number }>('/feedback/chunks/flag', { method: 'POST', body: JSON.stringify(data) }),
+    listFlaggedChunks: (params?: { product_key?: string; resolved?: boolean; limit?: number; offset?: number }) => {
+      const searchParams = new URLSearchParams()
+      if (params?.product_key) searchParams.set('product_key', params.product_key)
+      if (params?.resolved !== undefined) searchParams.set('resolved', String(params.resolved))
+      if (params?.limit) searchParams.set('limit', String(params.limit))
+      if (params?.offset) searchParams.set('offset', String(params.offset))
+      const query = searchParams.toString()
+      return fetchApi<ChunkFeedbackListResponse>(`/feedback/chunks/flagged${query ? `?${query}` : ''}`)
+    },
+    resolveChunkFlag: (flagId: number, resolutionNotes?: string) =>
+      fetchApi<{ status: string; id: number }>(`/feedback/chunks/flagged/${flagId}/resolve`, { 
+        method: 'POST', 
+        body: JSON.stringify({ resolution_notes: resolutionNotes }) 
+      }),
   },
 
   savedRuns: {

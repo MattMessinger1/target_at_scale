@@ -37,6 +37,10 @@ from .stages.email_writer import (
     format_golden_examples,
     analyze_golden_patterns,
     format_learned_rules,
+    get_negative_examples,
+    format_negative_example,
+    analyze_negative_patterns,
+    format_learned_rules_with_negatives,
 )
 from .stages.validator import validate_email_draft
 from ..research.product_briefs import normalize_product_key
@@ -420,17 +424,18 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
     logger.info("Pipeline: Stage 4-6 - Generating emails for %d audiences", len(audiences))
     variants: List[AudienceVariantResult] = []
     
-    # Fetch golden examples (approved emails from user's team) for few-shot learning
+    # Fetch golden/negative examples (approved/rejected emails from user's team) for few-shot learning
     product_key = normalize_product_key(product)
-    golden_examples_cache: dict[str, str] = {}  # audience -> formatted examples
+    examples_cache: dict[str, str] = {}  # audience -> formatted examples + rules
     
-    # Analyze patterns from golden emails (product-level, computed once)
+    # Analyze patterns from golden AND negative emails (product-level, computed once)
     learned_rules_text = ""
     try:
-        patterns = await analyze_golden_patterns(db=db, product_key=product_key or "", min_examples=5)
-        learned_rules_text = format_learned_rules(patterns)
+        golden_patterns = await analyze_golden_patterns(db=db, product_key=product_key or "", min_examples=5)
+        negative_patterns = await analyze_negative_patterns(db=db, product_key=product_key or "", min_examples=3)
+        learned_rules_text = format_learned_rules_with_negatives(golden_patterns, negative_patterns)
     except Exception as e:
-        logger.warning("Failed to analyze golden patterns for %s: %s", product_key, e)
+        logger.warning("Failed to analyze patterns for %s: %s", product_key, e)
 
     for aud in audiences:
         sel = selected.get(aud)
@@ -441,9 +446,10 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
         if not sel:
             raise RuntimeError("No hooks available to generate an email (TreasureHunter returned none).")
 
-        # Get golden examples for this audience (cached per audience)
-        if aud not in golden_examples_cache:
+        # Get golden + negative examples for this audience (cached per audience)
+        if aud not in examples_cache:
             try:
+                # Golden examples (positive)
                 golden_list = await get_golden_examples(
                     db=db,
                     product_key=product_key or "",
@@ -452,11 +458,22 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
                     limit=2,
                 )
                 examples_text = format_golden_examples(golden_list) if golden_list else ""
-                # Combine examples + learned rules
-                golden_examples_cache[aud] = examples_text + learned_rules_text
+                
+                # Negative examples (avoid these)
+                negative_list = await get_negative_examples(
+                    db=db,
+                    product_key=product_key or "",
+                    state_code=state_code,
+                    audience=aud,
+                    limit=1,
+                )
+                negative_text = format_negative_example(negative_list[0]) if negative_list else ""
+                
+                # Combine: golden examples + negative example + learned rules
+                examples_cache[aud] = examples_text + negative_text + learned_rules_text
             except Exception as e:
-                logger.warning("Failed to fetch golden examples for %s: %s", aud, e)
-                golden_examples_cache[aud] = learned_rules_text  # Still use rules even if examples fail
+                logger.warning("Failed to fetch examples for %s: %s", aud, e)
+                examples_cache[aud] = learned_rules_text  # Still use rules even if examples fail
 
         try:
             variant = await _run_variant(
@@ -469,7 +486,7 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
                 treasure_hooks=treasure_hooks,
                 district_name=request.district_name,
                 district_url=request.district_url,
-                golden_examples_text=golden_examples_cache.get(aud, ""),
+                golden_examples_text=examples_cache.get(aud, ""),
             )
             variants.append(variant)
         except Exception as e:

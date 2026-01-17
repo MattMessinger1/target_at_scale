@@ -328,6 +328,9 @@ class EmailImprovementReview(Base):
 
     # Rubric: store as JSON for flexibility
     rubric: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    
+    # Evidence chunks used in generating this email (for tracking chunk quality)
+    evidence_chunks_used: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # List of chunk IDs
 
 
 class GoldenEmail(Base):
@@ -368,6 +371,77 @@ class GoldenEmail(Base):
     
     # Reference back to the review that created this
     review_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
+class NegativeEmailExample(Base):
+    """Emails with low rubric scores (1-2) used as negative examples in prompts.
+    
+    Emails qualify as 'negative' when any rubric score is 1 or 2.
+    These are shown in prompts as "avoid this pattern" examples.
+    """
+    
+    __tablename__ = "negative_email_examples"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Context for retrieval matching
+    product: Mapped[str] = mapped_column(String(200), nullable=False)
+    product_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    state_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    audience: Mapped[str] = mapped_column(String(200), nullable=False)
+    
+    # The email content to avoid
+    subject_line: Mapped[str] = mapped_column(String(400), nullable=False)
+    email_body: Mapped[str] = mapped_column(Text, nullable=False)
+    
+    # What was wrong (which categories scored low)
+    low_score_categories: Mapped[list] = mapped_column(JSON, nullable=False)  # ["hook_usage", "cta"]
+    rubric_scores: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)  # {subject_line: 3, hook_usage: 1, ...}
+    
+    # Weight for prioritizing examples (2.0 for score=1, 1.0 for score=2)
+    weight: Mapped[float] = mapped_column(Float, default=1.0)
+    
+    # Additional context
+    district_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    purpose_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # Reference back to the review that created this
+    review_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
+class ChunkFeedback(Base):
+    """Feedback on KB chunks used in emails (for manual review).
+    
+    When an email has low product_relevance score, the chunks used
+    can be flagged here for manual review and potential YAML kb_curation updates.
+    """
+    
+    __tablename__ = "chunk_feedback"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    
+    # Which chunk
+    chunk_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    source_kb_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    file_name: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    
+    # Context
+    product_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    state_code: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
+    
+    # Feedback
+    flag_reason: Mapped[str] = mapped_column(String(50), nullable=False)  # "low_relevance", "outdated", "incorrect"
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
+    # Reference to the review that triggered this flag
+    review_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    
+    # Resolution status
+    resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    resolution_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class DeepResearchCache(Base):

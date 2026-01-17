@@ -499,6 +499,16 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         from ...pipeline.stages.evidence_pack import build_product_evidence_pack
         from ...pipeline.stages.hook_selector import select_primary_hooks
         from ...pipeline.stages.treasure_hunter import run_treasure_hunter
+        from ...pipeline.stages.email_writer import (
+            get_golden_examples,
+            format_golden_examples,
+            get_negative_examples,
+            format_negative_example,
+            analyze_golden_patterns,
+            analyze_negative_patterns,
+            format_learned_rules_with_negatives,
+        )
+        from ...research.product_briefs import normalize_product_key
 
         # Best-effort: derive state_full if omitted
         if not request.state_full:
@@ -710,6 +720,19 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         _email_tasks[task_id]["message"] = "Generating email (purpose-only)..."
                         _email_tasks[task_id]["progress"] = 20
                         
+                        # Fetch golden/negative examples for training (purpose-only mode)
+                        product_key = normalize_product_key(product)
+                        examples_cache: dict = {}  # audience -> formatted examples + rules
+                        
+                        # Analyze patterns from golden AND negative emails
+                        learned_rules_text = ""
+                        try:
+                            golden_patterns = await analyze_golden_patterns(db=db, product_key=product_key or "", min_examples=5)
+                            negative_patterns = await analyze_negative_patterns(db=db, product_key=product_key or "", min_examples=3)
+                            learned_rules_text = format_learned_rules_with_negatives(golden_patterns, negative_patterns)
+                        except Exception as e:
+                            logger.warning("Failed to analyze patterns for %s: %s", product_key, e)
+                        
                         variants = []
                         t4 = time.perf_counter()
                         
@@ -730,6 +753,32 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                             _email_tasks[task_id]["message"] = f"Generating email for {aud}..."
                             _email_tasks[task_id]["progress"] = 20 + int((aud_idx / max(len(audiences), 1)) * 75)
                             
+                            # Get golden + negative examples for this audience
+                            if aud not in examples_cache:
+                                try:
+                                    golden_list = await get_golden_examples(
+                                        db=db,
+                                        product_key=product_key or "",
+                                        state_code=state_code,
+                                        audience=aud,
+                                        limit=2,
+                                    )
+                                    examples_text = format_golden_examples(golden_list) if golden_list else ""
+                                    
+                                    negative_list = await get_negative_examples(
+                                        db=db,
+                                        product_key=product_key or "",
+                                        state_code=state_code,
+                                        audience=aud,
+                                        limit=1,
+                                    )
+                                    negative_text = format_negative_example(negative_list[0]) if negative_list else ""
+                                    
+                                    examples_cache[aud] = examples_text + negative_text + learned_rules_text
+                                except Exception as e:
+                                    logger.warning("Failed to fetch examples for %s: %s", aud, e)
+                                    examples_cache[aud] = learned_rules_text
+                            
                             variant = await _run_variant(
                                 product=product,
                                 state_code=state_code,
@@ -745,6 +794,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                 supporting_context=supporting_context,
                                 on_progress=update_progress,
                                 on_openai_started=on_openai_started,
+                                golden_examples_text=examples_cache.get(aud, ""),
                             )
                             variants.append(variant)
                         

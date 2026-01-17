@@ -22,7 +22,7 @@ from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config import get_settings
-from ...db.models import GoldenEmail
+from ...db.models import GoldenEmail, NegativeEmailExample
 from ..schemas import ClaimsMapEntry, EmailDraft, EvidencePack, SelectedHook
 from .validator import extract_bullets, word_count
 
@@ -142,19 +142,45 @@ def format_golden_examples(examples: List[GoldenEmail]) -> str:
     return "\n".join(parts)
 
 
+def _calculate_example_weight(rubric_scores: Optional[dict], source: str) -> float:
+    """Calculate weight for a golden example based on scores.
+    
+    Weight logic:
+    - All scores = 5: 2.0x (strong positive signal)
+    - All scores >= 4: 1.0x (normal positive)
+    - User edited: 1.5x (shows exactly what they want)
+    """
+    if source == "edited":
+        return 1.5
+    
+    if not rubric_scores:
+        return 1.0
+    
+    scores = list(rubric_scores.values())
+    if not scores:
+        return 1.0
+    
+    if all(s == 5 for s in scores):
+        return 2.0
+    
+    return 1.0
+
+
 async def analyze_golden_patterns(
     db: AsyncSession,
     product_key: str,
     min_examples: int = 5,
 ) -> dict:
-    """Analyze golden emails to detect style patterns.
+    """Analyze golden emails to detect style patterns with weighting.
     
     Returns a dict of learned patterns/statistics:
-    - avg_subject_length: Average subject line character count
-    - avg_body_word_count: Average email body word count  
-    - avg_bullet_count: Average number of bullets
+    - avg_subject_length: Average subject line character count (weighted)
+    - avg_body_word_count: Average email body word count (weighted)
+    - avg_bullet_count: Average number of bullets (weighted)
     - opening_style: Most common opening style (question vs statement)
     - avg_rubric_scores: Average scores by rubric dimension
+    
+    Weighting: 5/5 scores get 2x weight, edited emails get 1.5x weight.
     """
     # Fetch all golden emails for this product
     result = await db.execute(
@@ -172,46 +198,55 @@ async def analyze_golden_patterns(
         )
         return {}
     
-    # Analyze patterns
-    subject_lengths = [len(ex.subject_line) for ex in examples]
-    body_word_counts = [len(ex.email_body.split()) for ex in examples]
+    # Calculate weights for each example
+    weights = [_calculate_example_weight(ex.rubric_scores, ex.source) for ex in examples]
+    total_weight = sum(weights)
     
-    # Count bullets (lines starting with - or •)
-    bullet_counts = []
-    for ex in examples:
+    # Weighted averages
+    subject_lengths_weighted = sum(len(ex.subject_line) * w for ex, w in zip(examples, weights))
+    body_word_counts_weighted = sum(len(ex.email_body.split()) * w for ex, w in zip(examples, weights))
+    
+    # Count bullets (lines starting with - or •) - weighted
+    bullet_counts_weighted = 0.0
+    for ex, w in zip(examples, weights):
         bullets = len([line for line in ex.email_body.split('\n') if line.strip().startswith(('-', '•', '*'))])
-        bullet_counts.append(bullets)
+        bullet_counts_weighted += bullets * w
     
-    # Detect opening style (question = ends with ?, statement = doesn't)
-    question_openings = 0
-    for ex in examples:
+    # Detect opening style (question = ends with ?, statement = doesn't) - weighted
+    question_weight = 0.0
+    for ex, w in zip(examples, weights):
         first_para = ex.email_body.split('\n\n')[0] if ex.email_body else ""
         if first_para.strip().endswith('?'):
-            question_openings += 1
+            question_weight += w
     
-    # Aggregate rubric scores
-    rubric_totals: dict[str, list] = {}
-    for ex in examples:
+    # Aggregate rubric scores (weighted)
+    rubric_totals: dict[str, float] = {}
+    rubric_weights: dict[str, float] = {}
+    for ex, w in zip(examples, weights):
         if ex.rubric_scores:
             for key, score in ex.rubric_scores.items():
                 if key not in rubric_totals:
-                    rubric_totals[key] = []
-                rubric_totals[key].append(score)
+                    rubric_totals[key] = 0.0
+                    rubric_weights[key] = 0.0
+                rubric_totals[key] += score * w
+                rubric_weights[key] += w
     
-    avg_rubric = {k: sum(v) / len(v) for k, v in rubric_totals.items() if v}
+    avg_rubric = {k: round(rubric_totals[k] / rubric_weights[k], 2) 
+                  for k in rubric_totals if rubric_weights.get(k, 0) > 0}
     
     patterns = {
         "sample_count": len(examples),
-        "avg_subject_length": round(sum(subject_lengths) / len(subject_lengths)),
-        "avg_body_word_count": round(sum(body_word_counts) / len(body_word_counts)),
-        "avg_bullet_count": round(sum(bullet_counts) / len(bullet_counts), 1),
-        "question_opening_pct": round(question_openings / len(examples) * 100),
+        "total_weight": round(total_weight, 1),
+        "avg_subject_length": round(subject_lengths_weighted / total_weight),
+        "avg_body_word_count": round(body_word_counts_weighted / total_weight),
+        "avg_bullet_count": round(bullet_counts_weighted / total_weight, 1),
+        "question_opening_pct": round(question_weight / total_weight * 100),
         "avg_rubric_scores": avg_rubric,
     }
     
     logger.info(
-        "GoldenPatterns: Analyzed %d examples for %s: subj=%d chars, body=%d words, bullets=%.1f",
-        len(examples), product_key,
+        "GoldenPatterns: Analyzed %d examples (weighted %.1f) for %s: subj=%d chars, body=%d words, bullets=%.1f",
+        len(examples), total_weight, product_key,
         patterns["avg_subject_length"],
         patterns["avg_body_word_count"],
         patterns["avg_bullet_count"]
@@ -251,6 +286,219 @@ def format_learned_rules(patterns: dict) -> str:
         rules.append("- Opening: Direct statements work better than questions")
     
     return "\n".join(rules)
+
+
+async def get_negative_examples(
+    db: AsyncSession,
+    product_key: str,
+    state_code: str,
+    audience: str,
+    limit: int = 1,
+) -> List[NegativeEmailExample]:
+    """Retrieve negative examples (low-scoring emails) for the prompt.
+    
+    Priority:
+    1. Same product + same state + same audience (exact match)
+    2. Same product + same audience (any state)
+    3. Same product (any state/audience)
+    
+    Returns up to `limit` negative examples, preferring higher weights (score=1).
+    """
+    product_key_clean = (product_key or "").strip().lower()
+    state_code_clean = (state_code or "").strip().upper()
+    audience_clean = (audience or "").strip()
+    
+    if not product_key_clean:
+        return []
+    
+    # Try exact match first
+    result = await db.execute(
+        select(NegativeEmailExample)
+        .where(NegativeEmailExample.product_key == product_key_clean)
+        .where(NegativeEmailExample.state_code == state_code_clean)
+        .where(NegativeEmailExample.audience == audience_clean)
+        .order_by(NegativeEmailExample.weight.desc(), NegativeEmailExample.created_at.desc())
+        .limit(limit)
+    )
+    examples = list(result.scalars().all())
+    
+    if len(examples) >= limit:
+        return examples
+    
+    # Fallback: same product + audience
+    remaining = limit - len(examples)
+    existing_ids = [e.id for e in examples]
+    
+    result = await db.execute(
+        select(NegativeEmailExample)
+        .where(NegativeEmailExample.product_key == product_key_clean)
+        .where(NegativeEmailExample.audience == audience_clean)
+        .where(~NegativeEmailExample.id.in_(existing_ids) if existing_ids else True)
+        .order_by(NegativeEmailExample.weight.desc(), NegativeEmailExample.created_at.desc())
+        .limit(remaining)
+    )
+    examples.extend(result.scalars().all())
+    
+    if len(examples) >= limit:
+        return examples
+    
+    # Final fallback: same product only
+    remaining = limit - len(examples)
+    existing_ids = [e.id for e in examples]
+    
+    result = await db.execute(
+        select(NegativeEmailExample)
+        .where(NegativeEmailExample.product_key == product_key_clean)
+        .where(~NegativeEmailExample.id.in_(existing_ids) if existing_ids else True)
+        .order_by(NegativeEmailExample.weight.desc(), NegativeEmailExample.created_at.desc())
+        .limit(remaining)
+    )
+    examples.extend(result.scalars().all())
+    
+    return examples
+
+
+async def analyze_negative_patterns(
+    db: AsyncSession,
+    product_key: str,
+    min_examples: int = 3,
+) -> dict:
+    """Analyze negative emails to detect anti-patterns.
+    
+    Returns a dict of learned anti-patterns:
+    - common_problems: Categories that frequently score low
+    - problem_frequencies: {category: count}
+    - sample_count: Number of examples analyzed
+    
+    Weighting: score=1 gets 2x weight, score=2 gets 1x weight.
+    """
+    result = await db.execute(
+        select(NegativeEmailExample)
+        .where(NegativeEmailExample.product_key == product_key)
+        .order_by(NegativeEmailExample.created_at.desc())
+        .limit(50)
+    )
+    examples = list(result.scalars().all())
+    
+    if len(examples) < min_examples:
+        logger.info(
+            "NegativePatterns: Not enough examples for %s (%d < %d min)",
+            product_key, len(examples), min_examples
+        )
+        return {}
+    
+    # Count problem categories with weighting
+    problem_counts: dict[str, float] = {}
+    total_weight = 0.0
+    
+    for ex in examples:
+        w = ex.weight or 1.0
+        total_weight += w
+        for category in (ex.low_score_categories or []):
+            problem_counts[category] = problem_counts.get(category, 0) + w
+    
+    # Sort by weighted frequency
+    sorted_problems = sorted(problem_counts.items(), key=lambda x: x[1], reverse=True)
+    
+    patterns = {
+        "sample_count": len(examples),
+        "total_weight": round(total_weight, 1),
+        "common_problems": [p[0] for p in sorted_problems[:3]],  # Top 3 problem areas
+        "problem_frequencies": {k: round(v, 1) for k, v in sorted_problems},
+    }
+    
+    logger.info(
+        "NegativePatterns: Analyzed %d examples (weighted %.1f) for %s: top problems=%s",
+        len(examples), total_weight, product_key, patterns["common_problems"]
+    )
+    
+    return patterns
+
+
+def format_negative_example(example: NegativeEmailExample) -> str:
+    """Format a negative example for the prompt."""
+    if not example:
+        return ""
+    
+    parts = ["\n\n--- AVOID THIS PATTERN ---"]
+    parts.append(f"This email scored poorly on: {', '.join(example.low_score_categories or ['unknown'])}\n")
+    
+    parts.append(f"Subject: {example.subject_line}")
+    parts.append("")
+    parts.append(example.email_body)
+    parts.append("")
+    
+    # Add specific guidance based on what was wrong
+    if example.rubric_scores:
+        for cat in (example.low_score_categories or []):
+            score = example.rubric_scores.get(cat)
+            if score is not None:
+                if cat == "hook_usage":
+                    parts.append(f"Problem: The funding/compliance hook was not well integrated (score: {score}/5)")
+                elif cat == "product_relevance":
+                    parts.append(f"Problem: Product information wasn't relevant to the context (score: {score}/5)")
+                elif cat == "subject_line":
+                    parts.append(f"Problem: Subject line wasn't compelling (score: {score}/5)")
+                elif cat == "tone":
+                    parts.append(f"Problem: Tone/voice was off (score: {score}/5)")
+                elif cat == "flow":
+                    parts.append(f"Problem: Email didn't flow well (score: {score}/5)")
+                elif cat == "cta":
+                    parts.append(f"Problem: Call-to-action was weak (score: {score}/5)")
+    
+    return "\n".join(parts)
+
+
+def format_learned_rules_with_negatives(
+    golden_patterns: dict,
+    negative_patterns: dict,
+) -> str:
+    """Format learned patterns from both golden and negative examples."""
+    parts = []
+    
+    # Positive patterns (DO)
+    if golden_patterns and golden_patterns.get("sample_count", 0) >= 5:
+        parts.append("\n\n--- LEARNED FROM YOUR TEAM'S FEEDBACK ---")
+        parts.append(f"Based on {golden_patterns['sample_count']} approved emails:\n")
+        parts.append("DO:")
+        
+        avg_subj = golden_patterns.get("avg_subject_length", 0)
+        if avg_subj:
+            parts.append(f"  • Keep subject lines around {avg_subj} characters")
+        
+        avg_words = golden_patterns.get("avg_body_word_count", 0)
+        if avg_words:
+            parts.append(f"  • Keep email body around {avg_words} words")
+        
+        avg_bullets = golden_patterns.get("avg_bullet_count", 0)
+        if avg_bullets:
+            parts.append(f"  • Use about {round(avg_bullets)} bullets per email")
+        
+        q_pct = golden_patterns.get("question_opening_pct", 50)
+        if q_pct >= 70:
+            parts.append("  • Open with a question (works better than statements)")
+        elif q_pct <= 30:
+            parts.append("  • Open with a direct statement (works better than questions)")
+    
+    # Negative patterns (DON'T)
+    if negative_patterns and negative_patterns.get("sample_count", 0) >= 3:
+        parts.append("\nDON'T:")
+        
+        common_problems = negative_patterns.get("common_problems", [])
+        problem_guidance = {
+            "hook_usage": "Mention funding/compliance without connecting it to the product",
+            "product_relevance": "Include product info that isn't relevant to the recipient's situation",
+            "subject_line": "Use generic or vague subject lines",
+            "tone": "Sound too salesy or impersonal",
+            "flow": "Jump between topics without smooth transitions",
+            "cta": "End with weak or unclear calls-to-action",
+        }
+        
+        for problem in common_problems:
+            guidance = problem_guidance.get(problem, f"Make the {problem} mistake")
+            parts.append(f"  • {guidance}")
+    
+    return "\n".join(parts) if parts else ""
 
 
 def _normalize_calendly_url(url: str) -> str:

@@ -1425,7 +1425,7 @@ const getEventDisplayText = (
   return (typeof e.message === 'string' && e.message) || stageLabel || String(e.type)
 }
 
-type ReviewSectionKey = 'subject_line' | 'product_relevance' | 'tone' | 'flow' | 'cta'
+type ReviewSectionKey = 'subject_line' | 'hook_usage' | 'product_relevance' | 'tone' | 'flow' | 'cta'
 
 type ReviewRubricItemDraft = {
   score: number | null
@@ -2496,6 +2496,7 @@ function EmailGeneratorPipeline() {
           edited_email_body: activeVariant.email_draft.email_body,
           rubric: {
             subject_line: { ...blank },
+            hook_usage: { ...blank },
             product_relevance: { ...blank },
             tone: { ...blank },
             flow: { ...blank },
@@ -2771,6 +2772,7 @@ function EmailGeneratorPipeline() {
 
     const sections: Array<{ key: ReviewSectionKey; label: string }> = [
       { key: 'subject_line', label: 'Subject line' },
+      { key: 'hook_usage', label: 'Hook usage (funding/compliance integration)' },
       { key: 'product_relevance', label: 'Product relevance' },
       { key: 'tone', label: 'Tone' },
       { key: 'flow', label: 'Flow' },
@@ -2896,11 +2898,14 @@ function EmailGeneratorPipeline() {
               edited_email_body: draft.edited_email_body,
               rubric: {
                 subject_line: getScore('subject_line'),
+                hook_usage: getScore('hook_usage'),
                 product_relevance: getScore('product_relevance'),
                 tone: getScore('tone'),
                 flow: getScore('flow'),
                 cta: getScore('cta'),
               },
+              // Include evidence chunk IDs for tracking which chunks led to good/bad emails
+              evidence_chunks_used: result.evidence_pack?.chunks?.map(c => c.chunk_id) || null,
             }
 
             // Unified save: saves both the run AND the review
