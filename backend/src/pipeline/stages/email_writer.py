@@ -1016,7 +1016,7 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
             resp = await client.responses.create(
                 model=settings.openai_pro_model,  # gpt-5.2-pro
                 input=full_prompt,
-                reasoning={"effort": "high"},  # High reasoning depth (faster than xhigh)
+                reasoning={"effort": "medium"},  # Normal reasoning depth (faster than high)
                 background=True,  # Non-blocking, returns task ID for polling
             )
             
@@ -1105,7 +1105,7 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
                 on_progress("Generating email...", 50.0)
             
             resp = await client.chat.completions.create(
-                model=settings.openai_pro_model,  # gpt-5.2-pro
+                model=settings.openai_model,  # gpt-5.2 (Chat Completions compatible)
                 messages=[{"role": "user", "content": full_prompt}],
             )
             
