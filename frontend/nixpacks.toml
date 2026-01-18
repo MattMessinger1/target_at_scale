@@ -4,3 +4,4 @@ cmds = ["rm -rf dist", "npm run build"]
 
 [start]
 cmd = "caddy run --config /assets/Caddyfile --adapter caddyfile"
+# Build 1768777570
