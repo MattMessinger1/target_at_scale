@@ -2905,7 +2905,7 @@ function EmailGeneratorPipeline() {
                 cta: getScore('cta'),
               },
               // Include evidence chunk IDs for tracking which chunks led to good/bad emails
-              evidence_chunks_used: result.evidence_pack?.chunks?.map(c => c.chunk_id) || null,
+              evidence_chunks_used: result.evidence_pack?.retrieved_chunks?.map((c: EvidenceChunkCitation) => c.chunk_id) || null,
             }
 
             // Unified save: saves both the run AND the review
