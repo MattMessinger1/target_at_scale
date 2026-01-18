@@ -1,6 +1,6 @@
-# Force fresh builds by clearing cache
+# Force fresh builds by clearing dist
 [phases.build]
-cmds = ["rm -rf dist node_modules/.cache", "npm run build"]
+cmds = ["rm -rf dist", "npm run build"]
 
 [start]
 cmd = "caddy run --config /assets/Caddyfile --adapter caddyfile"
