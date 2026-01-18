@@ -93,6 +93,8 @@ async def run_migrations():
         ("saved_email_runs", "purpose_prompt", "TEXT"),
         # Add selected_cached_hook_ids to saved_email_runs for persistence
         ("saved_email_runs", "selected_cached_hook_ids", "JSON"),
+        # Add evidence_chunks_used to email_improvement_reviews for tracking which chunks were used
+        ("email_improvement_reviews", "evidence_chunks_used", "JSON"),
     ]
     
     async with engine.begin() as conn:
