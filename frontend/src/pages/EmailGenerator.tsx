@@ -2104,17 +2104,40 @@ function EmailGeneratorPipeline() {
     }
   }
 
-  const saveCurrentRun = async (name?: string) => {
+  const saveCurrentRun = async (name?: string, editedContent?: { audience: string; subject_line: string; email_body: string }) => {
     if (!result) return
     setSavingRun(true)
     try {
+      // If edited content is provided, create a modified copy of the result with the edits
+      let pipelineResponse = result
+      if (editedContent) {
+        pipelineResponse = {
+          ...result,
+          variants: result.variants.map((variant) => {
+            if (variant.audience === editedContent.audience) {
+              return {
+                ...variant,
+                email_draft: {
+                  ...variant.email_draft,
+                  subject_line: editedContent.subject_line,
+                  email_body: editedContent.email_body,
+                  // Recalculate word count for the edited content
+                  word_count: editedContent.email_body.split(/\s+/).filter(Boolean).length,
+                },
+              }
+            }
+            return variant
+          }),
+        }
+      }
+
       const saved = await api.savedRuns.save({
         name: name || undefined,
         product: selectedProducts[0] || '',
         state_code: selectedStates[0]?.code || '',
         state_full: selectedStates[0]?.name || undefined,
         audiences: [selectedAudience],
-        pipeline_response: result,
+        pipeline_response: pipelineResponse,
         selected_hook_links: selectedHookLinks,
         primary_hook_link: primaryHookLink || undefined,
         hook_reason_tags: hookReasonTags,
@@ -2909,8 +2932,12 @@ function EmailGeneratorPipeline() {
             }
 
             // Unified save: saves both the run AND the review
-            // 1. Save to Saved Research for retrieval
-            await saveCurrentRun()
+            // 1. Save to Saved Research for retrieval (with edited content)
+            await saveCurrentRun(undefined, {
+              audience: aud,
+              subject_line: draft.edited_subject_line,
+              email_body: draft.edited_email_body,
+            })
             // 2. Save review feedback for training
             reviewMutation.mutate(payload)
           }}
