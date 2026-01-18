@@ -1,5 +1,6 @@
 /**
  * EmailGenerator page - V2 streaming research flow.
+ * @version 2.1.0 - Added edited email content saving
  * 
  * Flow:
  * 1. Select products, states, audiences (multi-select)
