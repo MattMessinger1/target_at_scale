@@ -59,6 +59,59 @@ Use `kb_curation` in `backend/product_overrides/<product_key>.yaml` to boost/exc
 
 ---
 
+## Reviewing KB Chunks in the UI
+
+After generating an email, the **Evidence** panel appears at the bottom of the results. This shows which KB chunks were used.
+
+### What each chunk displays
+- **chunk_id**: Unique identifier for the chunk
+- **source_kb_id / file_name**: Where the content came from (file name is most useful)
+- **adjusted_score**: Relevance score (higher = more relevant)
+- **boost**: Additional weight applied via `kb_curation` settings
+- **title**: Document/section title
+- **excerpt**: The actual text snippet used
+
+### How to adjust which chunks appear
+
+1. **Boost important documents**
+   Edit `backend/product_overrides/<product_key>.yaml`:
+   ```yaml
+   kb_curation:
+     boosts:
+       - file_name: "Florida State Buyer_s Guide.pdf"
+         boost: 0.10  # Typical range: 0.05–0.15
+   ```
+
+2. **Exclude low-quality documents**
+   ```yaml
+   kb_curation:
+     exclude:
+       - "Draft_Internal_Notes.docx"
+   ```
+
+3. **Force include critical documents**
+   ```yaml
+   kb_curation:
+     must_include:
+       - "Critical_Compliance_Guide.pdf"
+   ```
+
+4. **Control diversity**
+   ```yaml
+   kb_curation:
+     max_total_chunks: 18       # Total chunks retrieved
+     max_chunks_per_source: 2   # Prevent one doc from dominating
+   ```
+
+### Workflow for tuning chunks
+1. Generate an email and expand the Evidence panel
+2. Note the `file:` name of chunks that are helpful vs unhelpful
+3. Add helpful files to `boosts` or `must_include`
+4. Add unhelpful files to `exclude`
+5. Regenerate and compare results
+
+---
+
 ## Production note: persistence
 Embeddings must persist across deploys. On Railway, mount a Volume and set:
 - `CHROMA_PERSIST_DIR=/data/chroma_db`

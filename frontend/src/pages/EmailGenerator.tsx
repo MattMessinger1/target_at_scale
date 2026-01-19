@@ -3846,12 +3846,12 @@ function EmailGeneratorPipeline() {
           <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
             <h2 className="text-lg font-medium text-slate-200 mb-2">Purpose of the Email</h2>
             <p className="text-sm text-slate-400 mb-4">
-              Enter the reason for the outreach. Cached research is optional — include up to 2 items total.
+              Enter a purpose OR select cached research below. You can also provide both for more targeted emails.
             </p>
 
             <div className="mb-6">
               <label className="block text-sm font-medium text-slate-300 mb-2">
-                Purpose (required)
+                Purpose (optional)
               </label>
               <textarea
                 value={purposePrompt}
@@ -4032,9 +4032,9 @@ function EmailGeneratorPipeline() {
             </div>
 
             <div className="mt-6">
-              {!purposePrompt.trim() && (
+              {!purposePrompt.trim() && selectedCachedHooks.length === 0 && (
                 <div className="mb-3 text-xs text-amber-400/80">
-                  Enter a purpose above to generate an email. Cached hooks are optional.
+                  Enter a purpose OR select at least one cached hook above to generate an email.
                 </div>
               )}
               <div className="flex justify-end gap-3">
@@ -4046,11 +4046,11 @@ function EmailGeneratorPipeline() {
                 </button>
                 <button
                   onClick={() => {
-                    if (!purposePrompt.trim()) return
+                    if (!purposePrompt.trim() && selectedCachedHooks.length === 0) return
                     setWizardStep(4)
                     pipelineMutation.mutate()
                   }}
-                  disabled={!purposePrompt.trim()}
+                  disabled={!purposePrompt.trim() && selectedCachedHooks.length === 0}
                   className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Generate Email →
