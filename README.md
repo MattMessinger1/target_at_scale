@@ -1,5 +1,7 @@
 # WCEPS Email Generator
 
+<!-- Deploy sync verified: 2026-01-19 -->
+
 AI-powered personalized sales email generation for school districts across WIDA states.
 
 ## Overview
