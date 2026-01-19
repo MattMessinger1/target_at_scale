@@ -1,9 +1,13 @@
 :{$PORT}
 
 # Proxy API requests to the backend service.
-# If BACKEND_URL is not set, default to the production backend URL.
+# Important: Railway routes by Host header. When proxying to the backend public domain,
+# we must set Host to the backend host to avoid routing loops.
+# If BACKEND_HOST is not set, default to the production backend host.
 handle /api/* {
-  reverse_proxy {$BACKEND_URL:https://targetatscale-production.up.railway.app}
+  reverse_proxy https://{$BACKEND_HOST:targetatscale-production.up.railway.app} {
+    header_up Host {$BACKEND_HOST:targetatscale-production.up.railway.app}
+  }
 }
 
 # Serve the SPA (Vite build output).
