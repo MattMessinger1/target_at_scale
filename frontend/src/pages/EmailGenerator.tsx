@@ -2380,9 +2380,17 @@ function EmailGeneratorPipeline() {
           hook: item.hook,
         }))
       }
-      if (prep) {
-        req.evidence_pack = sanitizeEvidencePack(prep.evidence_pack)
-        req.treasure_hooks = prep.treasure_hooks
+      // Reuse existing prep outputs if we have them.
+      // If we're in the cached-hooks flow (Step 2), `prep` may be null even though we have cached
+      // evidence_pack + treasure_hooks available; sending them avoids re-running deep research.
+      const stateCode = selectedStates[0]?.code
+      const cachedPrep = stateCode ? cachedPrepByState[stateCode] : null
+      const prepLike = prep || cachedPrep
+      if (prepLike) {
+        req.evidence_pack = sanitizeEvidencePack(prepLike.evidence_pack)
+        req.treasure_hooks = prepLike.treasure_hooks
+        if (prepLike.district_research) req.district_research = prepLike.district_research
+        if (prepLike.conferences) req.conferences = prepLike.conferences
       }
       if (prep && selectedHookLinks.length > 0) {
         // Send hook IDs (preferred) for reliable selection
