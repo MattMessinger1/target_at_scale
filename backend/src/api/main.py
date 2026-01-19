@@ -169,27 +169,23 @@ async def lifespan(app: FastAPI):
                     continue
                 
                 if task.openai_response_id:
-                    # Can resume from OpenAI polling
+                    # Safe to resume: only polling an existing OpenAI response (no new research spend).
                     logger.info(
                         f"Email task {task.id} was interrupted during OpenAI generation. "
                         f"Resuming polling for response {task.openai_response_id}"
                     )
                     asyncio.create_task(resume_email_task(task.id))
-                elif task.evidence_pack_json:
-                    # Has checkpoint data - can resume from there
-                    logger.info(
-                        f"Email task {task.id} was interrupted at stage '{task.current_stage}'. "
-                        f"Resuming from checkpoint."
-                    )
-                    asyncio.create_task(resume_email_task(task.id))
                 else:
-                    # Too early to resume - mark as failed
+                    # Do NOT resume from earlier checkpoints on startup.
+                    # Rationale: resuming before OpenAI generation can re-run treasure hunting / deep research
+                    # unexpectedly after deploys (surprise spend + confusing UX).
                     logger.warning(
-                        f"Email task {task.id} was interrupted too early to resume "
-                        f"(stage: {task.current_stage}). Marking as failed."
+                        f"Email task {task.id} was interrupted at stage '{task.current_stage}' "
+                        f"without an OpenAI response_id. Not resuming; marking as failed."
                     )
                     task.status = "failed"
-                    task.error = "Interrupted before checkpoint; please retry"
+                    task.error = "Interrupted by server restart before OpenAI generation; please retry"
+                    task.message = "Failed: interrupted by server restart before OpenAI generation; please retry"
                     await db.commit()
             
             if incomplete_tasks:
@@ -199,7 +195,7 @@ async def lifespan(app: FastAPI):
     
     # Resume interrupted research tasks (orphaned by deploy/restart)
     try:
-        from ..db.models import ResearchTask, DeepResearchCache
+        from ..db.models import ResearchTask, DeepResearchCache, DistrictResearchCache
         from .routes.generate import _research_tasks, resume_research_task
         
         async with AsyncSessionLocal() as db:
@@ -222,38 +218,55 @@ async def lifespan(app: FastAPI):
                     await db.commit()
                     continue
                 
-                # Check if deep research is in progress (has openai_response_id)
-                cache_stmt = select(DeepResearchCache).where(
-                    DeepResearchCache.state_code == task.state_code,
-                    DeepResearchCache.product_key == task.product_key,
-                    DeepResearchCache.status == "in_progress"
+                # Do NOT automatically resume research on startup.
+                # Rationale: research can be expensive (Deep Research / web search). After deploys,
+                # we prefer to fail fast and let users explicitly re-run, rather than restarting work.
+                logger.warning(
+                    f"Research task {task.id} was interrupted at phase '{task.phase}'. "
+                    f"Not resuming on startup; marking as failed."
                 )
-                cache_result = await db.execute(cache_stmt)
-                in_progress_cache = cache_result.scalar_one_or_none()
                 
-                if in_progress_cache and in_progress_cache.openai_response_id:
-                    # Can resume from OpenAI polling
-                    logger.info(
-                        f"Research task {task.id} has in-progress deep research. "
-                        f"Resuming for {task.state_code}/{task.product_key}"
+                # Mark any in-progress cache entries as failed so the UI doesn't show phantom in-progress work.
+                try:
+                    deep_stmt = (
+                        select(DeepResearchCache)
+                        .where(DeepResearchCache.state_code == task.state_code)
+                        .where(DeepResearchCache.product_key == task.product_key)
+                        .where(DeepResearchCache.status == "in_progress")
+                        .where(DeepResearchCache.is_archived.is_(False))
+                        .limit(1)
                     )
-                    asyncio.create_task(resume_research_task(task.id))
-                elif task.treasure_hooks_json:
-                    # Has hooks, was in later stage - resume from there
-                    logger.info(
-                        f"Research task {task.id} was in phase '{task.phase}'. "
-                        f"Resuming from checkpoint."
+                    deep_result = await db.execute(deep_stmt)
+                    deep_cache = deep_result.scalar_one_or_none()
+                    if deep_cache:
+                        deep_cache.status = "failed"
+                        deep_cache.error_message = "Interrupted by server restart; please re-run"
+                        deep_cache.openai_response_id = None
+                except Exception as cache_err:
+                    logger.warning(f"Failed to update DeepResearchCache for interrupted task {task.id}: {cache_err}")
+                
+                try:
+                    district_stmt = (
+                        select(DistrictResearchCache)
+                        .where(DistrictResearchCache.state_code == task.state_code)
+                        .where(DistrictResearchCache.product_key == task.product_key)
+                        .where(DistrictResearchCache.status == "in_progress")
+                        .where(DistrictResearchCache.is_archived.is_(False))
+                        .limit(1)
                     )
-                    asyncio.create_task(resume_research_task(task.id))
-                else:
-                    # No checkpoint - mark as failed
-                    logger.warning(
-                        f"Research task {task.id} was interrupted too early to resume "
-                        f"(phase: {task.phase}). Marking as failed."
-                    )
-                    task.status = "failed"
-                    task.error = "Interrupted before checkpoint; please retry"
-                    await db.commit()
+                    district_result = await db.execute(district_stmt)
+                    district_cache = district_result.scalar_one_or_none()
+                    if district_cache:
+                        district_cache.status = "failed"
+                        district_cache.error_message = "Interrupted by server restart; please re-run"
+                        district_cache.openai_response_id = None
+                except Exception as cache_err:
+                    logger.warning(f"Failed to update DistrictResearchCache for interrupted task {task.id}: {cache_err}")
+                
+                task.status = "failed"
+                task.error = "Research was interrupted by server restart; please re-run"
+                task.message = "Failed: research was interrupted by server restart; please re-run"
+                await db.commit()
             
             if incomplete_tasks:
                 logger.info(f"Processed {len(incomplete_tasks)} interrupted research tasks on startup")
