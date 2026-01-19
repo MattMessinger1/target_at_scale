@@ -1,0 +1,15 @@
+:{$PORT}
+
+# Proxy API requests to the backend service.
+# If BACKEND_URL is not set, default to the production backend URL.
+handle /api/* {
+  reverse_proxy {$BACKEND_URL:https://targetatscale-production.up.railway.app}
+}
+
+# Serve the SPA (Vite build output).
+handle {
+  root * /srv
+  try_files {path} /index.html
+  file_server
+}
+
