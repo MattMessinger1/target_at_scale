@@ -196,7 +196,6 @@ async def lifespan(app: FastAPI):
     # Resume interrupted research tasks (orphaned by deploy/restart)
     try:
         from ..db.models import ResearchTask, DeepResearchCache, DistrictResearchCache
-        from .routes.generate import _research_tasks, resume_research_task
         
         async with AsyncSessionLocal() as db:
             # Find research tasks that were in progress when the container stopped
@@ -272,6 +271,48 @@ async def lifespan(app: FastAPI):
                 logger.info(f"Processed {len(incomplete_tasks)} interrupted research tasks on startup")
     except Exception as e:
         logger.error(f"Research task resume failed (startup will continue): {e}", exc_info=True)
+
+    # Cleanup: prevent "phantom" in-progress deep research after deploys.
+    # We intentionally do NOT auto-resume deep research on startup (surprise spend / confusing UX).
+    # Any in-progress cache entries should be marked failed so the UI can prompt users to re-run explicitly.
+    try:
+        from ..db.models import DeepResearchCache, DistrictResearchCache
+
+        async with AsyncSessionLocal() as db:
+            deep_q = (
+                select(DeepResearchCache)
+                .where(DeepResearchCache.status == "in_progress")
+                .where(DeepResearchCache.is_archived.is_(False))
+            )
+            deep_res = await db.execute(deep_q)
+            deep_entries = deep_res.scalars().all()
+
+            district_q = (
+                select(DistrictResearchCache)
+                .where(DistrictResearchCache.status == "in_progress")
+                .where(DistrictResearchCache.is_archived.is_(False))
+            )
+            district_res = await db.execute(district_q)
+            district_entries = district_res.scalars().all()
+
+            updated = 0
+            for entry in deep_entries:
+                entry.status = "failed"
+                entry.error_message = "Interrupted by server restart; please re-run"
+                entry.openai_response_id = None
+                updated += 1
+
+            for entry in district_entries:
+                entry.status = "failed"
+                entry.error_message = "Interrupted by server restart; please re-run"
+                entry.openai_response_id = None
+                updated += 1
+
+            if updated:
+                await db.commit()
+                logger.info(f"Marked {updated} in-progress research cache entries as failed on startup")
+    except Exception as e:
+        logger.warning(f"Deep research cache cleanup failed (startup will continue): {e}", exc_info=True)
     
     yield
     # Shutdown (if needed)
