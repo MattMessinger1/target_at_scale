@@ -2371,6 +2371,9 @@ function EmailGeneratorPipeline() {
       }
       if (purposePrompt.trim()) {
         req.purpose_prompt = purposePrompt.trim()
+      }
+      // IMPORTANT: cached hooks can be used without a purpose prompt (hook-only flow).
+      if (selectedCachedHooks.length > 0) {
         req.selected_cached_hooks = selectedCachedHooks.map((item) => ({
           category: item.category,
           state_code: item.state_code || null,
