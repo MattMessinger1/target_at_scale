@@ -2920,11 +2920,11 @@ function EmailGeneratorPipeline() {
 
             const payload: EmailReviewRequest = {
               run_id: result.run_id,
-              product: result.request.product,
-              state_code: result.request.state,
+              product: result.request?.product || selectedProducts[0] || '',
+              state_code: result.request?.state || selectedStates[0]?.code || '',
               audience: aud,
-              district_name: result.request.district_name || null,
-              district_url: result.request.district_url || null,
+              district_name: result.request?.district_name || null,
+              district_url: result.request?.district_url || null,
               primary_hook_link: activeVariant.selected_hook?.hook?.link || null,
               secondary_hook_link: activeVariant.secondary_hook?.hook?.link || null,
               original_subject_line: activeVariant.email_draft.subject_line,
