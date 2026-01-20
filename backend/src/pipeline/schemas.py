@@ -258,7 +258,7 @@ class ConferenceOpportunity(BaseModel):
 class SelectedCachedHookRequest(BaseModel):
     """User-selected cached hook or conference item."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     category: Literal["state", "district", "conference"]
     state_code: Optional[str] = None
