@@ -1617,6 +1617,58 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
 
   // Handle URL params for batch prefill (from Coverage Matrix page)
   const [searchParams, setSearchParams] = useSearchParams()
+
+  const resetEntryState = () => {
+    setWizardStep(1)
+    setSelectedProducts([])
+    setSelectedStates([])
+    setSelectedAudience('Decision Makers')
+    setPurposePrompt('')
+    setCachedPrepByState({})
+    setCachedPrepLoading(false)
+    setSelectedCachedHooks([])
+    setStateHooksExpanded(true)
+    setDistrictHooksExpanded(false)
+    setConferenceHooksExpanded(false)
+    setCacheStatus(null)
+    setShowReSearchConfirm(false)
+    setResult(null)
+    setActiveAudience(null)
+    setCopied(false)
+    setTraceEvents([])
+    setResearchStartTime(null)
+    setEmailProgress(null)
+    setPrep(null)
+    setBlockedFilteredRequirements([])
+    setSelectedHookLinks([])
+    setPrimaryHookLink(null)
+    setHookReasonTags({})
+    setHookReasonNotes({})
+    setReviewDrafts({})
+    setShowFilteredSection(false)
+    setIncludeDistrictResearch(false)
+    setIncludeConferenceResearch(false)
+    setResearchPhase('idle')
+    setResearchProgress(0)
+    setResearchMessage('')
+    setShowBatchModal(false)
+    setBatchStates([])
+    setStartingBatch(false)
+    setBatchForceFresh(false)
+    setBatchIncludeDistrictResearch(true)
+    setBatchIncludeConferenceResearch(false)
+    setBatchStateInput('')
+    setValidationExpanded(false)
+  }
+  
+  useEffect(() => {
+    const shouldReset = searchParams.get('reset') === '1'
+    if (!shouldReset) return
+    resetEntryState()
+    const next = new URLSearchParams(searchParams)
+    next.delete('reset')
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
   
   useEffect(() => {
     const batchParam = searchParams.get('batch')

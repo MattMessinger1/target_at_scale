@@ -77,7 +77,7 @@ export default function Landing() {
 
           {/* Email Card */}
           <Link
-            to="/email"
+            to="/email?reset=1"
             className="group relative p-8 rounded-2xl border-2 border-slate-700 bg-slate-800/30 hover:border-emerald-500/50 hover:bg-slate-800/60 transition-all duration-200"
           >
             <div className="absolute top-4 right-4 w-12 h-12 rounded-xl bg-emerald-600/20 flex items-center justify-center group-hover:bg-emerald-600/30 transition-colors">

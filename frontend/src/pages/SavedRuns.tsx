@@ -234,7 +234,7 @@ export default function SavedRuns() {
                 Start Research
               </Button>
             </Link>
-            <Link to="/email">
+            <Link to="/email?reset=1">
               <Button className="flex items-center gap-2">
                 <Mail className="w-4 h-4" />
                 Create Email
@@ -498,7 +498,7 @@ export default function SavedRuns() {
               New Research
             </Button>
           </Link>
-          <Link to="/email">
+          <Link to="/email?reset=1">
             <Button className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500">
               <Mail className="w-4 h-4" />
               New Email
