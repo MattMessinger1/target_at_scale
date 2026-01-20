@@ -320,6 +320,22 @@ async def get_cached_research(
 ) -> Optional[DeepResearchCache]:
     """Get cached research if still valid (within TTL) and not archived."""
     cutoff = datetime.utcnow() - timedelta(days=CACHE_TTL_DAYS)
+
+    # region agent log
+    try:
+        with open("/Users/mattmessinger/Desktop/Target_Scale_Repo/.cursor/debug.log", "a") as f:
+            f.write(json.dumps({
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "H1",
+                "location": "backend/src/research/deep_research.py:get_cached_research",
+                "message": "cache_lookup_start",
+                "data": {"state_code": state_code, "product_key": product_key, "research_type": research_type},
+                "timestamp": int(datetime.utcnow().timestamp() * 1000),
+            }) + "\n")
+    except Exception:
+        pass
+    # endregion
     
     result = await db.execute(
         select(DeepResearchCache)
@@ -330,7 +346,30 @@ async def get_cached_research(
         .where(DeepResearchCache.created_at > cutoff)
         .where(DeepResearchCache.is_archived.is_(False))
     )
-    return result.scalar_one_or_none()
+    entry = result.scalar_one_or_none()
+    # region agent log
+    try:
+        with open("/Users/mattmessinger/Desktop/Target_Scale_Repo/.cursor/debug.log", "a") as f:
+            f.write(json.dumps({
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "H1",
+                "location": "backend/src/research/deep_research.py:get_cached_research",
+                "message": "cache_lookup_result",
+                "data": {
+                    "state_code": state_code,
+                    "product_key": product_key,
+                    "found": bool(entry),
+                    "status": getattr(entry, "status", None),
+                    "created_at": getattr(entry, "created_at", None).isoformat() if getattr(entry, "created_at", None) else None,
+                    "is_archived": getattr(entry, "is_archived", None),
+                },
+                "timestamp": int(datetime.utcnow().timestamp() * 1000),
+            }) + "\n")
+    except Exception:
+        pass
+    # endregion
+    return entry
 
 
 async def clear_deep_research_cache(

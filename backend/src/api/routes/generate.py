@@ -1737,6 +1737,22 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         state_code = (request.state or "").strip().upper()
         state_full = (request.state_full or "").strip() or state_code
         product_key = normalize_product_key(product)
+
+        # region agent log
+        try:
+            with open("/Users/mattmessinger/Desktop/Target_Scale_Repo/.cursor/debug.log", "a") as f:
+                f.write(json.dumps({
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "H2",
+                    "location": "backend/src/api/routes/generate.py:start_research_pipeline",
+                    "message": "research_start_params",
+                    "data": {"product": product, "product_key": product_key, "state_code": state_code},
+                    "timestamp": int(time.time() * 1000),
+                }) + "\n")
+        except Exception:
+            pass
+        # endregion
         
         # Check for existing in-progress research for same product/state
         for existing_id, existing_task in _research_tasks.items():
@@ -2260,6 +2276,21 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             .limit(1)
         )
         saved = saved_result.scalar_one_or_none()
+        # region agent log
+        try:
+            with open("/Users/mattmessinger/Desktop/Target_Scale_Repo/.cursor/debug.log", "a") as f:
+                f.write(json.dumps({
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "H3",
+                    "location": "backend/src/api/routes/generate.py:get_cached_prep",
+                    "message": "cached_prep_saved_check",
+                    "data": {"state_code": state_code, "product": product, "saved_exists": bool(saved)},
+                    "timestamp": int(time.time() * 1000),
+                }) + "\n")
+        except Exception:
+            pass
+        # endregion
         if not saved:
             raise HTTPException(status_code=404, detail="No cached prep available")
         
@@ -3724,9 +3755,40 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     .where(SavedEmailRun.run_type == "research")
                     .limit(1)
                 )
-                if not saved_result.scalar_one_or_none():
+                saved_exists = bool(saved_result.scalar_one_or_none())
+                # region agent log
+                try:
+                    with open("/Users/mattmessinger/Desktop/Target_Scale_Repo/.cursor/debug.log", "a") as f:
+                        f.write(json.dumps({
+                            "sessionId": "debug-session",
+                            "runId": "run1",
+                            "hypothesisId": "H3",
+                            "location": "backend/src/api/routes/generate.py:get_cache_status_endpoint",
+                            "message": "cache_status_gate_check",
+                            "data": {"state_code": state_code, "product": product, "status": status.get("status"), "saved_exists": saved_exists},
+                            "timestamp": int(time.time() * 1000),
+                        }) + "\n")
+                except Exception:
+                    pass
+                # endregion
+                if not saved_exists:
                     return {"status": "not_found"}
             except Exception:
+                # region agent log
+                try:
+                    with open("/Users/mattmessinger/Desktop/Target_Scale_Repo/.cursor/debug.log", "a") as f:
+                        f.write(json.dumps({
+                            "sessionId": "debug-session",
+                            "runId": "run1",
+                            "hypothesisId": "H3",
+                            "location": "backend/src/api/routes/generate.py:get_cache_status_endpoint",
+                            "message": "cache_status_gate_exception",
+                            "data": {"state_code": state_code, "product": product, "status": status.get("status")},
+                            "timestamp": int(time.time() * 1000),
+                        }) + "\n")
+                except Exception:
+                    pass
+                # endregion
                 return {"status": "not_found"}
         
         # Fallback: if no DeepResearchCache entry exists, use most recent Saved Research run
