@@ -1702,6 +1702,345 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             logger.error(f"Failed to auto-save research task {task_id}: {e}")
             return None
 
+    def _build_research_task_state(task: "ResearchTask") -> Dict[str, Any]:
+        """Rehydrate in-memory research task state from DB."""
+        return {
+            "status": task.status or "queued",
+            "phase": task.phase or "state",
+            "progress": task.progress or 0,
+            "message": task.message or "Resuming research...",
+            "started_at": task.started_at.isoformat() if task.started_at else _utcnow_iso(),
+            "state_code": task.state_code,
+            "product_key": task.product_key,
+            "product_display_name": task.product_display_name,
+            "state_full": task.state_full or task.state_code,
+            "audiences": task.audiences or ["Decision Makers"],
+            "include_district_research": bool(task.include_district_research),
+            "include_conference_research": bool(task.include_conference_research),
+            "created_by": task.created_by,
+            "district_name": task.district_name,
+            "district_url": task.district_url,
+            "result": None,
+            "error": task.error,
+            "saved_run_id": task.saved_run_id,
+        }
+
+    async def _run_research_task(task_id: str, task_data: Dict[str, Any], db: AsyncSession) -> None:
+        """Background task that runs the research pipeline."""
+        from ...research.product_briefs import normalize_product_key
+        _research_tasks[task_id] = task_data
+        product = (task_data.get("product_display_name") or "").strip()
+        state_code = (task_data.get("state_code") or "").strip().upper()
+        state_full = (task_data.get("state_full") or "").strip() or state_code
+        product_key = task_data.get("product_key") or normalize_product_key(product)
+        district_name = task_data.get("district_name")
+        district_url = task_data.get("district_url")
+        audiences = task_data.get("audiences") or []
+        include_district_research = bool(task_data.get("include_district_research"))
+        include_conference_research = bool(task_data.get("include_conference_research"))
+        try:
+            _research_tasks[task_id]["status"] = "in_progress"
+            _research_tasks[task_id]["message"] = "Building evidence pack..."
+            _research_tasks[task_id]["progress"] = 5
+            
+            warnings: List[str] = []
+            
+            # Stage 1: Evidence Pack
+            t0 = time.perf_counter()
+            evidence_pack = await build_product_evidence_pack(
+                db=db,
+                product_display_name=product,
+                state_code=state_code,
+                audiences=audiences,
+            )
+            ms0 = int((time.perf_counter() - t0) * 1000)
+            logger.info(f"Research task {task_id}: Evidence pack built in {ms0}ms")
+            
+            _research_tasks[task_id]["message"] = "Running state research..."
+            _research_tasks[task_id]["progress"] = 10
+            
+            # Stage 2: Treasure Hunter (state research) with progress tracking
+            def state_progress_callback(message: str, percent: float):
+                """Update task progress during state research."""
+                _research_tasks[task_id]["message"] = message
+                # Scale progress: state research is 10-60%
+                scaled = 10 + int(percent * 0.5)
+                _research_tasks[task_id]["progress"] = min(60, scaled)
+                # Update DB periodically
+                # (Note: async DB updates would need separate handling)
+            
+            t1 = time.perf_counter()
+            treasure_hooks = await run_treasure_hunter(
+                db=db,
+                product=product,
+                state_code=state_code,
+                state_full=state_full,
+                district_name=district_name,
+                district_url=district_url,
+                product_context_text=None,
+                on_progress=state_progress_callback,
+            )
+            ms1 = int((time.perf_counter() - t1) * 1000)
+            logger.info(f"Research task {task_id}: Treasure hunter completed in {ms1}ms, found {len(treasure_hooks or [])} hooks")
+            
+            # Filter previously rejected hooks
+            try:
+                from ...db.models import TreasureHookFeedback
+                res = await db.execute(
+                    select(TreasureHookFeedback.link).where(
+                        TreasureHookFeedback.decision == "rejected",
+                        TreasureHookFeedback.product_key == product_key,
+                        TreasureHookFeedback.state_code == state_code,
+                    )
+                )
+                rejected_links = {str(r[0]).strip() for r in (res.all() or []) if r and r[0]}
+                if rejected_links:
+                    before = len(treasure_hooks or [])
+                    treasure_hooks = [h for h in (treasure_hooks or []) if h and h.link not in rejected_links]
+                    after = len(treasure_hooks or [])
+                    if after < before:
+                        warnings.append(f"Filtered {before - after} hooks previously rejected by humans.")
+            except Exception:
+                pass
+            
+            if not treasure_hooks:
+                warnings.append("No treasure hooks returned (Deep Research returned no results).")
+                _research_tasks[task_id]["status"] = "failed"
+                _research_tasks[task_id]["error"] = "No funding/compliance requirements found"
+                _research_tasks[task_id]["message"] = "No requirements found"
+                return
+            
+            # Stage 3: Hook Gate
+            _research_tasks[task_id]["message"] = "Filtering requirements..."
+            _research_tasks[task_id]["progress"] = 65
+            
+            t2 = time.perf_counter()
+            gated, filtered_reqs, report = gate_treasure_hooks(treasure_hooks, evidence_pack=evidence_pack)
+            ms2 = int((time.perf_counter() - t2) * 1000)
+            logger.info(f"Research task {task_id}: Hook gate completed in {ms2}ms, kept {report.kept}/{report.total}")
+            
+            # Convert filtered requirements
+            filtered_requirements_models = [
+                FilteredRequirement(hook=fr.hook, reason=fr.reason, reason_label=fr.reason_label)
+                for fr in filtered_reqs
+            ]
+            
+            if report.kept == 0:
+                # Still continue - UI will show filtered requirements
+                warnings.append("No requirements passed the relevance gate.")
+            
+            if report.kept < report.total:
+                warnings.append(f"Relevance gate filtered: kept={report.kept}/{report.total}")
+            
+            # Stage 4 (optional): District Research
+            district_research_result = None
+            if include_district_research:
+                _research_tasks[task_id]["phase"] = "district"
+                _research_tasks[task_id]["message"] = "Starting district research..."
+                _research_tasks[task_id]["progress"] = 70
+                
+                def district_progress_callback(message: str, percent: float):
+                    """Update task progress during district research."""
+                    _research_tasks[task_id]["message"] = message
+                    # Scale progress: district research is 70-95%
+                    scaled = 70 + int(percent * 0.25)
+                    _research_tasks[task_id]["progress"] = min(95, scaled)
+                
+                try:
+                    from ...research.product_briefs import get_product_brief
+                    product_brief = await get_product_brief(db, product, state_code=state_code)
+                    product_context = json.dumps(product_brief, default=str)[:3000]
+                    
+                    state_hooks_dict = [
+                        {
+                            "hook_id": h.hook_id,
+                            "hook_type": h.hook_type,
+                            "quote": h.quote,
+                            "link": h.link,
+                            "trigger_excerpt": h.trigger_excerpt,
+                            "title": h.quote[:100] if h.quote else "",
+                        }
+                        for h in gated
+                    ]
+                    
+                    t3 = time.perf_counter()
+                    district_data = await run_district_deep_research(
+                        db=db,
+                        state_code=state_code,
+                        state_full=state_full,
+                        product_key=product_key,
+                        product_context=product_context,
+                        state_hooks=state_hooks_dict,
+                        on_progress=district_progress_callback,
+                    )
+                    ms3 = int((time.perf_counter() - t3) * 1000)
+                    logger.info(f"Research task {task_id}: District research completed in {ms3}ms")
+                    
+                    # Convert to DistrictResearchResult
+                    passed_webhooks = []
+                    for h in (district_data or {}).get("passed_hooks", []):
+                        try:
+                            passed_webhooks.append(WebHook(
+                                hook_id=h.get("hook_id"),
+                                hook_type=h.get("hook_type", "district_specific"),
+                                quote=h.get("quote", ""),
+                                link=h.get("link", ""),
+                                trigger_excerpt=h.get("trigger_excerpt", ""),
+                                eligibility_excerpt=h.get("eligibility_excerpt"),
+                                why_relevant=h.get("why_relevant", ""),
+                                confidence=h.get("confidence", "medium"),
+                                source_quality_reason=h.get("source_quality_reason"),
+                                source_level="district",
+                                district_name=h.get("district_name"),
+                                why_district_specific=h.get("why_district_specific"),
+                            ))
+                        except Exception as e:
+                            logger.warning(f"Failed to convert district hook: {e}")
+                    
+                    filtered_district_hooks = []
+                    for fh in (district_data or {}).get("filtered_hooks", []):
+                        try:
+                            hook_data = fh.get("hook", {})
+                            filtered_district_hooks.append(FilteredDistrictHook(
+                                hook=WebHook(
+                                    hook_id=hook_data.get("hook_id"),
+                                    hook_type=hook_data.get("hook_type", "district_specific"),
+                                    quote=hook_data.get("quote", ""),
+                                    link=hook_data.get("link", ""),
+                                    trigger_excerpt=hook_data.get("trigger_excerpt", ""),
+                                    eligibility_excerpt=hook_data.get("eligibility_excerpt"),
+                                    why_relevant=hook_data.get("why_relevant", ""),
+                                    confidence=hook_data.get("confidence", "medium"),
+                                    source_level="district",
+                                    district_name=hook_data.get("district_name"),
+                                ),
+                                filter_reason=fh.get("filter_reason", "unknown"),
+                                filter_detail=fh.get("filter_detail", ""),
+                            ))
+                        except Exception as e:
+                            logger.warning(f"Failed to convert filtered hook: {e}")
+                    
+                    district_research_result = DistrictResearchResult(
+                        districts_surveyed=(district_data or {}).get("districts_surveyed", []),
+                        passed_hooks=passed_webhooks,
+                        filtered_hooks=filtered_district_hooks,
+                        status=(district_data or {}).get("status", "completed"),
+                        research_summary=(district_data or {}).get("research_summary"),
+                    )
+                except Exception as e:
+                    logger.error(f"District research failed: {e}")
+                    warnings.append(f"District research failed: {str(e)}")
+            
+            # Stage 5 (optional): Conference Research
+            conferences = []
+            if include_conference_research:
+                try:
+                    _research_tasks[task_id]["phase"] = "conferences"
+                    _research_tasks[task_id]["message"] = "Searching for relevant conferences..."
+                    _research_tasks[task_id]["progress"] = 96
+                    
+                    from ...research.deep_research import run_conference_research
+                    from ...research.quality_gate import filter_conferences
+                    
+                    def conf_progress_callback(message: str, percent: float):
+                        """Update task progress during conference research."""
+                        _research_tasks[task_id]["message"] = message
+                        # Scale progress: conference research is 96-99%
+                        scaled = 96 + int(percent * 0.03)
+                        _research_tasks[task_id]["progress"] = min(99, scaled)
+                    
+                    t4 = time.perf_counter()
+                    conf_results = await run_conference_research(
+                        db=db,
+                        state_code=state_code,
+                        state_full=state_full,
+                        product_key=product_key,
+                        audience=audiences[0] if audiences else "Decision Makers",
+                        on_progress=conf_progress_callback,
+                    )
+                    ms4 = int((time.perf_counter() - t4) * 1000)
+                    
+                    # Filter conferences for quality
+                    raw_conferences = conf_results.get("conferences", [])
+                    passed_conferences, _ = filter_conferences(raw_conferences, product_key)
+                    
+                    # Convert to ConferenceOpportunity models
+                    for conf in passed_conferences[:5]:  # Limit to top 5
+                        try:
+                            conferences.append(ConferenceOpportunity(
+                                conference_name=conf.get("conference_name", ""),
+                                organization=conf.get("organization", ""),
+                                location=conf.get("location", ""),
+                                dates=conf.get("dates", ""),
+                                relevance=conf.get("relevance", ""),
+                                presentation_deadline=conf.get("presentation_deadline"),
+                                sponsorship_info=conf.get("sponsorship_info"),
+                                website=conf.get("website", ""),
+                                confidence=conf.get("confidence", "medium"),
+                            ))
+                        except Exception as e:
+                            logger.warning(f"Failed to convert conference: {e}")
+                    
+                    logger.info(f"Research task {task_id}: Conference research completed in {ms4}ms, found {len(conferences)} opportunities")
+                    
+                except Exception as e:
+                    logger.warning(f"Conference research failed (non-critical): {e}")
+                    # Non-critical - continue without conferences
+            
+            # Build result
+            _research_tasks[task_id]["message"] = "Research complete!"
+            _research_tasks[task_id]["progress"] = 100
+            _research_tasks[task_id]["status"] = "completed"
+            _research_tasks[task_id]["completed_at"] = _utcnow_iso()
+            
+            result = {
+                "evidence_pack": _dump_model(evidence_pack),
+                "treasure_hooks": [_dump_model(h) for h in gated],
+                "filtered_requirements": [_dump_model(fr) for fr in filtered_requirements_models],
+                "district_research": _dump_model(district_research_result) if district_research_result else None,
+                "conferences": [_dump_model(c) for c in conferences],
+                "warnings": warnings,
+            }
+            _research_tasks[task_id]["result"] = result
+            
+            # Store full prep in DeepResearchCache for instant future loads
+            try:
+                from ...research.deep_research import get_cached_research
+                cache_entry = await get_cached_research(db, state_code, product_key)
+                if cache_entry:
+                    cache_entry.full_prep_json = result
+                    await db.commit()
+                    logger.info(f"Research task {task_id}: Stored full prep in cache")
+            except Exception as cache_err:
+                logger.warning(f"Research task {task_id}: Failed to cache full prep: {cache_err}")
+            
+            # Sync completed state to database
+            await _sync_task_to_db(db, task_id, _research_tasks[task_id])
+            
+            # Auto-save to SavedEmailRun so user can find results even if they disconnected
+            saved_run_id = await _auto_save_research_run(
+                db, task_id, _research_tasks[task_id], result
+            )
+            if saved_run_id:
+                _research_tasks[task_id]["saved_run_id"] = saved_run_id
+                logger.info(f"Research task {task_id}: Auto-saved as run {saved_run_id}")
+            
+            logger.info(f"Research task {task_id} completed successfully")
+            
+        except Exception as e:
+            logger.error(f"Research task {task_id} failed: {e}", exc_info=True)
+            _research_tasks[task_id]["status"] = "failed"
+            _research_tasks[task_id]["error"] = str(e)
+            _research_tasks[task_id]["message"] = f"Failed: {str(e)}"
+            # Sync failed state to database
+            await _sync_task_to_db(db, task_id, _research_tasks[task_id])
+
+    async def _run_research_task_with_session(task_id: str, task_data: Dict[str, Any]) -> None:
+        """Run research task with a fresh DB session (safe for resume on startup)."""
+        from ...db import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            await _run_research_task(task_id, task_data, db)
+
     @router.post("/pipeline/prep/start")
     async def start_research_pipeline(
         request: PipelinePrepRequest,
@@ -1816,308 +2155,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         except Exception as e:
             logger.warning(f"Failed to persist research task to DB: {e}")
 
-        async def run_research_task():
-            """Background task that runs the research pipeline."""
-            try:
-                _research_tasks[task_id]["status"] = "in_progress"
-                _research_tasks[task_id]["message"] = "Building evidence pack..."
-                _research_tasks[task_id]["progress"] = 5
-                
-                audiences = request.audiences or []
-                warnings: List[str] = []
-                
-                # Stage 1: Evidence Pack
-                t0 = time.perf_counter()
-                evidence_pack = await build_product_evidence_pack(
-                    db=db,
-                    product_display_name=product,
-                    state_code=state_code,
-                    audiences=audiences,
-                )
-                ms0 = int((time.perf_counter() - t0) * 1000)
-                logger.info(f"Research task {task_id}: Evidence pack built in {ms0}ms")
-                
-                _research_tasks[task_id]["message"] = "Running state research..."
-                _research_tasks[task_id]["progress"] = 10
-                
-                # Stage 2: Treasure Hunter (state research) with progress tracking
-                def state_progress_callback(message: str, percent: float):
-                    """Update task progress during state research."""
-                    _research_tasks[task_id]["message"] = message
-                    # Scale progress: state research is 10-60%
-                    scaled = 10 + int(percent * 0.5)
-                    _research_tasks[task_id]["progress"] = min(60, scaled)
-                    # Update DB periodically
-                    # (Note: async DB updates would need separate handling)
-                
-                t1 = time.perf_counter()
-                treasure_hooks = await run_treasure_hunter(
-                    db=db,
-                    product=product,
-                    state_code=state_code,
-                    state_full=state_full,
-                    district_name=request.district_name,
-                    district_url=request.district_url,
-                    product_context_text=None,
-                    on_progress=state_progress_callback,
-                )
-                ms1 = int((time.perf_counter() - t1) * 1000)
-                logger.info(f"Research task {task_id}: Treasure hunter completed in {ms1}ms, found {len(treasure_hooks or [])} hooks")
-                
-                # Filter previously rejected hooks
-                try:
-                    from ...db.models import TreasureHookFeedback
-                    res = await db.execute(
-                        select(TreasureHookFeedback.link).where(
-                            TreasureHookFeedback.decision == "rejected",
-                            TreasureHookFeedback.product_key == product_key,
-                            TreasureHookFeedback.state_code == state_code,
-                        )
-                    )
-                    rejected_links = {str(r[0]).strip() for r in (res.all() or []) if r and r[0]}
-                    if rejected_links:
-                        before = len(treasure_hooks or [])
-                        treasure_hooks = [h for h in (treasure_hooks or []) if h and h.link not in rejected_links]
-                        after = len(treasure_hooks or [])
-                        if after < before:
-                            warnings.append(f"Filtered {before - after} hooks previously rejected by humans.")
-                except Exception:
-                    pass
-                
-                if not treasure_hooks:
-                    warnings.append("No treasure hooks returned (Deep Research returned no results).")
-                    _research_tasks[task_id]["status"] = "failed"
-                    _research_tasks[task_id]["error"] = "No funding/compliance requirements found"
-                    _research_tasks[task_id]["message"] = "No requirements found"
-                    return
-                
-                # Stage 3: Hook Gate
-                _research_tasks[task_id]["message"] = "Filtering requirements..."
-                _research_tasks[task_id]["progress"] = 65
-                
-                t2 = time.perf_counter()
-                gated, filtered_reqs, report = gate_treasure_hooks(treasure_hooks, evidence_pack=evidence_pack)
-                ms2 = int((time.perf_counter() - t2) * 1000)
-                logger.info(f"Research task {task_id}: Hook gate completed in {ms2}ms, kept {report.kept}/{report.total}")
-                
-                # Convert filtered requirements
-                filtered_requirements_models = [
-                    FilteredRequirement(hook=fr.hook, reason=fr.reason, reason_label=fr.reason_label)
-                    for fr in filtered_reqs
-                ]
-                
-                if report.kept == 0:
-                    # Still continue - UI will show filtered requirements
-                    warnings.append("No requirements passed the relevance gate.")
-                
-                if report.kept < report.total:
-                    warnings.append(f"Relevance gate filtered: kept={report.kept}/{report.total}")
-                
-                # Stage 4 (optional): District Research
-                district_research_result = None
-                if request.include_district_research:
-                    _research_tasks[task_id]["phase"] = "district"
-                    _research_tasks[task_id]["message"] = "Starting district research..."
-                    _research_tasks[task_id]["progress"] = 70
-                    
-                    def district_progress_callback(message: str, percent: float):
-                        """Update task progress during district research."""
-                        _research_tasks[task_id]["message"] = message
-                        # Scale progress: district research is 70-95%
-                        scaled = 70 + int(percent * 0.25)
-                        _research_tasks[task_id]["progress"] = min(95, scaled)
-                    
-                    try:
-                        from ...research.product_briefs import get_product_brief
-                        product_brief = await get_product_brief(db, product, state_code=state_code)
-                        product_context = json.dumps(product_brief, default=str)[:3000]
-                        
-                        state_hooks_dict = [
-                            {
-                                "hook_id": h.hook_id,
-                                "hook_type": h.hook_type,
-                                "quote": h.quote,
-                                "link": h.link,
-                                "trigger_excerpt": h.trigger_excerpt,
-                                "title": h.quote[:100] if h.quote else "",
-                            }
-                            for h in gated
-                        ]
-                        
-                        t3 = time.perf_counter()
-                        district_data = await run_district_deep_research(
-                            db=db,
-                            state_code=state_code,
-                            state_full=state_full,
-                            product_key=product_key,
-                            product_context=product_context,
-                            state_hooks=state_hooks_dict,
-                            on_progress=district_progress_callback,
-                        )
-                        ms3 = int((time.perf_counter() - t3) * 1000)
-                        logger.info(f"Research task {task_id}: District research completed in {ms3}ms")
-                        
-                        # Convert to DistrictResearchResult
-                        passed_webhooks = []
-                        for h in (district_data or {}).get("passed_hooks", []):
-                            try:
-                                passed_webhooks.append(WebHook(
-                                    hook_id=h.get("hook_id"),
-                                    hook_type=h.get("hook_type", "district_specific"),
-                                    quote=h.get("quote", ""),
-                                    link=h.get("link", ""),
-                                    trigger_excerpt=h.get("trigger_excerpt", ""),
-                                    eligibility_excerpt=h.get("eligibility_excerpt"),
-                                    why_relevant=h.get("why_relevant", ""),
-                                    confidence=h.get("confidence", "medium"),
-                                    source_quality_reason=h.get("source_quality_reason"),
-                                    source_level="district",
-                                    district_name=h.get("district_name"),
-                                    why_district_specific=h.get("why_district_specific"),
-                                ))
-                            except Exception as e:
-                                logger.warning(f"Failed to convert district hook: {e}")
-                        
-                        filtered_district_hooks = []
-                        for fh in (district_data or {}).get("filtered_hooks", []):
-                            try:
-                                hook_data = fh.get("hook", {})
-                                filtered_district_hooks.append(FilteredDistrictHook(
-                                    hook=WebHook(
-                                        hook_id=hook_data.get("hook_id"),
-                                        hook_type=hook_data.get("hook_type", "district_specific"),
-                                        quote=hook_data.get("quote", ""),
-                                        link=hook_data.get("link", ""),
-                                        trigger_excerpt=hook_data.get("trigger_excerpt", ""),
-                                        eligibility_excerpt=hook_data.get("eligibility_excerpt"),
-                                        why_relevant=hook_data.get("why_relevant", ""),
-                                        confidence=hook_data.get("confidence", "medium"),
-                                        source_level="district",
-                                        district_name=hook_data.get("district_name"),
-                                    ),
-                                    filter_reason=fh.get("filter_reason", "unknown"),
-                                    filter_detail=fh.get("filter_detail", ""),
-                                ))
-                            except Exception as e:
-                                logger.warning(f"Failed to convert filtered hook: {e}")
-                        
-                        district_research_result = DistrictResearchResult(
-                            districts_surveyed=(district_data or {}).get("districts_surveyed", []),
-                            passed_hooks=passed_webhooks,
-                            filtered_hooks=filtered_district_hooks,
-                            status=(district_data or {}).get("status", "completed"),
-                            research_summary=(district_data or {}).get("research_summary"),
-                        )
-                    except Exception as e:
-                        logger.error(f"District research failed: {e}")
-                        warnings.append(f"District research failed: {str(e)}")
-                
-                # Stage 5 (optional): Conference Research
-                conferences = []
-                if getattr(request, 'include_conference_research', False):
-                    try:
-                        _research_tasks[task_id]["phase"] = "conferences"
-                        _research_tasks[task_id]["message"] = "Searching for relevant conferences..."
-                        _research_tasks[task_id]["progress"] = 96
-                        
-                        from ...research.deep_research import run_conference_research
-                        from ...research.quality_gate import filter_conferences
-                        
-                        def conf_progress_callback(message: str, percent: float):
-                            """Update task progress during conference research."""
-                            _research_tasks[task_id]["message"] = message
-                            # Scale progress: conference research is 96-99%
-                            scaled = 96 + int(percent * 0.03)
-                            _research_tasks[task_id]["progress"] = min(99, scaled)
-                        
-                        t4 = time.perf_counter()
-                        conf_results = await run_conference_research(
-                            db=db,
-                            state_code=state_code,
-                            state_full=state_full,
-                            product_key=product_key,
-                            audience=audiences[0] if audiences else "Decision Makers",
-                            on_progress=conf_progress_callback,
-                        )
-                        ms4 = int((time.perf_counter() - t4) * 1000)
-                        
-                        # Filter conferences for quality
-                        raw_conferences = conf_results.get("conferences", [])
-                        passed_conferences, _ = filter_conferences(raw_conferences, product_key)
-                        
-                        # Convert to ConferenceOpportunity models
-                        for conf in passed_conferences[:5]:  # Limit to top 5
-                            try:
-                                conferences.append(ConferenceOpportunity(
-                                    conference_name=conf.get("conference_name", ""),
-                                    organization=conf.get("organization", ""),
-                                    location=conf.get("location", ""),
-                                    dates=conf.get("dates", ""),
-                                    relevance=conf.get("relevance", ""),
-                                    presentation_deadline=conf.get("presentation_deadline"),
-                                    sponsorship_info=conf.get("sponsorship_info"),
-                                    website=conf.get("website", ""),
-                                    confidence=conf.get("confidence", "medium"),
-                                ))
-                            except Exception as e:
-                                logger.warning(f"Failed to convert conference: {e}")
-                        
-                        logger.info(f"Research task {task_id}: Conference research completed in {ms4}ms, found {len(conferences)} opportunities")
-                        
-                    except Exception as e:
-                        logger.warning(f"Conference research failed (non-critical): {e}")
-                        # Non-critical - continue without conferences
-                
-                # Build result
-                _research_tasks[task_id]["message"] = "Research complete!"
-                _research_tasks[task_id]["progress"] = 100
-                _research_tasks[task_id]["status"] = "completed"
-                _research_tasks[task_id]["completed_at"] = _utcnow_iso()
-                
-                result = {
-                    "evidence_pack": _dump_model(evidence_pack),
-                    "treasure_hooks": [_dump_model(h) for h in gated],
-                    "filtered_requirements": [_dump_model(fr) for fr in filtered_requirements_models],
-                    "district_research": _dump_model(district_research_result) if district_research_result else None,
-                    "conferences": [_dump_model(c) for c in conferences],
-                    "warnings": warnings,
-                }
-                _research_tasks[task_id]["result"] = result
-                
-                # Store full prep in DeepResearchCache for instant future loads
-                try:
-                    from ...research.deep_research import get_cached_research
-                    cache_entry = await get_cached_research(db, state_code, product_key)
-                    if cache_entry:
-                        cache_entry.full_prep_json = result
-                        await db.commit()
-                        logger.info(f"Research task {task_id}: Stored full prep in cache")
-                except Exception as cache_err:
-                    logger.warning(f"Research task {task_id}: Failed to cache full prep: {cache_err}")
-                
-                # Sync completed state to database
-                await _sync_task_to_db(db, task_id, _research_tasks[task_id])
-                
-                # Auto-save to SavedEmailRun so user can find results even if they disconnected
-                saved_run_id = await _auto_save_research_run(
-                    db, task_id, _research_tasks[task_id], result
-                )
-                if saved_run_id:
-                    _research_tasks[task_id]["saved_run_id"] = saved_run_id
-                    logger.info(f"Research task {task_id}: Auto-saved as run {saved_run_id}")
-                
-                logger.info(f"Research task {task_id} completed successfully")
-                
-            except Exception as e:
-                logger.error(f"Research task {task_id} failed: {e}", exc_info=True)
-                _research_tasks[task_id]["status"] = "failed"
-                _research_tasks[task_id]["error"] = str(e)
-                _research_tasks[task_id]["message"] = f"Failed: {str(e)}"
-                # Sync failed state to database
-                await _sync_task_to_db(db, task_id, _research_tasks[task_id])
-
         # Start background task
-        asyncio.create_task(run_research_task())
+        asyncio.create_task(_run_research_task(task_id, _research_tasks[task_id], db))
         logger.info(f"Started research task {task_id} for {state_code}/{product_key}")
 
         return {

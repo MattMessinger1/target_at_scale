@@ -217,55 +217,27 @@ async def lifespan(app: FastAPI):
                     await db.commit()
                     continue
                 
-                # Do NOT automatically resume research on startup.
-                # Rationale: research can be expensive (Deep Research / web search). After deploys,
-                # we prefer to fail fast and let users explicitly re-run, rather than restarting work.
                 logger.warning(
                     f"Research task {task.id} was interrupted at phase '{task.phase}'. "
-                    f"Not resuming on startup; marking as failed."
+                    f"Resuming on startup."
                 )
                 
-                # Mark any in-progress cache entries as failed so the UI doesn't show phantom in-progress work.
-                try:
-                    deep_stmt = (
-                        select(DeepResearchCache)
-                        .where(DeepResearchCache.state_code == task.state_code)
-                        .where(DeepResearchCache.product_key == task.product_key)
-                        .where(DeepResearchCache.status == "in_progress")
-                        .where(DeepResearchCache.is_archived.is_(False))
-                        .limit(1)
-                    )
-                    deep_result = await db.execute(deep_stmt)
-                    deep_cache = deep_result.scalar_one_or_none()
-                    if deep_cache:
-                        deep_cache.status = "failed"
-                        deep_cache.error_message = "Interrupted by server restart; please re-run"
-                        deep_cache.openai_response_id = None
-                except Exception as cache_err:
-                    logger.warning(f"Failed to update DeepResearchCache for interrupted task {task.id}: {cache_err}")
-                
-                try:
-                    district_stmt = (
-                        select(DistrictResearchCache)
-                        .where(DistrictResearchCache.state_code == task.state_code)
-                        .where(DistrictResearchCache.product_key == task.product_key)
-                        .where(DistrictResearchCache.status == "in_progress")
-                        .where(DistrictResearchCache.is_archived.is_(False))
-                        .limit(1)
-                    )
-                    district_result = await db.execute(district_stmt)
-                    district_cache = district_result.scalar_one_or_none()
-                    if district_cache:
-                        district_cache.status = "failed"
-                        district_cache.error_message = "Interrupted by server restart; please re-run"
-                        district_cache.openai_response_id = None
-                except Exception as cache_err:
-                    logger.warning(f"Failed to update DistrictResearchCache for interrupted task {task.id}: {cache_err}")
-                
-                task.status = "failed"
-                task.error = "Research was interrupted by server restart; please re-run"
-                task.message = "Failed: research was interrupted by server restart; please re-run"
+                task.status = "queued"
+                task.error = None
+                task.message = "Resuming research after server restart..."
+                task.expires_at = datetime.utcnow() + timedelta(hours=1)
                 await db.commit()
+                
+                try:
+                    task_state = generate._build_research_task_state(task)
+                    generate._research_tasks[task.id] = task_state
+                    asyncio.create_task(generate._run_research_task_with_session(task.id, task_state))
+                except Exception as resume_err:
+                    logger.error(f"Failed to resume research task {task.id}: {resume_err}", exc_info=True)
+                    task.status = "failed"
+                    task.error = "Failed to resume after server restart"
+                    task.message = "Failed: could not resume after server restart"
+                    await db.commit()
             
             if incomplete_tasks:
                 logger.info(f"Processed {len(incomplete_tasks)} interrupted research tasks on startup")
@@ -273,12 +245,17 @@ async def lifespan(app: FastAPI):
         logger.error(f"Research task resume failed (startup will continue): {e}", exc_info=True)
 
     # Cleanup: prevent "phantom" in-progress deep research after deploys.
-    # We intentionally do NOT auto-resume deep research on startup (surprise spend / confusing UX).
-    # Any in-progress cache entries should be marked failed so the UI can prompt users to re-run explicitly.
+    # Only mark caches failed if there is no corresponding active ResearchTask.
     try:
-        from ..db.models import DeepResearchCache, DistrictResearchCache
+        from ..db.models import DeepResearchCache, DistrictResearchCache, ResearchTask
 
         async with AsyncSessionLocal() as db:
+            active_stmt = select(ResearchTask.state_code, ResearchTask.product_key).where(
+                ResearchTask.status.in_(["queued", "in_progress"])
+            )
+            active_result = await db.execute(active_stmt)
+            active_pairs = {(row[0], row[1]) for row in active_result.fetchall()}
+
             deep_q = (
                 select(DeepResearchCache)
                 .where(DeepResearchCache.status == "in_progress")
@@ -297,16 +274,18 @@ async def lifespan(app: FastAPI):
 
             updated = 0
             for entry in deep_entries:
-                entry.status = "failed"
-                entry.error_message = "Interrupted by server restart; please re-run"
-                entry.openai_response_id = None
-                updated += 1
+                if (entry.state_code, entry.product_key) not in active_pairs:
+                    entry.status = "failed"
+                    entry.error_message = "Interrupted by server restart; please re-run"
+                    entry.openai_response_id = None
+                    updated += 1
 
             for entry in district_entries:
-                entry.status = "failed"
-                entry.error_message = "Interrupted by server restart; please re-run"
-                entry.openai_response_id = None
-                updated += 1
+                if (entry.state_code, entry.product_key) not in active_pairs:
+                    entry.status = "failed"
+                    entry.error_message = "Interrupted by server restart; please re-run"
+                    entry.openai_response_id = None
+                    updated += 1
 
             if updated:
                 await db.commit()
