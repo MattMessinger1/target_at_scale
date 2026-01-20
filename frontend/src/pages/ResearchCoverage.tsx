@@ -132,8 +132,7 @@ export default function ResearchCoverage() {
   // Create batch job URL with pre-filled states
   const createBatchUrl = () => {
     const states = Array.from(selectedStates)
-    // Navigate to email generator with batch modal pre-filled
-    // We'll use URL params to pass the state
+    // Navigate to research flow with batch modal pre-filled
     const params = new URLSearchParams()
     params.set('batch', 'true')
     params.set('product', selectedProduct)
@@ -141,7 +140,7 @@ export default function ResearchCoverage() {
     const { needsDistrict, needsConference } = getNeededResearch()
     if (needsDistrict) params.set('district', 'true')
     if (needsConference) params.set('conference', 'true')
-    return `/email?${params.toString()}`
+    return `/research?${params.toString()}`
   }
 
   // Status indicator component
@@ -173,11 +172,17 @@ export default function ResearchCoverage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Link 
-                to="/email" 
+                to="/" 
                 className="flex items-center gap-2 text-slate-400 hover:text-slate-200 transition-colors"
               >
                 <ChevronLeft className="w-4 h-4" />
-                Back to Email Generator
+                Home
+              </Link>
+              <Link 
+                to="/research" 
+                className="flex items-center gap-2 text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                New Research
               </Link>
             </div>
             <h1 className="text-xl font-semibold text-slate-100">Research Coverage Matrix</h1>

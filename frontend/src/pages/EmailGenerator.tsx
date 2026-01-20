@@ -1451,7 +1451,11 @@ type CacheStatus = {
   error?: string
 }
 
-function EmailGeneratorPipeline() {
+interface EmailGeneratorPipelineProps {
+  flowMode: FlowMode
+}
+
+function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
   const [wizardStep, setWizardStep] = useState<WizardStep>(1)
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   const [selectedStates, setSelectedStates] = useState<SelectedState[]>([])
@@ -3309,16 +3313,39 @@ function EmailGeneratorPipeline() {
     )
   }
 
+  // Determine header content based on flow mode
+  const isResearchMode = flowMode === 'research'
+  const headerTitle = isResearchMode ? 'Research Discovery' : 'Email Generator'
+  const headerSubtitle = isResearchMode 
+    ? 'Discover funding opportunities and compliance hooks for any product and state.'
+    : 'Find funding/compliance requirements and generate targeted emails.'
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
       <div className="max-w-5xl mx-auto px-4 py-10">
         <div className="flex items-start justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-semibold text-slate-100">
-              Email Generator
-            </h1>
+            <div className="flex items-center gap-3 mb-1">
+              <Link 
+                to="/" 
+                className="text-slate-400 hover:text-slate-200 transition-colors"
+                title="Back to Home"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+              </Link>
+              <h1 className="text-2xl sm:text-3xl font-semibold text-slate-100">
+                {headerTitle}
+              </h1>
+              {isResearchMode && (
+                <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-600/30 text-blue-300 border border-blue-600/50">
+                  Research Mode
+                </span>
+              )}
+            </div>
             <div className="mt-1 text-sm text-slate-400">
-              Find funding/compliance requirements and generate targeted emails.
+              {headerSubtitle}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -3340,25 +3367,29 @@ function EmailGeneratorPipeline() {
               </svg>
               Saved Research
             </Link>
-            <Link
-              to="/coverage"
-              className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-500 transition-colors flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-              Coverage
-            </Link>
-            <Link
-              to="/training"
-              className="px-3 py-2 rounded-lg border border-amber-700/50 text-amber-300 hover:bg-amber-900/30 transition-colors flex items-center gap-2"
-              title="View golden emails and training feedback"
-            >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-              </svg>
-              Training Data
-            </Link>
+            {isResearchMode && (
+              <Link
+                to="/coverage"
+                className="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-500 transition-colors flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Coverage
+              </Link>
+            )}
+            {!isResearchMode && (
+              <Link
+                to="/training"
+                className="px-3 py-2 rounded-lg border border-amber-700/50 text-amber-300 hover:bg-amber-900/30 transition-colors flex items-center gap-2"
+                title="View golden emails and training feedback"
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                </svg>
+                Training Data
+              </Link>
+            )}
             <ThemeToggle />
           </div>
         </div>
@@ -3826,14 +3857,26 @@ function EmailGeneratorPipeline() {
               )}
 
               <div className="pt-4 flex justify-between items-center">
-                <button
-                  onClick={() => setShowBatchModal(true)}
-                  disabled={!selectedProducts.length}
-                  className="px-4 py-2 rounded-lg font-medium text-amber-300 border border-amber-600 hover:bg-amber-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Run research across multiple states at once"
-                >
-                  🚀 Batch Research
-                </button>
+                {/* Batch research: subtle link in research mode, button in email mode */}
+                {isResearchMode ? (
+                  <button
+                    onClick={() => setShowBatchModal(true)}
+                    disabled={!selectedProducts.length}
+                    className="text-sm text-slate-400 hover:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    title="Run research across multiple states at once"
+                  >
+                    Need to research multiple states? →
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setShowBatchModal(true)}
+                    disabled={!selectedProducts.length}
+                    className="px-4 py-2 rounded-lg font-medium text-amber-300 border border-amber-600 hover:bg-amber-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Run research across multiple states at once"
+                  >
+                    🚀 Batch Research
+                  </button>
+                )}
                 <div className="flex gap-3">
                   <button
                     onClick={handlePrep}
@@ -3841,10 +3884,12 @@ function EmailGeneratorPipeline() {
                     className={`px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2 ${
                       !canPrep
                         ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                        : isResearchMode
+                          ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white'
                     }`}
                   >
-                    Continue →
+                    {isResearchMode ? 'Start Research →' : 'Continue →'}
                   </button>
                 </div>
               </div>
@@ -4732,8 +4777,14 @@ function EmailGeneratorPipeline() {
 }
 
 
-export default function EmailGenerator() {
-  const mode = (() => {
+export type FlowMode = 'research' | 'email'
+
+interface EmailGeneratorProps {
+  mode?: FlowMode
+}
+
+export default function EmailGenerator({ mode: propMode }: EmailGeneratorProps) {
+  const urlMode = (() => {
     try {
       return new URLSearchParams(window.location.search).get('mode')
     } catch {
@@ -4741,8 +4792,12 @@ export default function EmailGenerator() {
     }
   })()
 
-  if (mode === 'v1') {
+  if (urlMode === 'v1') {
     return <EmailGeneratorV1 />
   }
-  return <EmailGeneratorPipeline />
+  
+  // Use prop mode, or default to 'email' for backwards compatibility
+  const flowMode: FlowMode = propMode || 'email'
+  
+  return <EmailGeneratorPipeline flowMode={flowMode} />
 }

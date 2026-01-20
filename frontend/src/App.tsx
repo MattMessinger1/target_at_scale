@@ -6,6 +6,7 @@ import Districts from '@/pages/Districts'
 import DistrictDetail from '@/pages/DistrictDetail'
 import KnowledgeBase from '@/pages/KnowledgeBase'
 import Export from '@/pages/Export'
+import Landing from '@/pages/Landing'
 import EmailGenerator from '@/pages/EmailGenerator'
 import SavedRuns from '@/pages/SavedRuns'
 import TrainingFeedback from '@/pages/TrainingFeedback'
@@ -15,10 +16,17 @@ function App() {
   return (
     <>
       <Routes>
-        {/* Main V1 Email Generator - now the primary route */}
-        <Route path="/" element={<EmailGenerator />} />
-        <Route path="/generator" element={<EmailGenerator />} />
-        <Route path="/email" element={<EmailGenerator />} />
+        {/* Landing page - choose Research or Email flow */}
+        <Route path="/" element={<Landing />} />
+        
+        {/* Research flow - focused on discovering opportunities */}
+        <Route path="/research" element={<EmailGenerator mode="research" />} />
+        
+        {/* Email flow - focused on generating emails */}
+        <Route path="/email" element={<EmailGenerator mode="email" />} />
+        <Route path="/generator" element={<EmailGenerator mode="email" />} />
+        
+        {/* Other pages */}
         <Route path="/coverage" element={<ResearchCoverage />} />
         <Route path="/saved-runs" element={<SavedRuns />} />
         <Route path="/training" element={<TrainingFeedback />} />

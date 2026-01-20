@@ -90,7 +90,7 @@ export default function SavedRuns() {
       const full = await api.savedRuns.get(run.id)
       // Store in session storage for the generator to pick up
       sessionStorage.setItem('loadSavedRun', JSON.stringify(full))
-      navigate('/generator')
+      navigate('/email')
       toast({
         title: 'Loading run...',
         description: `Loading ${run.name || run.product + ' - ' + run.state_code}`,
@@ -225,13 +225,22 @@ export default function SavedRuns() {
           <FolderOpen className="w-12 h-12 mx-auto text-slate-600 mb-3" />
           <h3 className="text-lg font-medium text-slate-400">No saved runs yet</h3>
           <p className="text-sm text-slate-500 mt-1">
-            Save research or email runs from the Generator to see them here.
+            Save research or email runs to see them here.
           </p>
-          <Link to="/generator">
-            <Button variant="outline" className="mt-4">
-              Go to Generator
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2 mt-4">
+            <Link to="/research">
+              <Button variant="outline" className="flex items-center gap-2">
+                <Search className="w-4 h-4" />
+                Start Research
+              </Button>
+            </Link>
+            <Link to="/email">
+              <Button className="flex items-center gap-2">
+                <Mail className="w-4 h-4" />
+                Create Email
+              </Button>
+            </Link>
+          </div>
         </div>
       )
     }
@@ -464,17 +473,37 @@ export default function SavedRuns() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Saved Research</h1>
-          <p className="text-muted-foreground">
-            View and manage your saved research and email runs (30-day retention)
-          </p>
+        <div className="flex items-center gap-3">
+          <Link 
+            to="/" 
+            className="text-slate-400 hover:text-slate-200 transition-colors"
+            title="Back to Home"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+          </Link>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Saved Research</h1>
+            <p className="text-muted-foreground">
+              View and manage your saved research and email runs (30-day retention)
+            </p>
+          </div>
         </div>
-        <Link to="/generator">
-          <Button variant="outline">
-            New Research
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link to="/research">
+            <Button variant="outline" className="flex items-center gap-2">
+              <Search className="w-4 h-4" />
+              New Research
+            </Button>
+          </Link>
+          <Link to="/email">
+            <Button className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500">
+              <Mail className="w-4 h-4" />
+              New Email
+            </Button>
+          </Link>
+        </div>
       </div>
       
       {/* View Mode Tabs */}
