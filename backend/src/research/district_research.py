@@ -767,7 +767,7 @@ Remember: Return ONLY a valid JSON object, no other text."""
                 output_tokens=output_tokens,
                 state_code=state_code,
                 product=product_key,
-                metadata={
+                extra_data={
                     "districts_surveyed": len(districts_surveyed),
                     "passed_hooks": len(passed_hooks),
                     "filtered_hooks": len(filtered_hooks),

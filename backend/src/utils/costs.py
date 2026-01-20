@@ -344,7 +344,7 @@ async def log_api_usage(
     state_code: Optional[str] = None,
     product: Optional[str] = None,
     batch_job_id: Optional[int] = None,
-    metadata: Optional[Dict[str, Any]] = None,
+    extra_data: Optional[Dict[str, Any]] = None,
 ) -> "ApiUsageLog":
     """Log API usage to database for cost tracking.
     
@@ -359,7 +359,7 @@ async def log_api_usage(
         state_code: State code (if applicable)
         product: Product name (if applicable)
         batch_job_id: Batch job ID (if part of batch)
-        metadata: Additional metadata to store
+        extra_data: Additional context data to store
         
     Returns:
         Created ApiUsageLog record
@@ -393,7 +393,7 @@ async def log_api_usage(
         state_code=state_code,
         product=product,
         batch_job_id=batch_job_id,
-        metadata=metadata or {},
+        extra_data=extra_data or {},
     )
     
     db.add(log_entry)

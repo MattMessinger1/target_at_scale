@@ -855,7 +855,7 @@ Remember: Return ONLY a valid JSON object, no other text."""
                 output_tokens=output_tokens,
                 state_code=state_code,
                 product=product_key,
-                metadata={
+                extra_data={
                     "response_id": response_id,
                     "funding_items": len(results.get("funding_items", [])),
                     "compliance_items": len(results.get("compliance_items", [])),
@@ -1218,7 +1218,7 @@ async def run_conference_research(
                 output_tokens=output_tokens,
                 state_code=state_code,
                 product=product_key,
-                metadata={
+                extra_data={
                     "conferences_found": len(results.get("conferences", [])),
                 },
             )

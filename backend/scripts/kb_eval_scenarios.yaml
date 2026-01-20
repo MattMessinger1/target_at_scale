@@ -1,9 +1,15 @@
 scenarios:
-  # Add/edit scenarios over time. The key metric to watch early is:
+  # Add/edit scenarios over time. The key metrics to watch:
   # - Are we retrieving diverse, high-signal sources (not many chunks from one doc)?
   # - Do your expected "authoritative" docs show up in top evidence?
   #
   # Tip: Use the Evidence panel in the UI to copy/paste `file:` names into expectations.
+  #
+  # See EVAL_101.md for detailed guidance on writing and interpreting scenarios.
+
+  # ============================================================================
+  # CARE Coaching scenarios
+  # ============================================================================
   - id: care_coaching_FL_titleiii
     product: "CARE Coaching"
     state: "FL"
@@ -11,9 +17,26 @@ scenarios:
       - "Title III Coordinators"
       - "ELL/Multilingual Directors"
     expected:
-      must_have_files: []
+      must_have_files:
+        - "Florida State Buyer_s Guide.pdf"
       avoid_files: []
 
+  - id: care_coaching_CO
+    product: "CARE Coaching"
+    state: "CO"
+    audiences:
+      - "Title III Coordinators"
+      - "ELL/Multilingual Directors"
+    expected:
+      must_have_files:
+        - "Colorado State Buyer_s Guide.pdf"
+        - "CO statute and info with licensing info.docx"
+      avoid_files:
+        - "Draft Email for CO CLDE.docx"
+
+  # ============================================================================
+  # WIDA MODEL scenarios
+  # ============================================================================
   - id: wida_model_CO_assessment
     product: "WIDA MODEL Online"
     state: "CO"
@@ -21,6 +44,63 @@ scenarios:
       - "District assessment coordinators"
       - "Title III Coordinators"
     expected:
-      must_have_files: []
+      must_have_files:
+        - "Colorado State Buyer_s Guide.pdf"
+        - "CO ELPA original text.pdf"
       avoid_files: []
 
+  - id: wida_model_WI
+    product: "WIDA MODEL Online"
+    state: "WI"
+    audiences:
+      - "District assessment coordinators"
+    expected:
+      must_have_files:
+        - "Wisconsin State Buyer_s Guide.pdf"
+      avoid_files: []
+
+  # ============================================================================
+  # WebbAlign scenarios
+  # ============================================================================
+  - id: webbalign_TX
+    product: "WebbAlign"
+    state: "TX"
+    audiences:
+      - "Curriculum directors"
+      - "ELL/Multilingual Directors"
+    expected:
+      must_have_files:
+        - "Texas State Buyer_s Guide.pdf"
+      avoid_files: []
+
+  - id: webbalign_IL
+    product: "WebbAlign"
+    state: "IL"
+    audiences:
+      - "Curriculum directors"
+    expected:
+      must_have_files:
+        - "Illinois State Buyer_s Guide.pdf"
+      avoid_files: []  # ============================================================================
+  # WIDA Professional Learning scenarios
+  # ============================================================================
+  - id: wida_pl_FL
+    product: "WIDA Professional Learning"
+    state: "FL"
+    audiences:
+      - "Title III Coordinators"
+      - "ELL/Multilingual Directors"
+    expected:
+      must_have_files:
+        - "Florida State Buyer_s Guide.pdf"
+      avoid_files: []
+
+  - id: wida_pl_MN
+    product: "WIDA Professional Learning"
+    state: "MN"
+    audiences:
+      - "Title III Coordinators"
+    expected:
+      must_have_files:
+        - "Minnesota State Buyer_s Guide.pdf"
+      avoid_files: []

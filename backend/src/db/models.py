@@ -773,8 +773,8 @@ class ApiUsageLog(Base):
     product: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     batch_job_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     
-    # Additional metadata (JSON blob for flexibility)
-    metadata: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # Additional context data (JSON blob for flexibility)
+    extra_data: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     
     # Timestamp
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
