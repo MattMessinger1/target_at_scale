@@ -2287,6 +2287,14 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 pr: Dict[str, Any] = dict(saved.pipeline_response or {})
                 hooks = pr.get("treasure_hooks") or pr.get("hooks") or []
                 
+                # Filter out "custom" hooks - these are synthetic hooks created from purpose prompts
+                # and should not be shown as reusable cached research hooks
+                if isinstance(hooks, list):
+                    hooks = [
+                        h for h in hooks 
+                        if not (isinstance(h, dict) and h.get("hook_type") == "custom")
+                    ]
+                
                 # Minimal evidence pack if missing (not required for cached-hook selection mode)
                 evidence_pack = pr.get("evidence_pack")
                 if not isinstance(evidence_pack, dict):
@@ -3718,6 +3726,9 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 if saved and isinstance(saved.pipeline_response, dict):
                     pr = saved.pipeline_response or {}
                     hooks = pr.get("treasure_hooks") or pr.get("hooks") or []
+                    # Filter out "custom" hooks (synthetic from purpose prompts)
+                    if isinstance(hooks, list):
+                        hooks = [h for h in hooks if not (isinstance(h, dict) and h.get("hook_type") == "custom")]
                     hook_count = len(hooks) if isinstance(hooks, list) else 0
                     age_days = (datetime.utcnow() - saved.created_at).days
                     
