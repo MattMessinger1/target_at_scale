@@ -2250,6 +2250,18 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         
         product_key = normalize_product_key(product)
         state_code = state.strip().upper()
+
+        saved_result = await db.execute(
+            select(SavedEmailRun)
+            .where(SavedEmailRun.product == product)
+            .where(SavedEmailRun.state_code == state_code)
+            .where(SavedEmailRun.run_type == "research")
+            .order_by(SavedEmailRun.created_at.desc())
+            .limit(1)
+        )
+        saved = saved_result.scalar_one_or_none()
+        if not saved:
+            raise HTTPException(status_code=404, detail="No cached prep available")
         
         # Fetch the most recent completed state research cache (ignore TTL; exclude archived)
         deep_result = await db.execute(
@@ -2275,15 +2287,6 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
 
         # If DeepResearchCache has no usable record, fall back to most recent Saved Research run.
         if not cached or not (cached.results_json and isinstance(cached.results_json, dict) and cached.results_json):
-            saved_result = await db.execute(
-                select(SavedEmailRun)
-                .where(SavedEmailRun.product == product)
-                .where(SavedEmailRun.state_code == state_code)
-                .where(SavedEmailRun.run_type == "research")
-                .order_by(SavedEmailRun.created_at.desc())
-                .limit(1)
-            )
-            saved = saved_result.scalar_one_or_none()
             if saved and isinstance(saved.pipeline_response, dict):
                 pr: Dict[str, Any] = dict(saved.pipeline_response or {})
                 hooks = pr.get("treasure_hooks") or pr.get("hooks") or []
@@ -3710,6 +3713,21 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             raise HTTPException(status_code=400, detail="Both state and product are required")
         
         status = await get_cache_status(db, state_code=state_code, product_key=product_key)
+
+        if status.get("status") in ("completed", "expired"):
+            try:
+                from ...db.models import SavedEmailRun
+                saved_result = await db.execute(
+                    select(SavedEmailRun.id)
+                    .where(SavedEmailRun.product == product)
+                    .where(SavedEmailRun.state_code == state_code)
+                    .where(SavedEmailRun.run_type == "research")
+                    .limit(1)
+                )
+                if not saved_result.scalar_one_or_none():
+                    return {"status": "not_found"}
+            except Exception:
+                return {"status": "not_found"}
         
         # Fallback: if no DeepResearchCache entry exists, use most recent Saved Research run
         # so the UI can still show "cached results available" for legacy data.
