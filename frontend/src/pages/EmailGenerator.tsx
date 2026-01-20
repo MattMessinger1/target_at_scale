@@ -4826,28 +4826,107 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                   </div>
 
                   {/* Targeting Context - for sender's reference */}
-                  {prep && selectedHookLinks.length > 0 && (
-                    <div className="mt-4 p-4 rounded-lg border border-slate-700 bg-slate-800/30">
-                      <div className="text-sm font-medium text-slate-300 mb-2">
-                        Targeting Context <span className="text-slate-500 font-normal">(for your reference - not in email)</span>
-                      </div>
-                      <div className="text-sm text-slate-400 space-y-2">
-                        {prep.treasure_hooks
-                          .filter(h => selectedHookLinks.includes(getHookKey(h)))
-                          .map((hook, idx) => (
-                            <div key={idx}>
-                              {hook.eligibility_excerpt && (
+                  <div className="mt-4 p-4 rounded-lg border border-slate-700 bg-slate-800/30">
+                    <div className="text-sm font-medium text-slate-300 mb-2">
+                      Targeting Context <span className="text-slate-500 font-normal">(for your reference - not in email)</span>
+                    </div>
+                    <div className="text-sm text-slate-400 space-y-2">
+                      {(() => {
+                        // Case 1: Selected hooks from research (treasure_hooks)
+                        if (prep && selectedHookLinks.length > 0) {
+                          const selectedHooks = prep.treasure_hooks.filter(h => selectedHookLinks.includes(getHookKey(h)))
+                          if (selectedHooks.length > 0) {
+                            return selectedHooks.map((hook, idx) => (
+                              <div key={idx}>
                                 <div>
+                                  <span className="text-slate-500">Hook type:</span>{' '}
+                                  <span className="text-emerald-400">[{hook.hook_type}]</span>
+                                </div>
+                                {hook.trigger_excerpt && (
+                                  <div className="mt-1">
+                                    <span className="text-slate-500">Trigger:</span>{' '}
+                                    {hook.trigger_excerpt}
+                                  </div>
+                                )}
+                                {hook.eligibility_excerpt && (
+                                  <div className="mt-1">
+                                    <span className="text-slate-500">Eligibility info:</span>{' '}
+                                    {hook.eligibility_excerpt}
+                                  </div>
+                                )}
+                              </div>
+                            ))
+                          }
+                        }
+                        
+                        // Case 2: Selected cached hooks (state/district/conference)
+                        if (selectedCachedHooks.length > 0) {
+                          return selectedCachedHooks.map((cached, idx) => {
+                            const hook = cached.hook as WebHook
+                            return (
+                              <div key={idx}>
+                                <div>
+                                  <span className="text-slate-500">Source:</span>{' '}
+                                  <span className="text-emerald-400">[{cached.category}]</span>
+                                  {cached.state_code && <span className="text-slate-500 ml-1">({cached.state_code})</span>}
+                                </div>
+                                {hook.trigger_excerpt && (
+                                  <div className="mt-1">
+                                    <span className="text-slate-500">Trigger:</span>{' '}
+                                    {hook.trigger_excerpt}
+                                  </div>
+                                )}
+                                {hook.eligibility_excerpt && (
+                                  <div className="mt-1">
+                                    <span className="text-slate-500">Eligibility info:</span>{' '}
+                                    {hook.eligibility_excerpt}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })
+                        }
+                        
+                        // Case 3: Variant has selected_hook (e.g., from saved run or backend selection)
+                        if (activeVariant.selected_hook?.hook) {
+                          const hook = activeVariant.selected_hook.hook
+                          return (
+                            <div>
+                              <div>
+                                <span className="text-slate-500">Hook type:</span>{' '}
+                                <span className="text-emerald-400">[{hook.hook_type}]</span>
+                              </div>
+                              {hook.trigger_excerpt && (
+                                <div className="mt-1">
+                                  <span className="text-slate-500">Trigger:</span>{' '}
+                                  {hook.trigger_excerpt}
+                                </div>
+                              )}
+                              {hook.eligibility_excerpt && (
+                                <div className="mt-1">
                                   <span className="text-slate-500">Eligibility info:</span>{' '}
                                   {hook.eligibility_excerpt}
                                 </div>
                               )}
                             </div>
-                          ))
+                          )
                         }
-                      </div>
+                        
+                        // Case 4: Purpose-only mode (no hook selected)
+                        return (
+                          <div className="text-slate-500">
+                            N/A — Purpose-only mode
+                            {purposePrompt && (
+                              <div className="mt-2">
+                                <span className="text-slate-500">Purpose:</span>{' '}
+                                <span className="text-slate-400">{purposePrompt}</span>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
-                  )}
+                  </div>
 
                   {/* Selected requirements display */}
                   {renderHook()}
