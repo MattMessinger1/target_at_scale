@@ -449,6 +449,9 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         
         # Optional: district research results from prep
         district_research: Optional[DistrictResearchResult] = None
+        
+        # Optional: conference research results from prep
+        conferences: Optional[List[ConferenceOpportunity]] = None
 
         # Optional: human-selected hook URLs (1–2) + which is primary (opener).
         # Deprecated: Use selected_hook_ids/primary_hook_id for reliable selection
