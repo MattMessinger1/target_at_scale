@@ -1,10 +1,11 @@
 /**
  * AudienceSelector component for selecting target audience.
- * Simplified to 2 options: Decision Makers (default) and Users.
+ * Supports product-specific audience options for WebbAlign and CALL.
  */
+import { useEffect } from 'react'
 
-// Audience descriptions
-const AUDIENCE_INFO: Record<string, { description: string; icon: string }> = {
+// Default audience descriptions
+const DEFAULT_AUDIENCE_INFO: Record<string, { description: string; icon: string }> = {
   'Decision Makers': {
     description: 'Superintendents, ESOL Directors, Curriculum Leaders, Title III Coordinators',
     icon: '💼',
@@ -15,14 +16,56 @@ const AUDIENCE_INFO: Record<string, { description: string; icon: string }> = {
   },
 }
 
-const AUDIENCES = ['Decision Makers', 'Users'] as const
+// Product-specific audience configurations
+const PRODUCT_AUDIENCES: Record<string, { 
+  audiences: string[]
+  info: Record<string, { description: string; icon: string }> 
+}> = {
+  'WebbAlign': {
+    audiences: ['WebbAlign Decision Makers', 'Users'],
+    info: {
+      'WebbAlign Decision Makers': {
+        description: 'State and district assessment leaders, State and district curriculum leaders',
+        icon: '📊',
+      },
+      'Users': DEFAULT_AUDIENCE_INFO['Users'],
+    }
+  },
+  'CALL': {
+    audiences: ['CALL Decision Makers', 'Users'],
+    info: {
+      'CALL Decision Makers': {
+        description: 'State and district School Improvement leaders',
+        icon: '📋',
+      },
+      'Users': DEFAULT_AUDIENCE_INFO['Users'],
+    }
+  }
+}
+
+const DEFAULT_AUDIENCES = ['Decision Makers', 'Users'] as const
 
 interface AudienceSelectorProps {
   selectedAudience: string
   onSelect: (audience: string) => void
+  selectedProducts?: string[]
 }
 
-export function AudienceSelector({ selectedAudience, onSelect }: AudienceSelectorProps) {
+export function AudienceSelector({ selectedAudience, onSelect, selectedProducts = [] }: AudienceSelectorProps) {
+  // Determine which audiences to show based on primary selected product
+  const primaryProduct = selectedProducts[0] || ''
+  const productConfig = PRODUCT_AUDIENCES[primaryProduct]
+  
+  const audiences = productConfig?.audiences || [...DEFAULT_AUDIENCES]
+  const audienceInfo = productConfig?.info || DEFAULT_AUDIENCE_INFO
+
+  // Auto-select first audience if current selection is not valid for the product
+  useEffect(() => {
+    if (audiences.length > 0 && !audiences.includes(selectedAudience)) {
+      onSelect(audiences[0])
+    }
+  }, [primaryProduct, audiences, selectedAudience, onSelect])
+
   return (
     <div className="space-y-3">
       <label className="block text-sm font-medium text-slate-300">
@@ -30,8 +73,8 @@ export function AudienceSelector({ selectedAudience, onSelect }: AudienceSelecto
       </label>
       
       <div className="flex gap-3">
-        {AUDIENCES.map((audience) => {
-          const info = AUDIENCE_INFO[audience]
+        {audiences.map((audience) => {
+          const info = audienceInfo[audience] || DEFAULT_AUDIENCE_INFO['Decision Makers']
           const isSelected = selectedAudience === audience
           
           return (

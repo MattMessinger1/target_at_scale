@@ -1003,6 +1003,7 @@ function EmailGeneratorV1() {
               
               <div className="lg:col-span-1">
                 <AudienceSelector
+                  selectedProducts={selectedProducts}
                   selectedAudience={selectedAudience}
                   onSelect={setSelectedAudience}
                 />
@@ -3852,7 +3853,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
               <StateSelector selectedStates={selectedStates} onSelect={setSelectedStates} />
 
               <div>
-                <AudienceSelector selectedAudience={selectedAudience} onSelect={setSelectedAudience} />
+                <AudienceSelector selectedProducts={selectedProducts} selectedAudience={selectedAudience} onSelect={setSelectedAudience} />
               </div>
 
               {/* District/Conference research toggles removed from UI (keeping backend capability) */}
