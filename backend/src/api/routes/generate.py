@@ -666,12 +666,14 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         await checkpoint_email_task("evidence_pack", 5, "Building evidence pack (purpose-only)...")
                         
                         # Build evidence pack for product context (KB-based, no web research)
+                        # Pass purpose_prompt for topic-aware retrieval (e.g., "newcomer" → newcomer docs)
                         t0 = time.perf_counter()
                         evidence_pack = await build_product_evidence_pack(
                             db=db,
                             product_display_name=product,
                             state_code=state_code,
                             audiences=audiences,
+                            purpose_prompt=request.purpose_prompt,
                         )
                         stage_ms["evidence_pack"] = int((time.perf_counter() - t0) * 1000)
                         
@@ -915,12 +917,14 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         _email_tasks[task_id]["progress"] = 5
                         await checkpoint_email_task("evidence_pack", 5, "Building evidence pack...")
                         
+                        # Pass purpose_prompt for topic-aware retrieval
                         t0 = time.perf_counter()
                         evidence_pack = await build_product_evidence_pack(
                             db=db,
                             product_display_name=product,
                             state_code=state_code,
                             audiences=audiences,
+                            purpose_prompt=request.purpose_prompt,
                         )
                         stage_ms["evidence_pack"] = int((time.perf_counter() - t0) * 1000)
                         
@@ -3128,11 +3132,13 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             if evidence_pack is None or treasure_hooks is None:
                 yield _ndjson({"type": "stage_start", "ts": _utcnow_iso(), "stage": "evidence_pack"})
                 t0 = time.perf_counter()
+                # Pass purpose_prompt for topic-aware retrieval
                 evidence_pack = await build_product_evidence_pack(
                     db=db,
                     product_display_name=product,
                     state_code=state_code,
                     audiences=audiences,
+                    purpose_prompt=request.purpose_prompt,
                 )
                 stage_ms["evidence_pack"] = int((time.perf_counter() - t0) * 1000)
                 yield _ndjson(

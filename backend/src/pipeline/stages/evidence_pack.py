@@ -184,15 +184,18 @@ async def build_product_evidence_pack(
     product_display_name: str,
     state_code: str,
     audiences: List[str],
+    purpose_prompt: Optional[str] = None,
 ) -> EvidencePack:
     """Build an evidence pack using Chroma retrieval + KB metadata.
 
     Notes:
     - Uses canonical product_key filters (KB uses keys like care_coaching, wida_model).
     - Does not depend on product briefs for primary positioning; briefs are supplemental.
+    - If purpose_prompt is provided, uses topic expansion to prioritize relevant KB chunks.
     """
     from ...research.product_briefs import get_product_brief, normalize_product_key
     from ...rag.query import RAGService
+    from ...rag.query_expansion import expand_purpose_for_retrieval
 
     product_key = normalize_product_key(product_display_name)
     state_norm = (state_code or "").strip().upper()
@@ -211,19 +214,23 @@ async def build_product_evidence_pack(
     offerings_text = " ".join(offerings[:8])
     audience_text = " ".join([a for a in (audiences or []) if a])[:200]
 
+    # Purpose-aware expansion: detect topics in purpose_prompt and expand with related terms
+    # This dramatically improves retrieval when user specifies a focus like "newcomer offering"
+    purpose_expansion, detected_topics = expand_purpose_for_retrieval(purpose_prompt)
+    
     # Seed retrieval with verified product language (offerings) to increase precision.
-    # If no brief/offerings are available, this collapses to the original generic query.
-    query_text = " ".join(
-        [
-            product_display_name,
-            offerings_text,
-            audience_text,
-            "deliverables artifacts documentation checklist",
-            "implementation coaching cycles professional development PD evidence",
-            "budget narrative allowable use compliance monitoring CAP",
-            "CSI TSI ATSI school improvement",
-        ]
-    ).strip()
+    # If purpose_prompt is provided, include it and its topic expansions to prioritize relevant chunks.
+    query_parts = [
+        product_display_name,
+        purpose_expansion,  # Includes raw purpose + topic expansions (e.g., "newcomer Empowering Newcomers SLIFE...")
+        offerings_text,
+        audience_text,
+        "deliverables artifacts documentation checklist",
+        "implementation coaching cycles professional development PD evidence",
+        "budget narrative allowable use compliance monitoring CAP",
+        "CSI TSI ATSI school improvement",
+    ]
+    query_text = " ".join([p for p in query_parts if p]).strip()
     service = RAGService()
 
     # Fail fast if embeddings are missing (common in production when Chroma isn't on a Volume).
