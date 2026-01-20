@@ -3040,8 +3040,23 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
 
   const renderHook = () => {
     if (!activeVariant) return null
-    const h = activeVariant.selected_hook?.hook
-    const sh = activeVariant.secondary_hook?.hook
+
+    const hasSelection = Boolean(prep && selectedHookLinks.length > 0)
+    let h: WebHook | undefined
+    let sh: WebHook | undefined
+
+    if (hasSelection && prep) {
+      const hookMap = new Map((prep.treasure_hooks || []).map((hook) => [getHookKey(hook), hook]))
+      const primaryKey = (primaryHookLink || selectedHookLinks[0] || '').trim()
+      const secondaryKey = selectedHookLinks.find((key) => key !== primaryKey)
+
+      h = (primaryKey && hookMap.get(primaryKey)) || hookMap.get(selectedHookLinks[0])
+      sh = secondaryKey ? hookMap.get(secondaryKey) : undefined
+    } else {
+      h = activeVariant.selected_hook?.hook
+      sh = activeVariant.secondary_hook?.hook
+    }
+
     if (!h) return null
     return (
       <div className="mt-4 p-4 rounded-lg border border-slate-700 bg-slate-800/50">
