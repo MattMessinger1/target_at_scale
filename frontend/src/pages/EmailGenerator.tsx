@@ -1481,10 +1481,10 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
   const [includeConferenceResearch, setIncludeConferenceResearch] = useState(false)
   
   // Polling-based research state (robust against browser sleep/network issues)
-  const [, setResearchPhase] = useState<'idle' | 'state' | 'district' | 'conferences'>('idle')
+  const [researchPhase, setResearchPhase] = useState<'idle' | 'state' | 'district' | 'conferences'>('idle')
   const [, setResearchTaskId] = useState<string | null>(null)
-  const [, setResearchProgress] = useState(0)
-  const [, setResearchMessage] = useState('')
+  const [researchProgress, setResearchProgress] = useState(0)
+  const [researchMessage, setResearchMessage] = useState('')
 
   // Custom purpose + cached hooks flow
   const [purposePrompt, setPurposePrompt] = useState('')
@@ -2590,6 +2590,12 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
     setResult(null)
     setActiveAudience(null)
     
+    if (isResearchMode) {
+      setWizardStep(2)
+      prepMutation.mutate()
+      return
+    }
+
     // Custom purpose flow (cached research only)
     setWizardStep(2)
   }
@@ -3927,26 +3933,51 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
         {/* Step 2: Purpose + Optional Cached Hooks */}
         {wizardStep === 2 && (
           <div className="p-6 rounded-xl border border-slate-700 bg-slate-800/50">
-            <h2 className="text-lg font-medium text-slate-200 mb-2">Purpose of the Email</h2>
-            <p className="text-sm text-slate-400 mb-4">
-              Enter a purpose OR select cached research below. You can also provide both for more targeted emails.
-            </p>
-
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Purpose (optional)
-              </label>
-              <textarea
-                value={purposePrompt}
-                onChange={(e) => setPurposePrompt(e.target.value)}
-                placeholder="e.g., Let Hawaii districts know CARE Coaching is now available after we won the RFP."
-                rows={4}
-                className="w-full px-3 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
-              />
-              <div className="mt-2 text-xs text-slate-500">
-                Keep it specific: audience, context, and desired outcome.
+            {isResearchMode ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
+                <h2 className="text-lg font-medium text-slate-200 mb-2">Researching...</h2>
+                <p className="text-sm text-slate-400 text-center max-w-md">
+                  {researchMessage || 'Running research for the selected product and state.'}
+                </p>
+                <div className="mt-4 w-full max-w-md">
+                  <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                    <span>{researchPhase === 'idle' ? 'Starting' : `Phase: ${researchPhase}`}</span>
+                    <span>{Math.round(researchProgress)}%</span>
                   </div>
-                    </div>
+                  <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 transition-all"
+                      style={{ width: `${Math.min(100, Math.max(0, researchProgress))}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="mt-3 text-xs text-slate-500">
+                  This can take a few minutes.
+                </div>
+              </div>
+            ) : (
+              <>
+                <h2 className="text-lg font-medium text-slate-200 mb-2">Purpose of the Email</h2>
+                <p className="text-sm text-slate-400 mb-4">
+                  Enter a purpose OR select cached research below. You can also provide both for more targeted emails.
+                </p>
+
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
+                    Purpose (optional)
+                  </label>
+                  <textarea
+                    value={purposePrompt}
+                    onChange={(e) => setPurposePrompt(e.target.value)}
+                    placeholder="e.g., Let Hawaii districts know CARE Coaching is now available after we won the RFP."
+                    rows={4}
+                    className="w-full px-3 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500"
+                  />
+                  <div className="mt-2 text-xs text-slate-500">
+                    Keep it specific: audience, context, and desired outcome.
+                  </div>
+                </div>
 
             <div className="mb-2 flex items-center justify-between">
               <div className="text-sm font-medium text-slate-200">Optional cached research</div>
@@ -4124,34 +4155,36 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
               </div>
             )}
 
-            <div className="mt-6">
-              {!purposePrompt.trim() && selectedCachedHooks.length === 0 && (
-                <div className="mb-3 text-xs text-amber-400/80">
-                  {showCachedSections
-                    ? 'Enter a purpose OR select at least one cached hook above to generate an email.'
-                    : 'Enter a purpose to generate an email.'}
+                <div className="mt-6">
+                  {!purposePrompt.trim() && selectedCachedHooks.length === 0 && (
+                    <div className="mb-3 text-xs text-amber-400/80">
+                      {showCachedSections
+                        ? 'Enter a purpose OR select at least one cached hook above to generate an email.'
+                        : 'Enter a purpose to generate an email.'}
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onClick={() => setWizardStep(1)}
+                      className="px-4 py-2 rounded-lg text-slate-300 border border-slate-600 hover:bg-slate-700"
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!purposePrompt.trim() && selectedCachedHooks.length === 0) return
+                        setWizardStep(4)
+                        pipelineMutation.mutate()
+                      }}
+                      disabled={!purposePrompt.trim() && selectedCachedHooks.length === 0}
+                      className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Generate Email →
+                    </button>
+                  </div>
                 </div>
-              )}
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setWizardStep(1)}
-                  className="px-4 py-2 rounded-lg text-slate-300 border border-slate-600 hover:bg-slate-700"
-                >
-                  Back
-                </button>
-                <button
-                  onClick={() => {
-                    if (!purposePrompt.trim() && selectedCachedHooks.length === 0) return
-                    setWizardStep(4)
-                    pipelineMutation.mutate()
-                  }}
-                  disabled={!purposePrompt.trim() && selectedCachedHooks.length === 0}
-                  className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Generate Email →
-                </button>
-              </div>
-            </div>
+              </>
+            )}
           </div>
         )}
 
