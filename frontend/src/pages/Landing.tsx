@@ -133,21 +133,6 @@ export default function Landing() {
           </Link>
         </div>
 
-        {/* Stats/Info Section */}
-        <div className="mt-16 grid grid-cols-3 gap-6 max-w-2xl mx-auto">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-slate-100">7</div>
-            <div className="text-sm text-slate-400">Products</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-slate-100">38</div>
-            <div className="text-sm text-slate-400">WIDA States</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-slate-100">2</div>
-            <div className="text-sm text-slate-400">Audiences</div>
-          </div>
-        </div>
       </main>
 
       {/* Footer */}
