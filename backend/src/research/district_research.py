@@ -750,6 +750,32 @@ Remember: Return ONLY a valid JSON object, no other text."""
         if on_progress:
             on_progress(f"District research complete! Found {len(passed_hooks)} opportunities.", 100.0)
         
+        # Log API usage for cost tracking
+        try:
+            from ..utils.costs import log_api_usage
+            
+            # Extract usage from response if available
+            usage = getattr(response, "usage", None)
+            input_tokens = getattr(usage, "input_tokens", 0) if usage else 60000  # Estimate if not available
+            output_tokens = getattr(usage, "output_tokens", 0) if usage else 5000
+            
+            await log_api_usage(
+                db=db,
+                operation_type="district_research",
+                model_name="o3-deep-research",
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                state_code=state_code,
+                product=product_key,
+                metadata={
+                    "districts_surveyed": len(districts_surveyed),
+                    "passed_hooks": len(passed_hooks),
+                    "filtered_hooks": len(filtered_hooks),
+                },
+            )
+        except Exception as log_err:
+            logger.warning(f"Failed to log API usage: {log_err}")
+        
         logger.info(
             f"District research completed for {state_code}/{product_key}: "
             f"{len(passed_hooks)} passed, {len(filtered_hooks)} filtered, "

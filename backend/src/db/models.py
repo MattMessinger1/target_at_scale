@@ -742,3 +742,39 @@ class EmailTask(Base):
     
     # Link to auto-saved result
     saved_run_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+
+class ApiUsageLog(Base):
+    """Log of API usage for cost tracking.
+    
+    Records actual token usage and costs for each API call,
+    enabling cost monitoring and comparison with estimates.
+    """
+    __tablename__ = "api_usage_log"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    
+    # Operation context
+    operation_type: Mapped[str] = mapped_column(String(50), nullable=False)  # state_research, district_research, email_default, etc.
+    model_name: Mapped[str] = mapped_column(String(50), nullable=False)  # o3-deep-research, gpt-5.2, etc.
+    
+    # Token counts
+    input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cached_input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    web_search_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    
+    # Cost tracking
+    estimated_cost: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    actual_cost: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    
+    # Context for grouping/filtering
+    state_code: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
+    product: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    batch_job_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    
+    # Additional metadata (JSON blob for flexibility)
+    metadata: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    
+    # Timestamp
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)

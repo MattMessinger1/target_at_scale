@@ -838,6 +838,32 @@ Remember: Return ONLY a valid JSON object, no other text."""
         if on_progress:
             on_progress("Research complete!", 100.0)
         
+        # Log API usage for cost tracking
+        try:
+            from ..utils.costs import log_api_usage
+            
+            # Extract usage from response if available
+            usage = getattr(response, "usage", None)
+            input_tokens = getattr(usage, "input_tokens", 0) if usage else 50000  # Estimate if not available
+            output_tokens = getattr(usage, "output_tokens", 0) if usage else 5000
+            
+            await log_api_usage(
+                db=db,
+                operation_type="state_research",
+                model_name=model_used,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                state_code=state_code,
+                product=product_key,
+                metadata={
+                    "response_id": response_id,
+                    "funding_items": len(results.get("funding_items", [])),
+                    "compliance_items": len(results.get("compliance_items", [])),
+                },
+            )
+        except Exception as log_err:
+            logger.warning(f"Failed to log API usage: {log_err}")
+        
         logger.info(
             f"Deep research completed for {state_code}/{product_key}: "
             f"{len(results.get('funding_items', []))} funding, "
@@ -1174,6 +1200,30 @@ async def run_conference_research(
         
         if on_progress:
             on_progress("Conference research complete!", 100.0)
+        
+        # Log API usage for cost tracking
+        try:
+            from ..utils.costs import log_api_usage
+            
+            # Extract usage from response if available
+            usage = getattr(response, "usage", None)
+            input_tokens = getattr(usage, "input_tokens", 0) if usage else 40000  # Estimate if not available
+            output_tokens = getattr(usage, "output_tokens", 0) if usage else 3000
+            
+            await log_api_usage(
+                db=db,
+                operation_type="conference_research",
+                model_name="o3-deep-research",
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                state_code=state_code,
+                product=product_key,
+                metadata={
+                    "conferences_found": len(results.get("conferences", [])),
+                },
+            )
+        except Exception as log_err:
+            logger.warning(f"Failed to log API usage: {log_err}")
         
         logger.info(f"Found {len(results.get('conferences', []))} conferences for {state_code}/{product_key}")
         

@@ -1,0 +1,87 @@
+# OpenAI API Pricing Configuration
+# Last updated: January 2026
+# Prices are per 1 million tokens (USD)
+#
+# Update this file when OpenAI changes pricing - no code changes needed!
+# The system will reload pricing on startup.
+
+models:
+  # Deep Research model - used for state/district/conference research
+  o3-deep-research:
+    input: 10.00
+    cached_input: 2.50
+    output: 40.00
+    description: "State/District/Conference research with web search"
+
+  # Pro model - used for email generation with extended reasoning
+  gpt-5.2-pro:
+    input: 21.00
+    output: 168.00
+    description: "Email writing with extended reasoning (optional)"
+
+  # Standard model - used for email generation (default), parsing, completions
+  gpt-5.2:
+    input: 1.75
+    cached_input: 0.175
+    output: 14.00
+    description: "Email writing (default), general completions"
+
+  # Thinking model - used for parsing, reranking, extraction
+  gpt-5.2-thinking:
+    input: 1.75
+    cached_input: 0.175
+    output: 14.00
+    description: "Parsing, reranking, content extraction"
+
+  # Fast model - used for KB extraction, simple parsing
+  gpt-4o:
+    input: 2.50
+    output: 10.00
+    description: "KB extraction, simple parsing"
+
+  # Embedding model
+  text-embedding-3-large:
+    input: 0.13
+    output: 0.00  # Embeddings don't have output tokens
+    description: "Vector embeddings for semantic search"
+
+# Web search tool pricing (per 1000 calls)
+web_search:
+  per_1000_calls: 10.00  # $0.01 per call
+
+# Estimated token counts per operation (for pre-estimates)
+# These are averages - actual usage may vary
+estimates:
+  # Research operations (o3-deep-research)
+  state_research:
+    input_tokens: 50000   # Includes prompt + web search content
+    output_tokens: 5000   # JSON response with findings
+    web_searches: 30      # Estimated number of web searches
+    
+  district_research:
+    input_tokens: 60000
+    output_tokens: 5000
+    web_searches: 40
+    
+  conference_research:
+    input_tokens: 40000
+    output_tokens: 3000
+    web_searches: 25
+
+  # Email generation
+  email_default:  # gpt-5.2
+    input_tokens: 8000
+    output_tokens: 800
+    
+  email_pro:  # gpt-5.2-pro
+    input_tokens: 8000
+    output_tokens: 800
+
+  # Parsing/extraction (gpt-4o or gpt-5.2-thinking)
+  parsing:
+    input_tokens: 3000
+    output_tokens: 1500
+
+  # Embeddings (text-embedding-3-large)
+  embedding_batch:
+    input_tokens: 50000  # Per batch of ~50 chunks

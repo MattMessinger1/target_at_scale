@@ -12,6 +12,7 @@ from .models import (
     ExtractedSnippet,
     DeepResearchCache,
     GoldenEmail,
+    ApiUsageLog,
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     "ExtractedSnippet",
     "DeepResearchCache",
     "GoldenEmail",
+    "ApiUsageLog",
 ]
