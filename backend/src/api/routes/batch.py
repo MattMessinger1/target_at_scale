@@ -39,13 +39,14 @@ def _dump_model(obj: Any) -> Any:
     if isinstance(obj, (list, tuple)):
         return [_dump_model(item) for item in obj]
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        return dataclasses.asdict(obj)
+        return _dump_model(dataclasses.asdict(obj))
     if hasattr(obj, "model_dump"):
-        return obj.model_dump()
+        # Recursively process in case nested objects aren't fully serialized
+        return _dump_model(obj.model_dump())
     if hasattr(obj, "dict"):
-        return obj.dict()
+        return _dump_model(obj.dict())
     if hasattr(obj, "_asdict"):  # NamedTuple
-        return dict(obj._asdict())
+        return _dump_model(dict(obj._asdict()))
     if hasattr(obj, "__dict__"):
         # Recursively serialize each attribute for plain classes
         return {k: _dump_model(v) for k, v in vars(obj).items()}
