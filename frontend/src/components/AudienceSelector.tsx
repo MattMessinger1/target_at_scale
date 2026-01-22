@@ -48,13 +48,12 @@ const DEFAULT_AUDIENCES = ['Decision Makers', 'Users'] as const
 interface AudienceSelectorProps {
   selectedAudience: string
   onSelect: (audience: string) => void
-  selectedProducts?: string[]
+  selectedProduct?: string | null
 }
 
-export function AudienceSelector({ selectedAudience, onSelect, selectedProducts = [] }: AudienceSelectorProps) {
-  // Determine which audiences to show based on primary selected product
-  const primaryProduct = selectedProducts[0] || ''
-  const productConfig = PRODUCT_AUDIENCES[primaryProduct]
+export function AudienceSelector({ selectedAudience, onSelect, selectedProduct = null }: AudienceSelectorProps) {
+  // Determine which audiences to show based on selected product
+  const productConfig = selectedProduct ? PRODUCT_AUDIENCES[selectedProduct] : null
   
   const audiences = productConfig?.audiences || [...DEFAULT_AUDIENCES]
   const audienceInfo = productConfig?.info || DEFAULT_AUDIENCE_INFO
@@ -64,7 +63,7 @@ export function AudienceSelector({ selectedAudience, onSelect, selectedProducts 
     if (audiences.length > 0 && !audiences.includes(selectedAudience)) {
       onSelect(audiences[0])
     }
-  }, [primaryProduct, audiences, selectedAudience, onSelect])
+  }, [selectedProduct, audiences, selectedAudience, onSelect])
 
   return (
     <div className="space-y-3">

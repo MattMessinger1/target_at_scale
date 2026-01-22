@@ -330,8 +330,8 @@ function EmailGeneratorV1() {
     return ''
   })
   
-  // Selection state - products/states are multi-select, audience is single
-  const [selectedProducts, setSelectedProducts] = useState<string[]>([])
+  // Selection state - single product, multi-state, single audience
+  const [selectedProduct, setSelectedProduct] = useState<string | null>(null)
   const [selectedStates, setSelectedStates] = useState<SelectedState[]>([])
   const [selectedAudience, setSelectedAudience] = useState<string>('Decision Makers')
   
@@ -361,15 +361,14 @@ function EmailGeneratorV1() {
   const [modelTagsInput, setModelTagsInput] = useState('')
   const [modelNotes, setModelNotes] = useState('')
 
-  // Research mutation - for multi-select, we use the first selection as primary
-  // and include others in the context
+  // Research mutation - single product, can target multiple states
   const researchMutation = useMutation({
     mutationFn: () => api.research.research({
-      product: selectedProducts[0], // Primary product
+      product: selectedProduct || '', // Single product
       state: selectedStates[0]?.code || '', // Primary state
       audience: selectedAudience, // Single audience
-      // Additional selections are passed as context
-      additional_products: selectedProducts.slice(1),
+      // Additional states passed as context
+      additional_products: [],
       additional_states: selectedStates.slice(1).map(s => s.code),
       created_by: createdBy || undefined,
     }),
@@ -380,7 +379,7 @@ function EmailGeneratorV1() {
         id: makeId(),
         createdAt: getNowIso(),
         criteria: {
-          products: selectedProducts,
+          products: selectedProduct ? [selectedProduct] : [],
           states: selectedStates,
           audience: selectedAudience,
         },
@@ -416,7 +415,7 @@ function EmailGeneratorV1() {
   // Generate mutation
   const generateMutation = useMutation({
     mutationFn: () => api.generate.email({
-      product: selectedProducts.join(', '),
+      product: selectedProduct || '',
       state: selectedStates.map(s => s.code).join(', '),
       state_full: selectedStates.map(s => s.name).join(', '),
       audience: selectedAudience,
@@ -458,7 +457,7 @@ function EmailGeneratorV1() {
     const prefillFromGenerated = Boolean(opts?.prefillFromGenerated)
 
     // Prefill metadata from current selections
-    setModelProduct(selectedProducts[0] || '')
+    setModelProduct(selectedProduct || '')
     setModelStatesInput(selectedStates.map((s) => s.code).join(', '))
     setModelAudience(selectedAudience)
 
@@ -499,7 +498,7 @@ function EmailGeneratorV1() {
     },
   })
 
-  const canResearch = selectedProducts.length > 0 && selectedStates.length > 0 && selectedAudience !== ''
+  const canResearch = selectedProduct !== null && selectedStates.length > 0 && selectedAudience !== ''
   const canGenerate = selectedFunding.length > 0 || selectedComplianceFunding.length > 0 || selectedCompliance.length > 0
 
   const handleStartResearch = () => {
@@ -522,7 +521,7 @@ function EmailGeneratorV1() {
 
   const handleReset = () => {
     setCurrentStep('select')
-    setSelectedProducts([])
+    setSelectedProduct(null)
     setSelectedStates([])
     setSelectedAudience('Decision Makers')
     setResearchResults(null)
@@ -540,7 +539,7 @@ function EmailGeneratorV1() {
     const row = [
       `"${generatedEmail.subject_line.replace(/"/g, '""')}"`,
       `"${generatedEmail.email_body.replace(/"/g, '""')}"`,
-      `"${selectedProducts.join(', ')}"`,
+      `"${selectedProduct || ''}"`,
       `"${selectedStates.map(s => s.name).join(', ')}"`,
       `"${selectedAudience}"`,
       generatedEmail.word_count.toString(),
@@ -551,7 +550,7 @@ function EmailGeneratorV1() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `email-${selectedProducts[0]?.toLowerCase().replace(/\s+/g, '-') || 'wceps'}-${selectedStates[0]?.code || 'multi'}.csv`
+    a.download = `email-${selectedProduct?.toLowerCase().replace(/\s+/g, '-') || 'wceps'}-${selectedStates[0]?.code || 'multi'}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -598,7 +597,7 @@ function EmailGeneratorV1() {
   }
 
   const resumeRun = (run: ResearchRunSnapshot) => {
-    setSelectedProducts(run.criteria.products || [])
+    setSelectedProduct(run.criteria.products?.[0] || null)
     setSelectedStates(run.criteria.states || [])
     // Handle both old array format and new single format
     const oldAudiences = (run.criteria as { audiences?: string[] }).audiences
@@ -989,8 +988,8 @@ function EmailGeneratorV1() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-1">
                 <ProductSelector
-                  selectedProducts={selectedProducts}
-                  onSelect={setSelectedProducts}
+                  selectedProduct={selectedProduct}
+                  onSelect={setSelectedProduct}
                 />
               </div>
               
@@ -1003,7 +1002,7 @@ function EmailGeneratorV1() {
               
               <div className="lg:col-span-1">
                 <AudienceSelector
-                  selectedProducts={selectedProducts}
+                  selectedProduct={selectedProduct}
                   selectedAudience={selectedAudience}
                   onSelect={setSelectedAudience}
                 />
@@ -1011,15 +1010,15 @@ function EmailGeneratorV1() {
             </div>
 
             {/* Selection Summary */}
-            {(selectedProducts.length > 0 || selectedStates.length > 0 || selectedAudience) && (
+            {(selectedProduct !== null || selectedStates.length > 0 || selectedAudience) && (
               <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
                 <h3 className="text-sm font-medium text-slate-300 mb-3">Selection Summary</h3>
                 <div className="flex flex-wrap gap-2">
-                  {selectedProducts.map(p => (
-                    <span key={p} className="px-2 py-1 bg-emerald-900/50 text-emerald-400 rounded text-sm">
-                      {p}
+                  {selectedProduct && (
+                    <span className="px-2 py-1 bg-emerald-900/50 text-emerald-400 rounded text-sm">
+                      {selectedProduct}
                     </span>
-                  ))}
+                  )}
                   {selectedStates.map(s => (
                     <span key={s.code} className="px-2 py-1 bg-blue-900/50 text-blue-400 rounded text-sm">
                       {s.name}
@@ -1072,7 +1071,7 @@ function EmailGeneratorV1() {
             </h2>
             <p className="text-slate-400 text-center max-w-md mb-6">
               Finding funding opportunities and compliance requirements for{' '}
-              <span className="text-emerald-400">{selectedProducts.join(', ')}</span> in{' '}
+              <span className="text-emerald-400">{selectedProduct || ''}</span> in{' '}
               <span className="text-emerald-400">{selectedStates.map(s => s.name).join(', ')}</span>
             </p>
             
@@ -1130,7 +1129,7 @@ function EmailGeneratorV1() {
                 onClick={() => setCurrentStep('select')}
                 className="flex items-center gap-2 px-3 py-1 bg-emerald-900/50 text-emerald-400 rounded-full hover:bg-emerald-900/70 transition-colors"
               >
-                {selectedProducts.join(', ')}
+                {selectedProduct || ''}
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                 </svg>
@@ -1217,7 +1216,7 @@ function EmailGeneratorV1() {
                 className="flex items-center gap-2 px-3 py-1 bg-emerald-900/50 text-emerald-400 rounded-full hover:bg-emerald-900/70 transition-colors"
                 title="Click to edit products"
               >
-                {selectedProducts.join(', ')}
+                {selectedProduct || ''}
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                 </svg>
@@ -1458,7 +1457,7 @@ interface EmailGeneratorPipelineProps {
 
 function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
   const [wizardStep, setWizardStep] = useState<WizardStep>(1)
-  const [selectedProducts, setSelectedProducts] = useState<string[]>([])
+  const [selectedProduct, setSelectedProduct] = useState<string | null>(null)
   const [selectedStates, setSelectedStates] = useState<SelectedState[]>([])
   const [selectedAudience, setSelectedAudience] = useState<string>('Decision Makers')
 
@@ -1500,7 +1499,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
   const [cacheStatus, setCacheStatus] = useState<CacheStatus | null>(null)
   const [showReSearchConfirm, setShowReSearchConfirm] = useState(false)
 
-  const selectedProductKey = selectedProducts.join(',')
+  const selectedProductKey = selectedProduct || ''
   const selectedStateKey = selectedStates.map((st) => st.code).join(',')
   const hasCachedPrep = selectedStates.some((st) => Boolean(cachedPrepByState[st.code]))
   const showCachedSections = cachedPrepLoading || hasCachedPrep
@@ -1621,7 +1620,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
 
   const resetEntryState = () => {
     setWizardStep(1)
-    setSelectedProducts([])
+    setSelectedProduct(null)
     setSelectedStates([])
     setSelectedAudience('Decision Makers')
     setPurposePrompt('')
@@ -1682,7 +1681,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
       
       // Set product if specified
       if (productParam) {
-        setSelectedProducts([productParam])
+        setSelectedProduct(productParam)
       }
       
       // Parse and set states
@@ -1723,7 +1722,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
       sessionStorage.removeItem('loadSavedRun')
       
       // Restore all state from the saved run
-      setSelectedProducts([full.product])
+      setSelectedProduct(full.product)
       setSelectedStates([{ code: full.state_code, name: full.state_full || full.state_code }])
       // Handle both old array format and new single format with mapping
       const oldAudienceMap: Record<string, string> = {
@@ -1809,7 +1808,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
   // Check cache status when state+product changes
   useEffect(() => {
     const state = selectedStates[0]?.code
-    const product = selectedProducts[0]
+    const product = selectedProduct
     
     if (!state || !product) {
       setCacheStatus(null)
@@ -1829,10 +1828,10 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
         console.warn('Failed to check cache status:', err)
         setCacheStatus(null)
       })
-  }, [selectedStates, selectedProducts, wizardStep])
+  }, [selectedStates, selectedProduct, wizardStep])
 
   const loadCachedPrepForStates = async () => {
-    if (!selectedProducts[0] || selectedStates.length === 0) {
+    if (!selectedProduct || selectedStates.length === 0) {
       setCachedPrepByState({})
       return
     }
@@ -1840,7 +1839,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
     try {
       const entries = await Promise.all(selectedStates.map(async (st) => {
         try {
-          const cached = await api.generate.getCachedPrep(st.code, selectedProducts[0])
+          const cached = await api.generate.getCachedPrep(st.code, selectedProduct)
           return [st.code, cached.result || null] as const
         } catch {
           return [st.code, null] as const
@@ -1882,7 +1881,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
         
         // Set selection to match active research
         if (active.product_display_name) {
-          setSelectedProducts([active.product_display_name])
+          setSelectedProduct(active.product_display_name)
         }
         if (active.state_code) {
           setSelectedStates([{ code: active.state_code, name: active.state_code }])
@@ -2131,7 +2130,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
   useEffect(() => {
     if (wizardStep !== 2) return
     loadCachedPrepForStates()
-  }, [wizardStep, selectedProducts, selectedStates])
+  }, [wizardStep, selectedProduct, selectedStates])
 
   const toggleReasonTag = (link: string, tag: string) => {
     setHookReasonTags((prev) => {
@@ -2202,7 +2201,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
 
       const saved = await api.savedRuns.save({
         name: name || undefined,
-        product: selectedProducts[0] || '',
+        product: selectedProduct || '',
         state_code: selectedStates[0]?.code || '',
         state_full: selectedStates[0]?.name || undefined,
         audiences: [selectedAudience],
@@ -2235,7 +2234,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
     if (!prep) return
     setSavingRun(true)
     try {
-      const product = selectedProducts[0] || ''
+      const product = selectedProduct || ''
       const state = selectedStates[0]
       const defaultName = `${product} - ${state?.name || state?.code || 'Research'}`
       
@@ -2273,7 +2272,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
       const full = await api.savedRuns.get(run.id)
       
       // Restore all state
-      setSelectedProducts([full.product])
+      setSelectedProduct(full.product)
       setSelectedStates([{ code: full.state_code, name: full.state_full || full.state_code }])
       // Handle both old array format and new single format with mapping
       const oldAudienceMap: Record<string, string> = {
@@ -2357,7 +2356,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
   >({
     mutationFn: async () => {
       const req: PipelineRequest & { include_district_research?: boolean } = {
-        product: selectedProducts[0] || '',
+        product: selectedProduct || '',
         state: selectedStates[0]?.code || '',
         state_full: selectedStates[0]?.name || undefined,
         audiences: [selectedAudience],
@@ -2432,7 +2431,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
   const pipelineMutation = useMutation<PipelineRunResponse, Error, void>({
     mutationFn: () => {
       const req: PipelineRunStreamRequest = {
-        product: selectedProducts[0] || '',
+        product: selectedProduct || '',
         state: selectedStates[0]?.code || '',
         state_full: selectedStates[0]?.name || undefined,
         audiences: [selectedAudience],
@@ -2485,7 +2484,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
           // Save pending task for auto-resume if user navigates away
           const pendingTask: PendingEmailTask = {
             taskId,
-            product: selectedProducts[0] || '',
+            product: selectedProduct || '',
             stateCode: selectedStates[0]?.code || '',
             stateName: selectedStates[0]?.name || '',
             audience: selectedAudience,
@@ -2544,7 +2543,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
             api.feedback
               .submitHookFeedback({
                 run_id: data.run_id,
-                product: selectedProducts[0] || data.request.product,
+                product: selectedProduct || data.request.product,
                 state_code: selectedStates[0]?.code || data.request.state,
                 audiences: data.request.audiences || null,
                 district_name: data.request.district_name || null,
@@ -2580,7 +2579,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
     },
   })
 
-  const canPrep = selectedProducts.length > 0 && selectedStates.length > 0
+  const canPrep = selectedProduct !== null && selectedStates.length > 0
   const tagsOk = selectedHookLinks.every((link) => (hookReasonTags[link]?.length || 0) > 0)
   const canGenerate = canPrep && !!prep && selectedHookLinks.length > 0 && tagsOk
   const variants = result?.variants || []
@@ -2673,7 +2672,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
     
     // Clear cache for this state/product before re-searching
     try {
-      await api.generate.clearDeepResearchCache(selectedStates[0]?.code || '', selectedProducts[0] || '')
+      await api.generate.clearDeepResearchCache(selectedStates[0]?.code || '', selectedProduct || '')
     } catch (e) {
       console.warn('Failed to clear cache:', e)
       // Continue anyway - cache clear is best-effort
@@ -2714,7 +2713,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
   // Cancel an in-progress research task (kept for potential future use)
   const _handleCancelResearch = async () => {
     const state = selectedStates[0]?.code
-    const product = selectedProducts[0]
+    const product = selectedProduct
     if (!state || !product) return
 
     try {
@@ -2781,7 +2780,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
       `"${activeVariant.audience.replace(/"/g, '""')}"`,
       `"${activeVariant.email_draft.subject_line.replace(/"/g, '""')}"`,
       `"${activeVariant.email_draft.email_body.replace(/"/g, '""')}"`,
-      `"${selectedProducts[0] || ''}"`,
+      `"${selectedProduct || ''}"`,
       `"${selectedStates[0]?.name || ''}"`,
       String(activeVariant.email_draft.word_count),
     ]
@@ -2930,51 +2929,96 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
 
         <div className="mt-4">
           <div className="text-base font-medium text-slate-200">Rubric (optional)</div>
-          <div className="text-sm text-slate-400 mt-1">1 = Poor, 5 = Excellent. All fields are optional.</div>
+          <div className="text-sm text-slate-400 mt-1">Rate each category as Good or Bad. All fields are optional.</div>
           <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {sections.map(({ key, label }) => (
-              <div key={key} className="p-3 rounded border border-slate-700 bg-slate-900/20">
-                <div className="text-base font-medium text-slate-200">{label}</div>
-                <div className="mt-2 flex items-center gap-3">
-                  <label className="text-xs text-slate-500">Score</label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={5}
-                    value={draft.rubric[key]?.score ?? ''}
-                    onChange={(e) => {
-                      const raw = e.target.value
-                      const score = raw === '' ? null : Number(raw)
+            {sections.map(({ key, label }) => {
+              const currentScore = draft.rubric[key]?.score
+              return (
+                <div key={key} className="p-3 rounded border border-slate-700 bg-slate-900/20">
+                  <div className="text-base font-medium text-slate-200">{label}</div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReviewDrafts((prev) => ({
+                          ...prev,
+                          [aud]: {
+                            ...draft,
+                            rubric: {
+                              ...draft.rubric,
+                              [key]: { ...draft.rubric[key], score: currentScore === 1 ? null : 1 },
+                            },
+                          },
+                        }))
+                      }}
+                      className={`px-3 py-1.5 rounded-l text-sm font-medium transition-colors ${
+                        currentScore === 1
+                          ? 'bg-red-600 text-white'
+                          : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                      }`}
+                    >
+                      Bad
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReviewDrafts((prev) => ({
+                          ...prev,
+                          [aud]: {
+                            ...draft,
+                            rubric: {
+                              ...draft.rubric,
+                              [key]: { ...draft.rubric[key], score: currentScore === 5 ? null : 5 },
+                            },
+                          },
+                        }))
+                      }}
+                      className={`px-3 py-1.5 rounded-r text-sm font-medium transition-colors ${
+                        currentScore === 5
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                      }`}
+                    >
+                      Good
+                    </button>
+                    {currentScore !== null && currentScore !== undefined && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReviewDrafts((prev) => ({
+                            ...prev,
+                            [aud]: {
+                              ...draft,
+                              rubric: {
+                                ...draft.rubric,
+                                [key]: { ...draft.rubric[key], score: null },
+                              },
+                            },
+                          }))
+                        }}
+                        className="ml-2 text-xs text-slate-500 hover:text-slate-300"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    value={draft.rubric[key]?.comment || ''}
+                    onChange={(e) =>
                       setReviewDrafts((prev) => ({
                         ...prev,
                         [aud]: {
                           ...draft,
-                          rubric: {
-                            ...draft.rubric,
-                            [key]: { ...draft.rubric[key], score: Number.isFinite(score) ? score : null },
-                          },
+                          rubric: { ...draft.rubric, [key]: { ...draft.rubric[key], comment: e.target.value } },
                         },
                       }))
-                    }}
-                    className="w-20 px-2 py-1 bg-slate-800 border border-slate-700 rounded text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    }
+                    placeholder="Comments (optional)"
+                    className="mt-2 w-full min-h-[60px] px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
-                <textarea
-                  value={draft.rubric[key]?.comment || ''}
-                  onChange={(e) =>
-                    setReviewDrafts((prev) => ({
-                      ...prev,
-                      [aud]: {
-                        ...draft,
-                        rubric: { ...draft.rubric, [key]: { ...draft.rubric[key], comment: e.target.value } },
-                      },
-                    }))
-                  }
-                  placeholder="Comments"
-                  className="mt-2 w-full min-h-[72px] px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
 
@@ -2992,9 +3036,18 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
               return { score: null, comment: (item?.comment || '').trim() || null }
             }
 
+            // Extract hook types for flywheel learning
+            const hookTypesUsed: string[] = []
+            if (activeVariant.selected_hook?.hook?.hook_type) {
+              hookTypesUsed.push(activeVariant.selected_hook.hook.hook_type)
+            }
+            if (activeVariant.secondary_hook?.hook?.hook_type) {
+              hookTypesUsed.push(activeVariant.secondary_hook.hook.hook_type)
+            }
+
             const payload: EmailReviewRequest = {
               run_id: result.run_id,
-              product: result.request?.product || selectedProducts[0] || '',
+              product: result.request?.product || selectedProduct || '',
               state_code: result.request?.state || selectedStates[0]?.code || '',
               audience: aud,
               district_name: result.request?.district_name || null,
@@ -3015,6 +3068,9 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
               },
               // Include evidence chunk IDs for tracking which chunks led to good/bad emails
               evidence_chunks_used: result.evidence_pack?.retrieved_chunks?.map((c: EvidenceChunkCitation) => c.chunk_id) || null,
+              // Flywheel learning: capture context for better example matching
+              purpose_prompt: purposePrompt.trim() || null,
+              hook_types_used: hookTypesUsed.length > 0 ? hookTypesUsed : null,
             }
 
             // Unified save: saves both the run AND the review
@@ -3600,7 +3656,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                 {/* Product Summary */}
                 <div className="mb-4 p-3 bg-slate-900/50 rounded-lg border border-slate-700">
                   <div className="text-xs text-slate-500 mb-1">Product</div>
-                  <div className="text-sm text-slate-200">{selectedProducts[0] || 'No product selected'}</div>
+                  <div className="text-sm text-slate-200">{selectedProduct || 'No product selected'}</div>
                 </div>
                 
                 {/* State Selection */}
@@ -3785,12 +3841,12 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                 </button>
                 <button
                   onClick={async () => {
-                    if (!selectedProducts[0] || batchStates.length === 0) return
+                    if (!selectedProduct || batchStates.length === 0) return
                     setStartingBatch(true)
                     try {
                       await api.batch.create({
-                        name: `${selectedProducts[0]} - ${batchStates.length} states`,
-                        product: selectedProducts[0],
+                        name: `${selectedProduct} - ${batchStates.length} states`,
+                        product: selectedProduct,
                         states: batchStates,
                         audiences: [selectedAudience],
                         include_district_research: batchIncludeDistrictResearch,
@@ -3814,7 +3870,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                       setStartingBatch(false)
                     }
                   }}
-                  disabled={!selectedProducts[0] || batchStates.length === 0 || startingBatch}
+                  disabled={!selectedProduct || batchStates.length === 0 || startingBatch}
                   className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {startingBatch ? 'Starting...' : `Start Batch (${batchStates.length} states)`}
@@ -3849,11 +3905,11 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                 />
               </div>
               
-              <ProductSelector selectedProducts={selectedProducts} onSelect={setSelectedProducts} />
+              <ProductSelector selectedProduct={selectedProduct} onSelect={setSelectedProduct} />
               <StateSelector selectedStates={selectedStates} onSelect={setSelectedStates} />
 
               <div>
-                <AudienceSelector selectedProducts={selectedProducts} selectedAudience={selectedAudience} onSelect={setSelectedAudience} />
+                <AudienceSelector selectedProduct={selectedProduct} selectedAudience={selectedAudience} onSelect={setSelectedAudience} />
               </div>
 
               {/* District/Conference research toggles removed from UI (keeping backend capability) */}
@@ -3947,7 +4003,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                 {isResearchMode ? (
                   <button
                     onClick={() => setShowBatchModal(true)}
-                    disabled={!selectedProducts.length}
+                    disabled={!selectedProduct}
                     className="text-sm text-slate-400 hover:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     title="Run research across multiple states at once"
                   >
@@ -3956,7 +4012,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                 ) : (
                   <button
                     onClick={() => setShowBatchModal(true)}
-                    disabled={!selectedProducts.length}
+                    disabled={!selectedProduct}
                     className="px-4 py-2 rounded-lg font-medium text-amber-300 border border-amber-600 hover:bg-amber-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Run research across multiple states at once"
                   >
@@ -4204,7 +4260,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
               </>
             ) : (
               <div className="text-xs text-slate-500 mb-4">
-                No cached research for {selectedProducts[0] || 'this product'} yet. Run research to generate cached hooks.
+                No cached research for {selectedProduct || 'this product'} yet. Run research to generate cached hooks.
               </div>
             )}
 
@@ -4510,7 +4566,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                           try {
                             const result: DistrictResearchResult = await api.generate.districtResearchStream(
                               {
-                                product: selectedProducts[0] || '',
+                                product: selectedProduct || '',
                                 state: selectedStates[0]?.code || '',
                                 state_full: selectedStates[0]?.name,
                                 state_hooks: (prep.treasure_hooks || []).map(h => ({

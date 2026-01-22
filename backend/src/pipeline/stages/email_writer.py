@@ -31,19 +31,73 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
+def _build_purpose_filter(purpose_prompt: Optional[str]):
+    """Build SQL filter for purpose-prompt matching using topic detection."""
+    from ...rag.query_expansion import detect_topics_from_purpose
+    
+    if not purpose_prompt:
+        return None
+    
+    topics = detect_topics_from_purpose(purpose_prompt)
+    if not topics:
+        # No recognized topics, try basic keyword matching
+        keywords = [w.strip().lower() for w in purpose_prompt.split() if len(w.strip()) > 3]
+        if not keywords:
+            return None
+        # Match any keyword in stored purpose_prompt
+        return or_(*[GoldenEmail.purpose_prompt.ilike(f'%{kw}%') for kw in keywords[:3]])
+    
+    # Match any detected topic in stored purpose_prompt
+    return or_(*[GoldenEmail.purpose_prompt.ilike(f'%{topic}%') for topic in topics])
+
+
+def _build_hook_filter(hook_types: Optional[List[str]]):
+    """Build SQL filter for hook type matching."""
+    if not hook_types:
+        return None
+    
+    # Match any hook type in the stored array
+    # For JSON arrays, we check if any of the requested types are present
+    # SQLite/PostgreSQL compatible approach: check each type with LIKE on JSON
+    filters = []
+    for hook_type in hook_types:
+        # JSON array contains the hook type (works for both SQLite and PostgreSQL)
+        filters.append(GoldenEmail.hook_types_used.cast(str).ilike(f'%"{hook_type}"%'))
+    return or_(*filters) if filters else None
+
+
 async def get_golden_examples(
     db: AsyncSession,
     product_key: str,
     state_code: str,
     audience: str,
+    purpose_prompt: Optional[str] = None,
+    hook_types_used: Optional[List[str]] = None,
     limit: int = 2,
 ) -> List[GoldenEmail]:
     """Retrieve similar approved emails for few-shot learning.
     
-    Priority:
-    1. Same product + same state + same audience (exact match)
-    2. Same product + same audience (any state) 
-    3. Same product (any state/audience)
+    Priority cascade depends on what context is provided:
+    
+    If BOTH purpose and hooks provided:
+      1. product + state + audience + similar_purpose + similar_hooks
+      2. product + audience + similar_purpose + similar_hooks
+      3. product + (similar_purpose OR similar_hooks)
+    
+    If PURPOSE only:
+      1. product + state + audience + similar_purpose
+      2. product + audience + similar_purpose
+      3. product + similar_purpose
+    
+    If HOOKS only:
+      1. product + state + audience + similar_hooks
+      2. product + audience + similar_hooks
+      3. product + similar_hooks
+    
+    Final fallback (original logic):
+      4. product + state + audience
+      5. product + audience
+      6. product only
     
     Returns up to `limit` golden examples.
     """
@@ -54,61 +108,119 @@ async def get_golden_examples(
     if not product_key_clean:
         return []
     
-    # Try exact match first: same product + state + audience
-    result = await db.execute(
-        select(GoldenEmail)
-        .where(GoldenEmail.product_key == product_key_clean)
-        .where(GoldenEmail.state_code == state_code_clean)
-        .where(GoldenEmail.audience == audience_clean)
-        .order_by(GoldenEmail.created_at.desc())
-        .limit(limit)
-    )
-    examples = list(result.scalars().all())
+    examples: List[GoldenEmail] = []
+    existing_ids: List[int] = []
     
-    if len(examples) >= limit:
-        logger.info(
-            "GoldenExamples: Found %d exact matches for %s/%s/%s",
-            len(examples), product_key_clean, state_code_clean, audience_clean
-        )
-        return examples
+    # Build context filters
+    purpose_filter = _build_purpose_filter(purpose_prompt)
+    hook_filter = _build_hook_filter(hook_types_used)
+    has_purpose = purpose_filter is not None
+    has_hooks = hook_filter is not None
     
-    # Fallback: same product + same audience (any state)
-    remaining = limit - len(examples)
-    existing_ids = [e.id for e in examples]
+    async def _query(extra_filters: list, desc: str) -> int:
+        """Run a query and add results, returning count added."""
+        nonlocal examples, existing_ids
+        remaining = limit - len(examples)
+        if remaining <= 0:
+            return 0
+        
+        query = select(GoldenEmail).where(GoldenEmail.product_key == product_key_clean)
+        for f in extra_filters:
+            if f is not None:
+                query = query.where(f)
+        if existing_ids:
+            query = query.where(~GoldenEmail.id.in_(existing_ids))
+        query = query.order_by(GoldenEmail.created_at.desc()).limit(remaining)
+        
+        result = await db.execute(query)
+        new_examples = list(result.scalars().all())
+        if new_examples:
+            examples.extend(new_examples)
+            existing_ids.extend([e.id for e in new_examples])
+            logger.info("GoldenExamples [%s]: Found %d for %s", desc, len(new_examples), product_key_clean)
+        return len(new_examples)
     
-    result = await db.execute(
-        select(GoldenEmail)
-        .where(GoldenEmail.product_key == product_key_clean)
-        .where(GoldenEmail.audience == audience_clean)
-        .where(~GoldenEmail.id.in_(existing_ids) if existing_ids else True)
-        .order_by(GoldenEmail.created_at.desc())
-        .limit(remaining)
-    )
-    examples.extend(result.scalars().all())
+    # ==========================================
+    # Phase 1: Context-aware matching
+    # ==========================================
     
-    if len(examples) >= limit:
-        logger.info(
-            "GoldenExamples: Found %d matches (product+audience) for %s/%s",
-            len(examples), product_key_clean, audience_clean
-        )
-        return examples
+    if has_purpose and has_hooks:
+        # Scenario: Both purpose AND hooks provided - try to match both
+        await _query([
+            GoldenEmail.state_code == state_code_clean,
+            GoldenEmail.audience == audience_clean,
+            purpose_filter,
+            hook_filter,
+        ], "exact+purpose+hooks")
+        
+        if len(examples) < limit:
+            await _query([
+                GoldenEmail.audience == audience_clean,
+                purpose_filter,
+                hook_filter,
+            ], "audience+purpose+hooks")
+        
+        if len(examples) < limit:
+            # Relax to either purpose OR hooks
+            await _query([or_(purpose_filter, hook_filter)], "purpose_or_hooks")
     
-    # Final fallback: same product only
-    remaining = limit - len(examples)
-    existing_ids = [e.id for e in examples]
+    elif has_purpose:
+        # Scenario: Purpose only
+        await _query([
+            GoldenEmail.state_code == state_code_clean,
+            GoldenEmail.audience == audience_clean,
+            purpose_filter,
+        ], "exact+purpose")
+        
+        if len(examples) < limit:
+            await _query([
+                GoldenEmail.audience == audience_clean,
+                purpose_filter,
+            ], "audience+purpose")
+        
+        if len(examples) < limit:
+            await _query([purpose_filter], "purpose_only")
     
-    result = await db.execute(
-        select(GoldenEmail)
-        .where(GoldenEmail.product_key == product_key_clean)
-        .where(~GoldenEmail.id.in_(existing_ids) if existing_ids else True)
-        .order_by(GoldenEmail.created_at.desc())
-        .limit(remaining)
-    )
-    examples.extend(result.scalars().all())
+    elif has_hooks:
+        # Scenario: Hooks only
+        await _query([
+            GoldenEmail.state_code == state_code_clean,
+            GoldenEmail.audience == audience_clean,
+            hook_filter,
+        ], "exact+hooks")
+        
+        if len(examples) < limit:
+            await _query([
+                GoldenEmail.audience == audience_clean,
+                hook_filter,
+            ], "audience+hooks")
+        
+        if len(examples) < limit:
+            await _query([hook_filter], "hooks_only")
+    
+    # ==========================================
+    # Phase 2: Fallback to original logic (no context)
+    # ==========================================
+    
+    if len(examples) < limit:
+        await _query([
+            GoldenEmail.state_code == state_code_clean,
+            GoldenEmail.audience == audience_clean,
+        ], "exact_match")
+    
+    if len(examples) < limit:
+        await _query([
+            GoldenEmail.audience == audience_clean,
+        ], "product+audience")
+    
+    if len(examples) < limit:
+        await _query([], "product_only")
     
     logger.info(
-        "GoldenExamples: Found %d total matches for product=%s",
-        len(examples), product_key_clean
+        "GoldenExamples: Total %d matches for product=%s (purpose=%s, hooks=%s)",
+        len(examples), product_key_clean, 
+        "yes" if has_purpose else "no",
+        "yes" if has_hooks else "no"
     )
     return examples
 
@@ -166,41 +278,16 @@ def _calculate_example_weight(rubric_scores: Optional[dict], source: str) -> flo
     return 1.0
 
 
-async def analyze_golden_patterns(
-    db: AsyncSession,
-    product_key: str,
-    min_examples: int = 5,
-) -> dict:
-    """Analyze golden emails to detect style patterns with weighting.
-    
-    Returns a dict of learned patterns/statistics:
-    - avg_subject_length: Average subject line character count (weighted)
-    - avg_body_word_count: Average email body word count (weighted)
-    - avg_bullet_count: Average number of bullets (weighted)
-    - opening_style: Most common opening style (question vs statement)
-    - avg_rubric_scores: Average scores by rubric dimension
-    
-    Weighting: 5/5 scores get 2x weight, edited emails get 1.5x weight.
-    """
-    # Fetch all golden emails for this product
-    result = await db.execute(
-        select(GoldenEmail)
-        .where(GoldenEmail.product_key == product_key)
-        .order_by(GoldenEmail.created_at.desc())
-        .limit(50)  # Analyze last 50 at most
-    )
-    examples = list(result.scalars().all())
-    
-    if len(examples) < min_examples:
-        logger.info(
-            "GoldenPatterns: Not enough examples for %s (%d < %d min)",
-            product_key, len(examples), min_examples
-        )
+def _calculate_patterns_from_examples(examples: List[GoldenEmail], label: str = "") -> dict:
+    """Calculate patterns from a list of golden examples."""
+    if not examples:
         return {}
     
-    # Calculate weights for each example
     weights = [_calculate_example_weight(ex.rubric_scores, ex.source) for ex in examples]
     total_weight = sum(weights)
+    
+    if total_weight == 0:
+        return {}
     
     # Weighted averages
     subject_lengths_weighted = sum(len(ex.subject_line) * w for ex, w in zip(examples, weights))
@@ -234,7 +321,7 @@ async def analyze_golden_patterns(
     avg_rubric = {k: round(rubric_totals[k] / rubric_weights[k], 2) 
                   for k in rubric_totals if rubric_weights.get(k, 0) > 0}
     
-    patterns = {
+    return {
         "sample_count": len(examples),
         "total_weight": round(total_weight, 1),
         "avg_subject_length": round(subject_lengths_weighted / total_weight),
@@ -242,14 +329,89 @@ async def analyze_golden_patterns(
         "avg_bullet_count": round(bullet_counts_weighted / total_weight, 1),
         "question_opening_pct": round(question_weight / total_weight * 100),
         "avg_rubric_scores": avg_rubric,
+        "context_label": label,
     }
+
+
+async def analyze_golden_patterns(
+    db: AsyncSession,
+    product_key: str,
+    purpose_prompt: Optional[str] = None,
+    hook_types_used: Optional[List[str]] = None,
+    min_examples: int = 5,
+) -> dict:
+    """Analyze golden emails to detect style patterns with weighting.
+    
+    If purpose_prompt or hook_types_used is provided, tries to find context-specific
+    examples first, then falls back to product-wide patterns.
+    
+    Returns a dict of learned patterns/statistics:
+    - avg_subject_length: Average subject line character count (weighted)
+    - avg_body_word_count: Average email body word count (weighted)
+    - avg_bullet_count: Average number of bullets (weighted)
+    - opening_style: Most common opening style (question vs statement)
+    - avg_rubric_scores: Average scores by rubric dimension
+    
+    Weighting: 5/5 scores get 2x weight, edited emails get 1.5x weight.
+    """
+    # Build context filters
+    purpose_filter = _build_purpose_filter(purpose_prompt)
+    hook_filter = _build_hook_filter(hook_types_used)
+    has_context = purpose_filter is not None or hook_filter is not None
+    
+    # Try context-specific patterns first if we have context
+    if has_context:
+        context_filters = []
+        if purpose_filter is not None:
+            context_filters.append(purpose_filter)
+        if hook_filter is not None:
+            context_filters.append(hook_filter)
+        
+        # Query with context (purpose OR hooks)
+        query = select(GoldenEmail).where(GoldenEmail.product_key == product_key)
+        if len(context_filters) == 1:
+            query = query.where(context_filters[0])
+        else:
+            query = query.where(or_(*context_filters))
+        query = query.order_by(GoldenEmail.created_at.desc()).limit(30)
+        
+        result = await db.execute(query)
+        context_examples = list(result.scalars().all())
+        
+        if len(context_examples) >= min_examples:
+            patterns = _calculate_patterns_from_examples(context_examples, label="context_matched")
+            logger.info(
+                "GoldenPatterns: Analyzed %d context-matched examples for %s: subj=%d chars, body=%d words",
+                len(context_examples), product_key,
+                patterns.get("avg_subject_length", 0),
+                patterns.get("avg_body_word_count", 0)
+            )
+            return patterns
+    
+    # Fallback: product-wide patterns
+    result = await db.execute(
+        select(GoldenEmail)
+        .where(GoldenEmail.product_key == product_key)
+        .order_by(GoldenEmail.created_at.desc())
+        .limit(50)
+    )
+    examples = list(result.scalars().all())
+    
+    if len(examples) < min_examples:
+        logger.info(
+            "GoldenPatterns: Not enough examples for %s (%d < %d min)",
+            product_key, len(examples), min_examples
+        )
+        return {}
+    
+    patterns = _calculate_patterns_from_examples(examples, label="product_wide")
     
     logger.info(
-        "GoldenPatterns: Analyzed %d examples (weighted %.1f) for %s: subj=%d chars, body=%d words, bullets=%.1f",
-        len(examples), total_weight, product_key,
-        patterns["avg_subject_length"],
-        patterns["avg_body_word_count"],
-        patterns["avg_bullet_count"]
+        "GoldenPatterns: Analyzed %d product-wide examples for %s: subj=%d chars, body=%d words, bullets=%.1f",
+        len(examples), product_key,
+        patterns.get("avg_subject_length", 0),
+        patterns.get("avg_body_word_count", 0),
+        patterns.get("avg_bullet_count", 0)
     )
     
     return patterns
@@ -288,20 +450,46 @@ def format_learned_rules(patterns: dict) -> str:
     return "\n".join(rules)
 
 
+def _build_negative_purpose_filter(purpose_prompt: Optional[str]):
+    """Build SQL filter for purpose-prompt matching on negative examples."""
+    from ...rag.query_expansion import detect_topics_from_purpose
+    
+    if not purpose_prompt:
+        return None
+    
+    topics = detect_topics_from_purpose(purpose_prompt)
+    if not topics:
+        keywords = [w.strip().lower() for w in purpose_prompt.split() if len(w.strip()) > 3]
+        if not keywords:
+            return None
+        return or_(*[NegativeEmailExample.purpose_prompt.ilike(f'%{kw}%') for kw in keywords[:3]])
+    
+    return or_(*[NegativeEmailExample.purpose_prompt.ilike(f'%{topic}%') for topic in topics])
+
+
+def _build_negative_hook_filter(hook_types: Optional[List[str]]):
+    """Build SQL filter for hook type matching on negative examples."""
+    if not hook_types:
+        return None
+    
+    filters = []
+    for hook_type in hook_types:
+        filters.append(NegativeEmailExample.hook_types_used.cast(str).ilike(f'%"{hook_type}"%'))
+    return or_(*filters) if filters else None
+
+
 async def get_negative_examples(
     db: AsyncSession,
     product_key: str,
     state_code: str,
     audience: str,
+    purpose_prompt: Optional[str] = None,
+    hook_types_used: Optional[List[str]] = None,
     limit: int = 1,
 ) -> List[NegativeEmailExample]:
     """Retrieve negative examples (low-scoring emails) for the prompt.
     
-    Priority:
-    1. Same product + same state + same audience (exact match)
-    2. Same product + same audience (any state)
-    3. Same product (any state/audience)
-    
+    Same priority cascade as get_golden_examples but for negative examples.
     Returns up to `limit` negative examples, preferring higher weights (score=1).
     """
     product_key_clean = (product_key or "").strip().lower()
@@ -311,59 +499,132 @@ async def get_negative_examples(
     if not product_key_clean:
         return []
     
-    # Try exact match first
-    result = await db.execute(
-        select(NegativeEmailExample)
-        .where(NegativeEmailExample.product_key == product_key_clean)
-        .where(NegativeEmailExample.state_code == state_code_clean)
-        .where(NegativeEmailExample.audience == audience_clean)
-        .order_by(NegativeEmailExample.weight.desc(), NegativeEmailExample.created_at.desc())
-        .limit(limit)
-    )
-    examples = list(result.scalars().all())
+    examples: List[NegativeEmailExample] = []
+    existing_ids: List[int] = []
     
-    if len(examples) >= limit:
-        return examples
+    # Build context filters
+    purpose_filter = _build_negative_purpose_filter(purpose_prompt)
+    hook_filter = _build_negative_hook_filter(hook_types_used)
+    has_purpose = purpose_filter is not None
+    has_hooks = hook_filter is not None
     
-    # Fallback: same product + audience
-    remaining = limit - len(examples)
-    existing_ids = [e.id for e in examples]
+    async def _query(extra_filters: list, desc: str) -> int:
+        nonlocal examples, existing_ids
+        remaining = limit - len(examples)
+        if remaining <= 0:
+            return 0
+        
+        query = select(NegativeEmailExample).where(NegativeEmailExample.product_key == product_key_clean)
+        for f in extra_filters:
+            if f is not None:
+                query = query.where(f)
+        if existing_ids:
+            query = query.where(~NegativeEmailExample.id.in_(existing_ids))
+        query = query.order_by(NegativeEmailExample.weight.desc(), NegativeEmailExample.created_at.desc()).limit(remaining)
+        
+        result = await db.execute(query)
+        new_examples = list(result.scalars().all())
+        if new_examples:
+            examples.extend(new_examples)
+            existing_ids.extend([e.id for e in new_examples])
+            logger.info("NegativeExamples [%s]: Found %d for %s", desc, len(new_examples), product_key_clean)
+        return len(new_examples)
     
-    result = await db.execute(
-        select(NegativeEmailExample)
-        .where(NegativeEmailExample.product_key == product_key_clean)
-        .where(NegativeEmailExample.audience == audience_clean)
-        .where(~NegativeEmailExample.id.in_(existing_ids) if existing_ids else True)
-        .order_by(NegativeEmailExample.weight.desc(), NegativeEmailExample.created_at.desc())
-        .limit(remaining)
-    )
-    examples.extend(result.scalars().all())
+    # Context-aware matching (same cascade as golden examples)
+    if has_purpose and has_hooks:
+        await _query([
+            NegativeEmailExample.state_code == state_code_clean,
+            NegativeEmailExample.audience == audience_clean,
+            purpose_filter, hook_filter,
+        ], "exact+purpose+hooks")
+        
+        if len(examples) < limit:
+            await _query([NegativeEmailExample.audience == audience_clean, purpose_filter, hook_filter], "audience+purpose+hooks")
+        
+        if len(examples) < limit:
+            await _query([or_(purpose_filter, hook_filter)], "purpose_or_hooks")
     
-    if len(examples) >= limit:
-        return examples
+    elif has_purpose:
+        await _query([
+            NegativeEmailExample.state_code == state_code_clean,
+            NegativeEmailExample.audience == audience_clean,
+            purpose_filter,
+        ], "exact+purpose")
+        
+        if len(examples) < limit:
+            await _query([NegativeEmailExample.audience == audience_clean, purpose_filter], "audience+purpose")
+        
+        if len(examples) < limit:
+            await _query([purpose_filter], "purpose_only")
     
-    # Final fallback: same product only
-    remaining = limit - len(examples)
-    existing_ids = [e.id for e in examples]
+    elif has_hooks:
+        await _query([
+            NegativeEmailExample.state_code == state_code_clean,
+            NegativeEmailExample.audience == audience_clean,
+            hook_filter,
+        ], "exact+hooks")
+        
+        if len(examples) < limit:
+            await _query([NegativeEmailExample.audience == audience_clean, hook_filter], "audience+hooks")
+        
+        if len(examples) < limit:
+            await _query([hook_filter], "hooks_only")
     
-    result = await db.execute(
-        select(NegativeEmailExample)
-        .where(NegativeEmailExample.product_key == product_key_clean)
-        .where(~NegativeEmailExample.id.in_(existing_ids) if existing_ids else True)
-        .order_by(NegativeEmailExample.weight.desc(), NegativeEmailExample.created_at.desc())
-        .limit(remaining)
-    )
-    examples.extend(result.scalars().all())
+    # Fallback to original logic
+    if len(examples) < limit:
+        await _query([
+            NegativeEmailExample.state_code == state_code_clean,
+            NegativeEmailExample.audience == audience_clean,
+        ], "exact_match")
+    
+    if len(examples) < limit:
+        await _query([NegativeEmailExample.audience == audience_clean], "product+audience")
+    
+    if len(examples) < limit:
+        await _query([], "product_only")
     
     return examples
+
+
+def _calculate_negative_patterns_from_examples(examples: List[NegativeEmailExample], label: str = "") -> dict:
+    """Calculate anti-patterns from a list of negative examples."""
+    if not examples:
+        return {}
+    
+    problem_counts: dict[str, float] = {}
+    total_weight = 0.0
+    
+    for ex in examples:
+        w = ex.weight or 1.0
+        total_weight += w
+        for category in (ex.low_score_categories or []):
+            problem_counts[category] = problem_counts.get(category, 0) + w
+    
+    if total_weight == 0:
+        return {}
+    
+    sorted_problems = sorted(problem_counts.items(), key=lambda x: x[1], reverse=True)
+    
+    return {
+        "sample_count": len(examples),
+        "total_weight": round(total_weight, 1),
+        "common_problems": [p[0] for p in sorted_problems[:3]],
+        "problem_frequencies": {k: round(v, 1) for k, v in sorted_problems},
+        "context_label": label,
+    }
 
 
 async def analyze_negative_patterns(
     db: AsyncSession,
     product_key: str,
+    purpose_prompt: Optional[str] = None,
+    hook_types_used: Optional[List[str]] = None,
     min_examples: int = 3,
 ) -> dict:
     """Analyze negative emails to detect anti-patterns.
+    
+    If purpose_prompt or hook_types_used is provided, tries to find context-specific
+    examples first, then falls back to product-wide patterns.
     
     Returns a dict of learned anti-patterns:
     - common_problems: Categories that frequently score low
@@ -372,6 +633,38 @@ async def analyze_negative_patterns(
     
     Weighting: score=1 gets 2x weight, score=2 gets 1x weight.
     """
+    # Build context filters
+    purpose_filter = _build_negative_purpose_filter(purpose_prompt)
+    hook_filter = _build_negative_hook_filter(hook_types_used)
+    has_context = purpose_filter is not None or hook_filter is not None
+    
+    # Try context-specific patterns first if we have context
+    if has_context:
+        context_filters = []
+        if purpose_filter is not None:
+            context_filters.append(purpose_filter)
+        if hook_filter is not None:
+            context_filters.append(hook_filter)
+        
+        query = select(NegativeEmailExample).where(NegativeEmailExample.product_key == product_key)
+        if len(context_filters) == 1:
+            query = query.where(context_filters[0])
+        else:
+            query = query.where(or_(*context_filters))
+        query = query.order_by(NegativeEmailExample.created_at.desc()).limit(30)
+        
+        result = await db.execute(query)
+        context_examples = list(result.scalars().all())
+        
+        if len(context_examples) >= min_examples:
+            patterns = _calculate_negative_patterns_from_examples(context_examples, label="context_matched")
+            logger.info(
+                "NegativePatterns: Analyzed %d context-matched examples for %s: top problems=%s",
+                len(context_examples), product_key, patterns.get("common_problems", [])
+            )
+            return patterns
+    
+    # Fallback: product-wide patterns
     result = await db.execute(
         select(NegativeEmailExample)
         .where(NegativeEmailExample.product_key == product_key)
@@ -387,29 +680,11 @@ async def analyze_negative_patterns(
         )
         return {}
     
-    # Count problem categories with weighting
-    problem_counts: dict[str, float] = {}
-    total_weight = 0.0
-    
-    for ex in examples:
-        w = ex.weight or 1.0
-        total_weight += w
-        for category in (ex.low_score_categories or []):
-            problem_counts[category] = problem_counts.get(category, 0) + w
-    
-    # Sort by weighted frequency
-    sorted_problems = sorted(problem_counts.items(), key=lambda x: x[1], reverse=True)
-    
-    patterns = {
-        "sample_count": len(examples),
-        "total_weight": round(total_weight, 1),
-        "common_problems": [p[0] for p in sorted_problems[:3]],  # Top 3 problem areas
-        "problem_frequencies": {k: round(v, 1) for k, v in sorted_problems},
-    }
+    patterns = _calculate_negative_patterns_from_examples(examples, label="product_wide")
     
     logger.info(
-        "NegativePatterns: Analyzed %d examples (weighted %.1f) for %s: top problems=%s",
-        len(examples), total_weight, product_key, patterns["common_problems"]
+        "NegativePatterns: Analyzed %d product-wide examples for %s: top problems=%s",
+        len(examples), product_key, patterns.get("common_problems", [])
     )
     
     return patterns

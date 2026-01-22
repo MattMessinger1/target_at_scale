@@ -601,6 +601,8 @@ export interface EmailReviewRequest {
   edited_email_body: string
   rubric: EmailRubric
   evidence_chunks_used?: string[] | null  // Chunk IDs used in generating this email
+  purpose_prompt?: string | null          // Purpose prompt used for generation (for flywheel learning)
+  hook_types_used?: string[] | null       // Hook types used (e.g., ["deadline", "monitoring"])
 }
 
 export interface EmailReviewResponse {

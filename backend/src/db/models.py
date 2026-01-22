@@ -402,7 +402,8 @@ class NegativeEmailExample(Base):
     # Weight for prioritizing examples (2.0 for score=1, 1.0 for score=2)
     weight: Mapped[float] = mapped_column(Float, default=1.0)
     
-    # Additional context
+    # Additional context for flywheel matching
+    hook_types_used: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)  # ["deadline", "monitoring"]
     district_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     purpose_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     

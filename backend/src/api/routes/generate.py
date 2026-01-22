@@ -730,10 +730,21 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         examples_cache: dict = {}  # audience -> formatted examples + rules
                         
                         # Analyze patterns from golden AND negative emails
+                        # Pass purpose for context-aware pattern learning
                         learned_rules_text = ""
                         try:
-                            golden_patterns = await analyze_golden_patterns(db=db, product_key=product_key or "", min_examples=5)
-                            negative_patterns = await analyze_negative_patterns(db=db, product_key=product_key or "", min_examples=3)
+                            golden_patterns = await analyze_golden_patterns(
+                                db=db, 
+                                product_key=product_key or "", 
+                                purpose_prompt=purpose_text if purpose_text else None,
+                                min_examples=5
+                            )
+                            negative_patterns = await analyze_negative_patterns(
+                                db=db, 
+                                product_key=product_key or "", 
+                                purpose_prompt=purpose_text if purpose_text else None,
+                                min_examples=3
+                            )
                             learned_rules_text = format_learned_rules_with_negatives(golden_patterns, negative_patterns)
                         except Exception as e:
                             logger.warning("Failed to analyze patterns for %s: %s", product_key, e)
@@ -759,6 +770,14 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                             _email_tasks[task_id]["progress"] = 20 + int((aud_idx / max(len(audiences), 1)) * 75)
                             
                             # Get golden + negative examples for this audience
+                            # Extract hook types for flywheel matching
+                            hook_types_for_matching: List[str] = []
+                            if primary and primary.hook and getattr(primary.hook, "hook_type", None):
+                                if primary.hook.hook_type != "custom":  # Don't use synthetic "custom" type
+                                    hook_types_for_matching.append(primary.hook.hook_type)
+                            if secondary and secondary.hook and getattr(secondary.hook, "hook_type", None):
+                                hook_types_for_matching.append(secondary.hook.hook_type)
+                            
                             if aud not in examples_cache:
                                 try:
                                     golden_list = await get_golden_examples(
@@ -766,6 +785,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                         product_key=product_key or "",
                                         state_code=state_code,
                                         audience=aud,
+                                        purpose_prompt=purpose_text if purpose_text else None,
+                                        hook_types_used=hook_types_for_matching if hook_types_for_matching else None,
                                         limit=2,
                                     )
                                     examples_text = format_golden_examples(golden_list) if golden_list else ""
@@ -775,6 +796,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                         product_key=product_key or "",
                                         state_code=state_code,
                                         audience=aud,
+                                        purpose_prompt=purpose_text if purpose_text else None,
+                                        hook_types_used=hook_types_for_matching if hook_types_for_matching else None,
                                         limit=1,
                                     )
                                     negative_text = format_negative_example(negative_list[0]) if negative_list else ""
@@ -1172,12 +1195,71 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                     conf_text = f"Conference: {hook_data.conference_name} ({hook_data.dates}) - {hook_data.relevance}"
                                     supporting_context.append(conf_text[:300])
                     
+                    # ================================================================
+                    # FLYWHEEL: Fetch golden/negative examples for hook-based flow
+                    # ================================================================
+                    product_key = normalize_product_key(product)
+                    examples_cache_hook: dict = {}  # audience -> formatted examples + rules
+                    
+                    # Analyze patterns from golden AND negative emails
+                    learned_rules_text_hook = ""
+                    try:
+                        golden_patterns = await analyze_golden_patterns(
+                            db=db, product_key=product_key or "",
+                            purpose_prompt=purpose_prompt,
+                            min_examples=5
+                        )
+                        negative_patterns = await analyze_negative_patterns(
+                            db=db, product_key=product_key or "",
+                            purpose_prompt=purpose_prompt,
+                            min_examples=3
+                        )
+                        learned_rules_text_hook = format_learned_rules_with_negatives(golden_patterns, negative_patterns)
+                    except Exception as e:
+                        logger.warning("Failed to analyze patterns for hook-based flow: %s", e)
+                    
                     if use_explicit_selection:
                         for aud_idx, aud in enumerate(audiences):
                             if not primary:
                                 raise RuntimeError("Primary hook selection failed")
                             _email_tasks[task_id]["message"] = f"Generating email for {aud}..."
                             _email_tasks[task_id]["progress"] = 20 + int((aud_idx / len(audiences)) * 75)
+                            
+                            # Flywheel: fetch examples for this audience
+                            if aud not in examples_cache_hook:
+                                hook_types_for_matching: List[str] = []
+                                if primary and primary.hook and getattr(primary.hook, "hook_type", None):
+                                    hook_types_for_matching.append(primary.hook.hook_type)
+                                if secondary and secondary.hook and getattr(secondary.hook, "hook_type", None):
+                                    hook_types_for_matching.append(secondary.hook.hook_type)
+                                
+                                try:
+                                    golden_list = await get_golden_examples(
+                                        db=db,
+                                        product_key=product_key or "",
+                                        state_code=state_code,
+                                        audience=aud,
+                                        purpose_prompt=purpose_prompt,
+                                        hook_types_used=hook_types_for_matching if hook_types_for_matching else None,
+                                        limit=2,
+                                    )
+                                    examples_text = format_golden_examples(golden_list) if golden_list else ""
+                                    
+                                    negative_list = await get_negative_examples(
+                                        db=db,
+                                        product_key=product_key or "",
+                                        state_code=state_code,
+                                        audience=aud,
+                                        purpose_prompt=purpose_prompt,
+                                        hook_types_used=hook_types_for_matching if hook_types_for_matching else None,
+                                        limit=1,
+                                    )
+                                    negative_text = format_negative_example(negative_list[0]) if negative_list else ""
+                                    
+                                    examples_cache_hook[aud] = examples_text + negative_text + learned_rules_text_hook
+                                except Exception as e:
+                                    logger.warning("Failed to fetch flywheel examples for %s: %s", aud, e)
+                                    examples_cache_hook[aud] = learned_rules_text_hook
                             
                             variant = await _run_variant(
                                 product=product,
@@ -1194,6 +1276,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                 supporting_context=supporting_context,
                                 on_progress=update_progress,
                                 on_openai_started=on_openai_started,
+                                golden_examples_text=examples_cache_hook.get(aud, ""),
                             )
                             variants.append(variant)
                     else:
@@ -1207,6 +1290,40 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                             
                             _email_tasks[task_id]["message"] = f"Generating email for {aud}..."
                             _email_tasks[task_id]["progress"] = 20 + int((aud_idx / len(audiences)) * 75)
+                            
+                            # Flywheel: fetch examples for this audience
+                            if aud not in examples_cache_hook:
+                                hook_types_for_matching: List[str] = []
+                                if sel and sel.hook and getattr(sel.hook, "hook_type", None):
+                                    hook_types_for_matching.append(sel.hook.hook_type)
+                                
+                                try:
+                                    golden_list = await get_golden_examples(
+                                        db=db,
+                                        product_key=product_key or "",
+                                        state_code=state_code,
+                                        audience=aud,
+                                        purpose_prompt=purpose_prompt,
+                                        hook_types_used=hook_types_for_matching if hook_types_for_matching else None,
+                                        limit=2,
+                                    )
+                                    examples_text = format_golden_examples(golden_list) if golden_list else ""
+                                    
+                                    negative_list = await get_negative_examples(
+                                        db=db,
+                                        product_key=product_key or "",
+                                        state_code=state_code,
+                                        audience=aud,
+                                        purpose_prompt=purpose_prompt,
+                                        hook_types_used=hook_types_for_matching if hook_types_for_matching else None,
+                                        limit=1,
+                                    )
+                                    negative_text = format_negative_example(negative_list[0]) if negative_list else ""
+                                    
+                                    examples_cache_hook[aud] = examples_text + negative_text + learned_rules_text_hook
+                                except Exception as e:
+                                    logger.warning("Failed to fetch flywheel examples for %s: %s", aud, e)
+                                    examples_cache_hook[aud] = learned_rules_text_hook
                             
                             variant = await _run_variant(
                                 product=product,
@@ -1223,6 +1340,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                 supporting_context=supporting_context,
                                 on_progress=update_progress,
                                 on_openai_started=on_openai_started,
+                                golden_examples_text=examples_cache_hook.get(aud, ""),
                             )
                             variants.append(variant)
                     
@@ -3091,6 +3209,16 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         from ...pipeline.stages.evidence_pack import build_product_evidence_pack
         from ...pipeline.stages.hook_selector import select_primary_hooks
         from ...pipeline.stages.treasure_hunter import run_treasure_hunter
+        from ...pipeline.stages.email_writer import (
+            get_golden_examples,
+            format_golden_examples,
+            get_negative_examples,
+            format_negative_example,
+            analyze_golden_patterns,
+            analyze_negative_patterns,
+            format_learned_rules_with_negatives,
+        )
+        from ...research.product_briefs import normalize_product_key
 
         # Best-effort: derive state_full if omitted (keep request shape stable)
         if not request.state_full:
@@ -3399,6 +3527,29 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                             conf_text = f"Conference: {hook_data.conference_name} ({hook_data.dates}) - {hook_data.relevance}"
                             supporting_context.append(conf_text[:300])
             
+            # ================================================================
+            # FLYWHEEL: Fetch golden/negative examples for streaming endpoint
+            # ================================================================
+            product_key_stream = normalize_product_key(product)
+            examples_cache_stream: dict = {}  # audience -> formatted examples + rules
+            
+            # Analyze patterns from golden AND negative emails
+            learned_rules_text_stream = ""
+            try:
+                golden_patterns = await analyze_golden_patterns(
+                    db=db, product_key=product_key_stream or "",
+                    purpose_prompt=purpose_prompt,
+                    min_examples=5
+                )
+                negative_patterns = await analyze_negative_patterns(
+                    db=db, product_key=product_key_stream or "",
+                    purpose_prompt=purpose_prompt,
+                    min_examples=3
+                )
+                learned_rules_text_stream = format_learned_rules_with_negatives(golden_patterns, negative_patterns)
+            except Exception as e:
+                logger.warning("Failed to analyze patterns for streaming endpoint: %s", e)
+            
             # Set up progress queue for keepalive events during email generation
             import asyncio
             email_progress_queue: asyncio.Queue = asyncio.Queue()
@@ -3417,7 +3568,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 except Exception as e:
                     logger.warning(f"Failed to queue email progress event: {e}")
             
-            async def generate_single_variant(aud: str, sel_hook, sec_hook=None):
+            async def generate_single_variant(aud: str, sel_hook, sec_hook=None, examples_text: str = ""):
                 """Generate a single variant and return it."""
                 return await _run_variant(
                     product=product,
@@ -3433,6 +3584,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     purpose_prompt=purpose_prompt,
                     supporting_context=supporting_context,
                     on_progress=email_progress_callback,
+                    golden_examples_text=examples_text,
                 )
             
             # Process each audience with progress streaming
@@ -3441,13 +3593,50 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     if not primary:
                         raise RuntimeError("Primary hook selection failed")
                     
+                    # Flywheel: fetch examples for this audience
+                    if aud not in examples_cache_stream:
+                        hook_types_for_matching: List[str] = []
+                        if primary and primary.hook and getattr(primary.hook, "hook_type", None):
+                            hook_types_for_matching.append(primary.hook.hook_type)
+                        if secondary and secondary.hook and getattr(secondary.hook, "hook_type", None):
+                            hook_types_for_matching.append(secondary.hook.hook_type)
+                        
+                        try:
+                            golden_list = await get_golden_examples(
+                                db=db,
+                                product_key=product_key_stream or "",
+                                state_code=state_code,
+                                audience=aud,
+                                purpose_prompt=purpose_prompt,
+                                hook_types_used=hook_types_for_matching if hook_types_for_matching else None,
+                                limit=2,
+                            )
+                            examples_text = format_golden_examples(golden_list) if golden_list else ""
+                            
+                            negative_list = await get_negative_examples(
+                                db=db,
+                                product_key=product_key_stream or "",
+                                state_code=state_code,
+                                audience=aud,
+                                purpose_prompt=purpose_prompt,
+                                hook_types_used=hook_types_for_matching if hook_types_for_matching else None,
+                                limit=1,
+                            )
+                            negative_text = format_negative_example(negative_list[0]) if negative_list else ""
+                            
+                            examples_cache_stream[aud] = examples_text + negative_text + learned_rules_text_stream
+                        except Exception as e:
+                            logger.warning("Failed to fetch flywheel examples for streaming %s: %s", aud, e)
+                            examples_cache_stream[aud] = learned_rules_text_stream
+                    
                     # Run variant generation in background task
                     variant_result = [None]
                     variant_error = [None]
+                    current_examples = examples_cache_stream.get(aud, "")
                     
                     async def run_variant_task():
                         try:
-                            variant_result[0] = await generate_single_variant(aud, primary, secondary)
+                            variant_result[0] = await generate_single_variant(aud, primary, secondary, current_examples)
                         except Exception as e:
                             variant_error[0] = e
                         finally:
@@ -3482,13 +3671,48 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     if not sel:
                         raise RuntimeError("No hooks available to generate an email (TreasureHunter returned none).")
                     
+                    # Flywheel: fetch examples for this audience
+                    if aud not in examples_cache_stream:
+                        hook_types_for_matching: List[str] = []
+                        if sel and sel.hook and getattr(sel.hook, "hook_type", None):
+                            hook_types_for_matching.append(sel.hook.hook_type)
+                        
+                        try:
+                            golden_list = await get_golden_examples(
+                                db=db,
+                                product_key=product_key_stream or "",
+                                state_code=state_code,
+                                audience=aud,
+                                purpose_prompt=purpose_prompt,
+                                hook_types_used=hook_types_for_matching if hook_types_for_matching else None,
+                                limit=2,
+                            )
+                            examples_text = format_golden_examples(golden_list) if golden_list else ""
+                            
+                            negative_list = await get_negative_examples(
+                                db=db,
+                                product_key=product_key_stream or "",
+                                state_code=state_code,
+                                audience=aud,
+                                purpose_prompt=purpose_prompt,
+                                hook_types_used=hook_types_for_matching if hook_types_for_matching else None,
+                                limit=1,
+                            )
+                            negative_text = format_negative_example(negative_list[0]) if negative_list else ""
+                            
+                            examples_cache_stream[aud] = examples_text + negative_text + learned_rules_text_stream
+                        except Exception as e:
+                            logger.warning("Failed to fetch flywheel examples for streaming %s: %s", aud, e)
+                            examples_cache_stream[aud] = learned_rules_text_stream
+                    
                     # Run variant generation in background task
                     variant_result = [None]
                     variant_error = [None]
+                    current_examples = examples_cache_stream.get(aud, "")
                     
                     async def run_variant_task():
                         try:
-                            variant_result[0] = await generate_single_variant(aud, sel, None)
+                            variant_result[0] = await generate_single_variant(aud, sel, None, current_examples)
                         except Exception as e:
                             variant_error[0] = e
                         finally:

@@ -241,6 +241,9 @@ class EmailReviewRequest(BaseModel):
     # Optional custom purpose prompt (for training context)
     purpose_prompt: Optional[str] = None
     
+    # Hook types used in the email (for flywheel matching)
+    hook_types_used: Optional[List[str]] = None
+    
     # Evidence chunks used in generating this email (for tracking chunk quality)
     evidence_chunks_used: Optional[List[str]] = None
 
@@ -323,6 +326,7 @@ async def submit_email_review(
             email_body=edited_body,
             source=source,
             rubric_scores=rubric_scores if rubric_scores else None,
+            hook_types_used=req.hook_types_used or None,  # For flywheel matching
             district_name=(req.district_name or "").strip() or None,
             purpose_prompt=(req.purpose_prompt or "").strip() or None,
             review_id=row.id,
@@ -345,6 +349,7 @@ async def submit_email_review(
             low_score_categories=low_score_categories,
             rubric_scores=rubric_scores if rubric_scores else None,
             weight=weight,
+            hook_types_used=req.hook_types_used or None,  # For flywheel matching
             district_name=(req.district_name or "").strip() or None,
             purpose_prompt=(req.purpose_prompt or "").strip() or None,
             review_id=row.id,
