@@ -233,8 +233,58 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ...db import get_db
 from ...config import get_settings
+from ...utils.costs import check_daily_budget
 
 settings = get_settings()
+
+
+# ---------------------------------------------------------------------------
+# Budget rate limiting dependency
+# ---------------------------------------------------------------------------
+
+async def require_budget(
+    request: "Request",
+    db: AsyncSession = Depends(get_db),
+):
+    """Dependency that enforces daily budget limit for expensive operations.
+    
+    Checks:
+    1. If X-Budget-Override header matches admin token, allow request
+    2. Otherwise, check if daily spend is under budget limit
+    
+    Raises HTTPException 429 if budget exceeded and no valid override.
+    """
+    from fastapi import Request
+    
+    # Check for admin override header
+    override_token = request.headers.get("X-Budget-Override", "")
+    if override_token and override_token == settings.budget_override_token:
+        logger.info("Budget override: admin token accepted")
+        return  # Admin override - allow request
+    
+    # Check daily budget
+    budget_status = await check_daily_budget(db)
+    if not budget_status["allowed"]:
+        logger.warning(
+            f"Budget exceeded: spent=${budget_status['spent_today']:.2f}, "
+            f"limit=${budget_status['budget']:.2f}"
+        )
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "daily_budget_exceeded",
+                "message": f"Daily budget of ${budget_status['budget']:.2f} exceeded. "
+                          f"Spent today: ${budget_status['spent_today']:.2f}. "
+                          f"Contact admin for override.",
+                "spent_today": budget_status["spent_today"],
+                "budget": budget_status["budget"],
+                "remaining": budget_status["remaining"],
+            }
+        )
+
+
+# Import Request for type hint
+from fastapi import Request
 
 router = APIRouter()
 
@@ -2163,7 +2213,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         async with AsyncSessionLocal() as db:
             await _run_research_task(task_id, task_data, db)
 
-    @router.post("/pipeline/prep/start")
+    @router.post("/pipeline/prep/start", dependencies=[Depends(require_budget)])
     async def start_research_pipeline(
         request: PipelinePrepRequest,
         db: AsyncSession = Depends(get_db),
@@ -2744,7 +2794,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             # Use a 422 so the UI can present a clear, user-actionable message.
             raise HTTPException(status_code=422, detail=str(e))
 
-    @router.post("/pipeline/prep/stream")
+    @router.post("/pipeline/prep/stream", dependencies=[Depends(require_budget)])
     async def generate_email_pipeline_prep_stream(
         request: PipelinePrepRequest,
         db: AsyncSession = Depends(get_db),
@@ -3794,7 +3844,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             description="State-level hooks for de-duplication."
         )
 
-    @router.post("/pipeline/district-research/stream")
+    @router.post("/pipeline/district-research/stream", dependencies=[Depends(require_budget)])
     async def run_district_research_stream(
         request: DistrictResearchRequest,
         db: AsyncSession = Depends(get_db),

@@ -409,6 +409,51 @@ async def log_api_usage(
     return log_entry
 
 
+async def check_daily_budget(db: AsyncSession) -> Dict[str, Any]:
+    """Check if daily spend is within budget.
+    
+    Args:
+        db: Database session
+        
+    Returns:
+        Dict with budget status:
+        - allowed: bool - whether new expensive operations are allowed
+        - spent_today: float - amount spent today in USD
+        - budget: float - daily budget limit
+        - remaining: float - remaining budget (can be negative if over)
+    """
+    from ..db.models import ApiUsageLog
+    from ..config import get_settings
+    
+    settings = get_settings()
+    budget_limit = settings.daily_budget_limit
+    
+    # Get start of today (UTC)
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Sum today's actual costs
+    query = select(func.sum(ApiUsageLog.actual_cost)).where(
+        ApiUsageLog.created_at >= today_start
+    )
+    result = await db.execute(query)
+    spent_today = float(result.scalar() or 0.0)
+    
+    remaining = budget_limit - spent_today
+    allowed = remaining > 0
+    
+    logger.info(
+        f"Budget check: spent=${spent_today:.2f}, budget=${budget_limit:.2f}, "
+        f"remaining=${remaining:.2f}, allowed={allowed}"
+    )
+    
+    return {
+        "allowed": allowed,
+        "spent_today": round(spent_today, 2),
+        "budget": budget_limit,
+        "remaining": round(remaining, 2),
+    }
+
+
 async def get_usage_summary(
     db: AsyncSession,
     days: int = 30,

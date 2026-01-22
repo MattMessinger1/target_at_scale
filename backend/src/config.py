@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     perplexity_api_key: str = ""
     admin_token: str = ""
 
+    # Rate limiting / budget
+    daily_budget_limit: float = 25.0  # Daily spending limit in USD
+    budget_override_token: str = "Matt123"  # Token for admin budget override
+    
     # Outreach CTA
     calendly_url: str = "calendly.com/wceps"
     

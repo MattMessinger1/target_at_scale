@@ -20,6 +20,7 @@ from ...utils.costs import (
     estimate_email_cost,
     get_cost_tracker,
     get_usage_summary,
+    check_daily_budget,
 )
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,14 @@ class UsageSummary(BaseModel):
     total_input_tokens: int
     total_output_tokens: int
     breakdown_by_operation: list[dict]
+
+
+class BudgetStatus(BaseModel):
+    """Current daily budget status."""
+    allowed: bool = Field(..., description="Whether new expensive operations are allowed")
+    spent_today: float = Field(..., description="Amount spent today in USD")
+    budget: float = Field(..., description="Daily budget limit in USD")
+    remaining: float = Field(..., description="Remaining budget (can be negative if over)")
 
 
 class PricingInfo(BaseModel):
@@ -161,6 +170,24 @@ async def get_usage(
         operation_type=operation_type,
     )
     return UsageSummary(**summary)
+
+
+@router.get("/budget/status", response_model=BudgetStatus)
+async def get_budget_status(
+    db: AsyncSession = Depends(get_db),
+):
+    """Get current daily budget status.
+    
+    Returns:
+    - allowed: Whether new expensive operations are allowed
+    - spent_today: Amount spent today in USD
+    - budget: Daily budget limit in USD
+    - remaining: Remaining budget (can be negative if over)
+    
+    Use this to show budget status in the UI before starting expensive operations.
+    """
+    status = await check_daily_budget(db)
+    return BudgetStatus(**status)
 
 
 @router.get("/pricing", response_model=PricingInfo)

@@ -20,8 +20,51 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...db import get_db
 from ...db.models import BatchJob, SavedEmailRun
+from ...utils.costs import check_daily_budget
+from ...config import get_settings
+from fastapi import Request
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
+
+
+async def require_budget(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Dependency that enforces daily budget limit for expensive batch operations.
+    
+    Checks:
+    1. If X-Budget-Override header matches admin token, allow request
+    2. Otherwise, check if daily spend is under budget limit
+    
+    Raises HTTPException 429 if budget exceeded and no valid override.
+    """
+    # Check for admin override header
+    override_token = request.headers.get("X-Budget-Override", "")
+    if override_token and override_token == settings.budget_override_token:
+        logger.info("Budget override: admin token accepted for batch job")
+        return  # Admin override - allow request
+    
+    # Check daily budget
+    budget_status = await check_daily_budget(db)
+    if not budget_status["allowed"]:
+        logger.warning(
+            f"Budget exceeded for batch job: spent=${budget_status['spent_today']:.2f}, "
+            f"limit=${budget_status['budget']:.2f}"
+        )
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "daily_budget_exceeded",
+                "message": f"Daily budget of ${budget_status['budget']:.2f} exceeded. "
+                          f"Spent today: ${budget_status['spent_today']:.2f}. "
+                          f"Contact admin for override.",
+                "spent_today": budget_status["spent_today"],
+                "budget": budget_status["budget"],
+                "remaining": budget_status["remaining"],
+            }
+        )
 
 
 def _dump_model(obj: Any) -> Any:
@@ -123,7 +166,7 @@ class BatchRunSummary(BaseModel):
 # Routes
 # ---------------------------------------------------------------------------
 
-@router.post("", response_model=BatchJobDetail)
+@router.post("", response_model=BatchJobDetail, dependencies=[Depends(require_budget)])
 async def create_batch_job(
     request: CreateBatchJobRequest,
     background_tasks: BackgroundTasks,
