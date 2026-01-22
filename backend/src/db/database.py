@@ -95,6 +95,12 @@ async def run_migrations():
         ("saved_email_runs", "selected_cached_hook_ids", "JSON"),
         # Add evidence_chunks_used to email_improvement_reviews for tracking which chunks were used
         ("email_improvement_reviews", "evidence_chunks_used", "JSON"),
+        # Add hook_types_used to golden_emails for flywheel context matching
+        ("golden_emails", "hook_types_used", "JSON"),
+        # Add hook_types_used to negative_email_examples for flywheel context matching
+        ("negative_email_examples", "hook_types_used", "JSON"),
+        # Add purpose_prompt to negative_email_examples for flywheel context matching
+        ("negative_email_examples", "purpose_prompt", "TEXT"),
     ]
     
     async with engine.begin() as conn:
