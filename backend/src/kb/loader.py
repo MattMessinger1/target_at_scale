@@ -88,6 +88,27 @@ PRODUCT_PATTERNS = {
         r"wida\s*professional\s*learning",
         r"wida\s*licensed\s*offerings",
         r"planning\s*with\s*purpose",
+        # Expanded patterns for WIDA PD content
+        r"wida\s*workshop",
+        r"wida\s*training",
+        r"wida\s*webinar",
+        r"wida\s*course",
+        r"wida\s*pd\b",
+        r"wida.*professional\s*development",
+        r"eld\s*standards?\s*framework",
+        r"can\s*do\s*descriptors?",
+        r"wida\s*facilitator",
+        r"multilingual\s*learner.*instruction",
+        r"english\s*learner.*pd\b",
+        r"esol.*professional\s*(development|learning)",
+    ],
+    "aiw_institute": [
+        r"aiw\s*institute",
+        r"authentic\s*intellectual\s*work",
+        r"framework\s*for\s*authentic",
+        r"aiw\s*rubric",
+        r"aiw\s*scoring",
+        r"aiw\s*team",
     ],
 }
 

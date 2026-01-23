@@ -1,0 +1,81 @@
+# AIW Institute - Authentic Intellectual Work
+# Professional development using the Framework for Authentic Intellectual Work
+
+elevator_pitch: "The AIW Institute provides professional development and capacity building using the Framework for Authentic Intellectual Work (AIW). This research-based framework focuses on high-quality learning through construction of knowledge, disciplined inquiry, and value beyond school."
+
+offerings:
+  - "AIW Framework professional development workshops"
+  - "AIW rubrics training for scoring instructional artifacts"
+  - "School-based AIW team coaching and support"
+  - "Train-the-trainer programs for district sustainability"
+  - "AIW scoring calibration sessions"
+  - "Instructional design using AIW criteria"
+  - "Leadership development for AIW implementation"
+
+who_its_for:
+  - "K-12 teachers across all content areas"
+  - "Instructional coaches"
+  - "Curriculum directors"
+  - "School and district administrators"
+  - "Professional development coordinators"
+  - "Teacher leaders"
+  - "Higher education faculty"
+
+problems_solved:
+  - "Need for rigorous, intellectually challenging instruction"
+  - "Aligning instruction with deeper learning goals"
+  - "Moving beyond surface-level teaching to authentic learning"
+  - "Building teacher capacity for high-quality task design"
+  - "Creating coherent, standards-aligned curriculum"
+  - "Developing student critical thinking and problem-solving skills"
+  - "Improving instructional quality through formative feedback"
+  - "Supporting school improvement through instructional focus"
+
+implementation:
+  what_wceps_does:
+    - "Facilitates AIW professional development workshops"
+    - "Trains school-based AIW teams in rubric scoring"
+    - "Provides ongoing coaching and calibration support"
+    - "Delivers train-the-trainer certification programs"
+  what_district_does:
+    - "Identifies teachers and leaders for AIW teams"
+    - "Schedules regular team meeting time"
+    - "Commits to collecting and scoring instructional artifacts"
+    - "Provides follow-up for implementation support"
+  timeline: "Initial training is typically 2-3 days; ongoing team meetings and coaching throughout the school year."
+
+safe_claims:
+  - "The AIW Framework is developed by researchers at the University of Wisconsin-Madison."
+  - "AIW provides research-based criteria for authentic intellectual work."
+  - "The AIW rubrics are formative tools designed to support teacher growth, not evaluate teachers."
+
+differentiators:
+  - "Developed by UW-Madison researchers - grounded in decades of education research"
+  - "Framework, not a checklist - focuses on deep learning principles, not compliance"
+  - "Rubrics are formative, not evaluative - supports growth rather than judgment"
+  - "Three core criteria: construction of knowledge, disciplined inquiry, value beyond school"
+  - "Applicable across all content areas and grade levels"
+  - "Team-based approach builds collaborative professional culture"
+  - "Focuses on student work and instructional tasks, not just teaching behaviors"
+
+compliance_hooks:
+  - "Professional development requirements"
+  - "School improvement plan instructional quality components"
+  - "Teacher evaluation growth goals"
+  - "Curriculum alignment and coherence initiatives"
+  - "Deeper learning and 21st century skills mandates"
+  - "Standards-based instruction improvement"
+  - "Accreditation instructional quality evidence"
+
+case_studies:
+  - state: null
+    district: null
+    context: "Schools implementing the AIW Framework report shifts in teacher practice toward more intellectually demanding tasks and increased student engagement in authentic learning."
+    proof_snippet: "The AIW rubrics are not intended to be evaluative in the ways teachers' work has come to be evaluated. The rubrics are formative tools that propel rather than constrain instructional improvement."
+    outcomes: null
+
+avoid_phrases:
+  - "Are you maximizing"
+  - "Did you know"
+  - "If you aren't"
+  - "You should have"

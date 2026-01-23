@@ -214,9 +214,11 @@ async def export_email_examples(
         "care_coaching": "CARE Coaching",
         "webbalign": "WebbAlign",
         "wida_model": "WIDA MODEL Online",
+        "wida_professional_learning": "WIDA Professional Learning",
         "call": "CALL",
         "discussion_project": "The Discussion Project",
         "wida_sis": "WIDA SIS",
+        "aiw_institute": "AIW Institute",
     }
 
     lines: List[str] = []

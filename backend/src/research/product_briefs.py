@@ -49,6 +49,7 @@ DISPLAY_TO_KEY: Dict[str, str] = {
     "CALL": "call",
     "The Discussion Project": "discussion_project",
     "WIDA SIS": "wida_sis",
+    "AIW Institute": "aiw_institute",
 }
 
 

@@ -80,6 +80,7 @@ WCEPS_PRODUCTS = [
     "The Discussion Project",
     "WIDA MODEL Online",
     "WIDA SIS",
+    "AIW Institute",
 ]
 
 # Target audiences - simplified to 2 categories
