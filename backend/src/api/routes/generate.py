@@ -4150,6 +4150,54 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         
         return status
 
+    @router.post("/pipeline/cache/clear")
+    async def clear_research_cache_endpoint(
+        product: str,
+        state: Optional[str] = None,
+        db: AsyncSession = Depends(get_db),
+    ):
+        """Clear cached research to force fresh research with updated prompts.
+        
+        Use this after updating product YAML files or research prompts to ensure
+        new research queries use the updated context.
+        
+        Args:
+            product: Product name (required) - clears cache for this product
+            state: State code (optional) - if provided, only clears for this state
+            
+        Returns:
+            Count of deleted cache entries
+        """
+        from ...research.deep_research import clear_research_cache
+        from ...research.product_briefs import normalize_product_key
+        
+        product_key = normalize_product_key(product) if product else None
+        state_code = state.strip().upper() if state else None
+        
+        if not product_key:
+            raise HTTPException(status_code=400, detail="Product is required")
+        
+        deleted_count = await clear_research_cache(
+            db=db,
+            state_code=state_code,
+            product_key=product_key,
+        )
+        
+        logger.info(
+            f"Cleared research cache: product={product_key}, state={state_code or 'all'}, "
+            f"deleted={deleted_count} entries"
+        )
+        
+        return {
+            "success": True,
+            "product": product,
+            "product_key": product_key,
+            "state": state_code,
+            "deleted_count": deleted_count,
+            "message": f"Cleared {deleted_count} cache entries for {product}" + 
+                      (f" in {state_code}" if state_code else " (all states)")
+        }
+
     @router.post("/pipeline/cancel")
     async def cancel_research_endpoint(
         state: str,

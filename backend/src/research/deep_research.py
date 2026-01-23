@@ -35,10 +35,63 @@ settings = get_settings()
 CACHE_TTL_DAYS = 30
 
 
+# ---------------------------------------------------------------------------
+# Product-specific research focus mapping
+# ---------------------------------------------------------------------------
+# Different products need different research angles. WebbAlign searches for
+# assessment/curriculum alignment opportunities, while CARE Coaching focuses
+# on EL professional development funding.
+
+PRODUCT_RESEARCH_FOCUS = {
+    "webbalign": {
+        "focus_area": "assessment quality, curriculum alignment, standards alignment, and DOK requirements",
+        "intro": """Your task is to conduct thorough research on funding opportunities and compliance requirements 
+related to ASSESSMENT QUALITY, CURRICULUM ALIGNMENT, and STANDARDS ALIGNMENT in {state_full} ({state_code}).
+
+Focus specifically on:
+- Curriculum adoption/review cycles and alignment requirements
+- Assessment quality audits and mandates
+- Standards alignment documentation requirements
+- Program approval processes requiring alignment evidence (especially ESOL endorsement programs)
+- Accreditation requirements for curriculum/assessment alignment
+- State accountability system alignment requirements
+- Instructional materials adoption and review processes
+- DOK and cognitive rigor requirements in state standards
+
+NOTE: This product (WebbAlign) provides Webb Alignment Studies and DOK professional development - 
+the gold standard methodology for evaluating standards-curriculum-assessment alignment. 
+Search for opportunities where districts/states NEED alignment evidence or DOK analysis.""",
+        "search_priority": [
+            "curriculum alignment requirements",
+            "assessment alignment mandates", 
+            "standards alignment documentation",
+            "instructional materials adoption",
+            "curriculum review cycles",
+            "assessment quality audits",
+            "DOK requirements",
+            "program approval alignment",
+            "accreditation alignment",
+            "state standards revision"
+        ]
+    },
+    # Default for EL-focused products (CARE Coaching, WIDA, etc.)
+    "_default": {
+        "focus_area": "English Learner (EL) programs",
+        "intro": """Your task is to conduct thorough research on funding opportunities and compliance requirements 
+for English Learner (EL) programs in {state_full} ({state_code}).""",
+        "search_priority": []
+    }
+}
+
+
+def get_product_research_focus(product_key: str) -> dict:
+    """Get product-specific research focus configuration."""
+    return PRODUCT_RESEARCH_FOCUS.get(product_key, PRODUCT_RESEARCH_FOCUS["_default"])
+
+
 # Deep Research prompt template
 DEEP_RESEARCH_PROMPT = """You are a K-12 education funding and compliance research specialist. 
-Your task is to conduct thorough research on funding opportunities and compliance requirements 
-for English Learner (EL) programs in {state_full} ({state_code}).
+{research_intro}
 
 ## Product Context
 {product_context}
@@ -664,7 +717,20 @@ async def run_deep_research(
     )
     
     # Build the prompt upfront (needed for retries even if resuming)
+    # Get product-specific research focus (e.g., WebbAlign focuses on alignment, others on EL)
+    research_focus = get_product_research_focus(product_key)
+    research_intro = research_focus["intro"].format(
+        state_code=state_code,
+        state_full=state_full,
+    )
+    
+    logger.info(
+        "Deep Research: Using %s-specific focus for %s/%s",
+        product_key, state_code, research_focus["focus_area"][:50]
+    )
+    
     prompt = DEEP_RESEARCH_PROMPT.format(
+        research_intro=research_intro,
         state_code=state_code,
         state_full=state_full,
         product_context=product_context,
