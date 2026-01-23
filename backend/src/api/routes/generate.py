@@ -4169,7 +4169,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         Returns:
             Count of deleted cache entries
         """
-        from ...research.deep_research import clear_research_cache
+        from ...research.deep_research import clear_deep_research_cache
         from ...research.product_briefs import normalize_product_key
         
         product_key = normalize_product_key(product) if product else None
@@ -4178,7 +4178,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         if not product_key:
             raise HTTPException(status_code=400, detail="Product is required")
         
-        deleted_count = await clear_research_cache(
+        deleted_count = await clear_deep_research_cache(
             db=db,
             state_code=state_code,
             product_key=product_key,
