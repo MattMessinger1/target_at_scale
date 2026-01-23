@@ -114,6 +114,37 @@ def select_primary_hooks(
             score += _confidence_score(h.confidence)
             reasons.append(f"confidence:{h.confidence}")
 
+            # Timing/intent boosts (if available)
+            timing_score = getattr(h, "timing_score", None)
+            if isinstance(timing_score, int):
+                score += timing_score // 2
+                reasons.append(f"timing_score:{timing_score}")
+
+            timing_bucket = getattr(h, "timing_bucket", None)
+            if timing_bucket in ("near_term", "ongoing"):
+                score += 2
+                reasons.append(f"timing_bucket:{timing_bucket}")
+            elif timing_bucket == "unknown":
+                score -= 1
+                reasons.append("timing_bucket:unknown")
+
+            signal_strength = getattr(h, "signal_strength", None)
+            if isinstance(signal_strength, int):
+                score += signal_strength // 2
+                reasons.append(f"signal_strength:{signal_strength}")
+
+            # Penalize very tight deadlines to avoid late outreach when other options exist
+            warning = getattr(h, "deadline_warning", "") or ""
+            m = re.search(r"Deadline in (\d+) days", warning)
+            if warning and ("TODAY" in warning or "too late" in warning):
+                score -= 5
+                reasons.append("deadline_too_soon")
+            elif m:
+                days = int(m.group(1))
+                if days <= 7:
+                    score -= 3
+                    reasons.append("deadline_too_soon")
+
             delta, cov_reasons = _coverage_penalty(
                 h,
                 will_mention_funding=bool(will_mention_funding_by_audience.get(audience, False)),
@@ -128,4 +159,3 @@ def select_primary_hooks(
         out[audience] = SelectedHook(hook=chosen, rank=1, reasons=best[2])
 
     return out
-

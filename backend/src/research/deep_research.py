@@ -316,6 +316,11 @@ Return your findings as a structured JSON object:
       "description": "1-2 sentence description",
       "amount": "Funding amount if known",
       "deadline": "Application deadline or cycle",
+      "deadline_date": "ISO date (YYYY-MM-DD) if known, else null",
+      "timing_type": "grant_deadline|budget_cycle|rfp_window|allocation_window|other",
+      "start_date": "ISO start date if this is a window, else null",
+      "end_date": "ISO end date if this is a window, else null",
+      "timing_summary": "Short timing phrase sourced from the same URL (e.g., 'Applications due by March 31, 2026')",
       "eligibility": "Who can apply",
       "districts_eligible": ["Specific District 1", "Specific District 2"],
       "url": "Direct URL to source",
@@ -331,6 +336,10 @@ Return your findings as a structured JSON object:
       "districts_affected": ["Specific District 1", "Specific District 2"],
       "school_count": "Number of schools affected (if applicable)",
       "deadline": "When action is needed",
+      "effective_date": "ISO date (YYYY-MM-DD) when requirement begins, else null",
+      "review_window": "Short window description if applicable (e.g., 'Spring 2026 monitoring cycle'), else null",
+      "timing_type": "monitoring_window|mandate_effective|review_cycle|deadline|other",
+      "timing_summary": "Short timing phrase sourced from the same URL",
       "consequences": "What happens if not addressed",
       "el_link_explicit": true,
       "url": "Direct URL to source",
@@ -661,6 +670,58 @@ def _parse_research_response(content: str) -> Dict[str, Any]:
         raise
 
 
+def _normalize_research_results(results: Dict[str, Any]) -> Dict[str, Any]:
+    """Ensure timing fields exist for funding/compliance items."""
+    def _extract_iso_date(text: Optional[str]) -> Optional[str]:
+        if not text:
+            return None
+        m = re.search(r"\b20\d{2}-\d{2}-\d{2}\b", text)
+        return m.group(0) if m else None
+
+    def _norm_funding(item: Dict[str, Any]) -> Dict[str, Any]:
+        item.setdefault("deadline_date", None)
+        item.setdefault("timing_type", None)
+        item.setdefault("start_date", None)
+        item.setdefault("end_date", None)
+        item.setdefault("timing_summary", None)
+
+        if not item.get("deadline_date"):
+            item["deadline_date"] = _extract_iso_date(item.get("deadline"))
+        if not item.get("timing_type") and item.get("deadline"):
+            item["timing_type"] = "grant_deadline"
+        if not item.get("timing_summary"):
+            if item.get("deadline"):
+                item["timing_summary"] = f"Applications due by {item.get('deadline')}"
+            elif item.get("start_date") or item.get("end_date"):
+                item["timing_summary"] = f"Window: {item.get('start_date') or ''} - {item.get('end_date') or ''}".strip()
+        return item
+
+    def _norm_compliance(item: Dict[str, Any]) -> Dict[str, Any]:
+        item.setdefault("effective_date", None)
+        item.setdefault("review_window", None)
+        item.setdefault("timing_type", None)
+        item.setdefault("timing_summary", None)
+
+        if not item.get("timing_type") and item.get("deadline"):
+            item["timing_type"] = "deadline"
+        if not item.get("timing_summary"):
+            if item.get("deadline"):
+                item["timing_summary"] = f"Action needed by {item.get('deadline')}"
+            elif item.get("review_window"):
+                item["timing_summary"] = item.get("review_window")
+            elif item.get("effective_date"):
+                item["timing_summary"] = f"Effective {item.get('effective_date')}"
+        return item
+
+    results["funding_items"] = [
+        _norm_funding(dict(item)) for item in results.get("funding_items", []) if isinstance(item, dict)
+    ]
+    results["compliance_items"] = [
+        _norm_compliance(dict(item)) for item in results.get("compliance_items", []) if isinstance(item, dict)
+    ]
+    return results
+
+
 async def run_deep_research(
     db: AsyncSession,
     state_code: str,
@@ -897,6 +958,7 @@ Remember: Return ONLY a valid JSON object, no other text."""
         # Get the final output
         raw_content = response.output_text or "{}"
         results = _parse_research_response(raw_content)
+        results = _normalize_research_results(results)
         
         # Add metadata
         response_id = getattr(response, "id", None) or "unknown"
@@ -1366,7 +1428,8 @@ async def convert_to_webhooks(
         hook_type = "funding_guidance"
         quote = item.get("description", "")
         link = item.get("url", "")
-        trigger_excerpt = f"Deadline: {item.get('deadline', 'See source')}" if item.get("deadline") else item.get("description", "")
+        timing_summary = item.get("timing_summary")
+        trigger_excerpt = timing_summary or (f"Deadline: {item.get('deadline', 'See source')}" if item.get("deadline") else item.get("description", ""))
         
         hooks.append({
             "hook_id": _generate_hook_id(hook_type, quote, link, trigger_excerpt),
@@ -1378,6 +1441,11 @@ async def convert_to_webhooks(
             "why_relevant": item.get("relevance_to_product", f"Funding opportunity for {product_key}"),
             "confidence": "high" if item.get("status") == "active" else "medium",
             "source_quality_reason": f"Status: {item.get('status', 'unverified')}",
+            "timing_type": item.get("timing_type"),
+            "deadline_date": item.get("deadline_date"),
+            "start_date": item.get("start_date"),
+            "end_date": item.get("end_date"),
+            "timing_summary": timing_summary,
         })
     
     # Convert compliance items
@@ -1406,7 +1474,8 @@ async def convert_to_webhooks(
         
         quote = item.get("description", "") + el_note
         link = item.get("url", "")
-        trigger_excerpt = item.get("deadline") or item.get("consequences") or item.get("description", "")
+        timing_summary = item.get("timing_summary")
+        trigger_excerpt = timing_summary or item.get("deadline") or item.get("consequences") or item.get("description", "")
         
         hooks.append({
             "hook_id": _generate_hook_id(hook_type, quote, link, trigger_excerpt),
@@ -1418,6 +1487,11 @@ async def convert_to_webhooks(
             "why_relevant": item.get("relevance_to_product", f"Compliance situation relevant to {product_key}"),
             "confidence": "high" if item.get("status") == "active" else "medium",
             "source_quality_reason": f"Type: {item.get('type', 'other')}; Status: {item.get('status', 'unverified')}",
+            "timing_type": item.get("timing_type"),
+            "deadline_date": item.get("deadline") if item.get("deadline") else item.get("effective_date"),
+            "start_date": None,
+            "end_date": None,
+            "timing_summary": timing_summary,
         })
     
     # Convert state interventions (HIGH PRIORITY - these are the most actionable)
@@ -1438,7 +1512,8 @@ async def convert_to_webhooks(
         hook_type_intervention = "monitoring"
         quote_final = quote + el_note
         link = item.get("url", "")
-        trigger_excerpt = item.get("requirements") or item.get("timeline") or f"State {intervention_type} in effect"
+        timing_summary = item.get("timeline") or item.get("requirements")
+        trigger_excerpt = timing_summary or f"State {intervention_type} in effect"
         
         hooks.append({
             "hook_id": _generate_hook_id(hook_type_intervention, quote_final, link, trigger_excerpt),
@@ -1450,6 +1525,11 @@ async def convert_to_webhooks(
             "why_relevant": f"State intervention creates urgency and often mandates specific improvements that our {product_key} can address",
             "confidence": "high",
             "source_quality_reason": f"Intervention type: {intervention_type}; EL connected: {item.get('el_connected', 'unknown')}",
+            "timing_type": "monitoring_window",
+            "deadline_date": None,
+            "start_date": None,
+            "end_date": None,
+            "timing_summary": timing_summary,
         })
     
     return hooks

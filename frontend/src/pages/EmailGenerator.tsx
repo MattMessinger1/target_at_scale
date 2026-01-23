@@ -3147,6 +3147,13 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                     {h.link}
                   </a>
                   <div className="mt-2 text-sm text-slate-300">"{cleanQuoteText(h.quote)}"</div>
+                  {(h.timing_summary || h.signal_summary || h.stale_reason) && (
+                    <div className="mt-2 space-y-1 text-xs text-slate-400">
+                      {h.timing_summary && <div>Timing: {cleanQuoteText(h.timing_summary)}</div>}
+                      {h.signal_summary && <div>Signal: {cleanQuoteText(h.signal_summary)}</div>}
+                      {h.stale_reason && <div>Stale: {h.stale_reason}</div>}
+                    </div>
+                  )}
                 </div>
               ))}
               {(result.treasure_hooks || []).length === 0 && (
@@ -3372,6 +3379,21 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                   Elevated
                 </span>
               )}
+              {typeof h.signal_strength === 'number' && (
+                <span className="px-2 py-0.5 rounded bg-indigo-900/50 text-indigo-300 text-xs font-medium">
+                  Intent {h.signal_strength}
+                </span>
+              )}
+              {h.timing_bucket && (
+                <span className="px-2 py-0.5 rounded bg-slate-700 text-slate-300 text-xs font-medium">
+                  {h.timing_bucket}
+                </span>
+              )}
+              {h.stale_reason && (
+                <span className="px-2 py-0.5 rounded bg-red-900/50 text-red-300 text-xs font-medium">
+                  Stale
+                </span>
+              )}
               {h.deadline_warning && (
                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${
                   h.deadline_warning.includes('passed') || h.deadline_warning.includes('TODAY')
@@ -3401,6 +3423,24 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                 <div>
                   <div className="text-xs text-slate-500 uppercase tracking-wide font-medium">Eligibility</div>
                   <div className="mt-0.5 text-sm text-slate-300">{cleanQuoteText(h.eligibility_excerpt)}</div>
+                </div>
+              )}
+              {h.timing_summary && (
+                <div>
+                  <div className="text-xs text-slate-500 uppercase tracking-wide font-medium">Timing</div>
+                  <div className="mt-0.5 text-sm text-slate-300">{cleanQuoteText(h.timing_summary)}</div>
+                </div>
+              )}
+              {h.signal_summary && (
+                <div>
+                  <div className="text-xs text-slate-500 uppercase tracking-wide font-medium">Buying Intent</div>
+                  <div className="mt-0.5 text-sm text-slate-300">{cleanQuoteText(h.signal_summary)}</div>
+                </div>
+              )}
+              {h.stale_reason && (
+                <div>
+                  <div className="text-xs text-slate-500 uppercase tracking-wide font-medium">Stale Reason</div>
+                  <div className="mt-0.5 text-sm text-slate-300">{h.stale_reason}</div>
                 </div>
               )}
               <div>

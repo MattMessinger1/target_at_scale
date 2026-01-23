@@ -425,6 +425,23 @@ export interface WebHook {
   why_district_specific?: string | null
   // Deadline warning (added by hook gate if deadline is approaching)
   deadline_warning?: string | null
+  // Timing metadata
+  timing_type?: string | null
+  deadline_date?: string | null
+  start_date?: string | null
+  end_date?: string | null
+  timing_summary?: string | null
+  timing_bucket?: string | null
+  timing_score?: number | null
+  timing_confidence?: string | null
+  // Buying intent signals
+  signal_summary?: string | null
+  signal_strength?: number | null
+  signal_type?: string | null
+  // Stale detection
+  stale_score?: number | null
+  stale_reason?: string | null
+  stale_confidence?: string | null
 }
 
 export interface SelectedHook {

@@ -82,7 +82,7 @@ class TestPipelineValidator(unittest.TestCase):
                 "- Coaching cycles aligned to priorities",
                 "- Evidence checklist for documentation",
                 "- 1-page budget narrative draft",
-                "Would it help if I sent a 1-page budget narrative draft you can adapt? Where should I route it?",
+                "Would you have 15 minutes to walk through FY26 updates? calendly.com/wceps",
             ]
         )
 
@@ -153,7 +153,9 @@ class TestPipelineValidator(unittest.TestCase):
             treasure_hooks=[hook],
         )
         self.assertFalse(result.passed)
-        self.assertIn("missing_micro_offer_cta", [f.code for f in result.failures])
+        failure_codes = [f.code for f in result.failures]
+        self.assertIn("missing_15_min_meeting_ask", failure_codes)
+        self.assertIn("missing_calendly_link", failure_codes)
 
     def test_email_must_not_print_urls(self):
         evidence, hook, selected = self._base_objects()

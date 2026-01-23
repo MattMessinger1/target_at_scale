@@ -193,6 +193,26 @@ class WebHook(BaseModel):
         description="Warning if deadline is approaching soon or has passed (e.g. '⚠️ Deadline in 14 days')."
     )
 
+    # Timing metadata (added by deep research + hook gate)
+    timing_type: Optional[str] = Field(default=None, description="Timing category for the hook.")
+    deadline_date: Optional[str] = Field(default=None, description="ISO date (YYYY-MM-DD) if applicable.")
+    start_date: Optional[str] = Field(default=None, description="ISO start date if this is a window.")
+    end_date: Optional[str] = Field(default=None, description="ISO end date if this is a window.")
+    timing_summary: Optional[str] = Field(default=None, description="Short timing phrase for the hook.")
+    timing_bucket: Optional[str] = Field(default=None, description="near_term|ongoing|future|expired|unknown.")
+    timing_score: Optional[int] = Field(default=None, description="Timing score (0-20).")
+    timing_confidence: Optional[str] = Field(default=None, description="high|medium|low confidence in timing.")
+
+    # Buying intent signals
+    signal_summary: Optional[str] = Field(default=None, description="Short buying intent signal summary.")
+    signal_strength: Optional[int] = Field(default=None, description="Signal strength (0-20).")
+    signal_type: Optional[str] = Field(default=None, description="Signal taxonomy type.")
+
+    # Stale detection
+    stale_score: Optional[int] = Field(default=None, description="Staleness score (0-100).")
+    stale_reason: Optional[str] = Field(default=None, description="Reason for staleness.")
+    stale_confidence: Optional[str] = Field(default=None, description="high|medium|low confidence in staleness.")
+
 
 class SelectedHook(BaseModel):
     """Selected hook for a given audience variant."""
@@ -446,4 +466,3 @@ class PipelineRunResponse(BaseModel):
     trace: PipelineTrace
 
     warnings: List[str] = Field(default_factory=list)
-

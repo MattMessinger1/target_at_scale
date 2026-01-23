@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import date
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .schemas import EvidencePack, WebHook
 
@@ -381,12 +381,148 @@ def _days_until_deadline(h: WebHook) -> Optional[int]:
         - Negative number: days past deadline
         - None: no deadline found
     """
-    text = f"{h.trigger_excerpt or ''} {h.eligibility_excerpt or ''}"
+    if h.deadline_date:
+        parsed = _parse_date_field(h.deadline_date)
+        if parsed:
+            return (parsed - date.today()).days
+    text = f"{h.timing_summary or ''} {h.trigger_excerpt or ''} {h.eligibility_excerpt or ''}"
     deadline_date = _parse_date_from_text(text)
     
     if deadline_date:
         return (deadline_date - date.today()).days
     return None
+
+
+def _parse_date_field(value: Optional[str]) -> Optional[date]:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return _parse_date_from_text(value)
+
+
+def compute_timing_metadata(h: WebHook, today: date) -> Dict[str, Any]:
+    """Compute timing bucket/score/confidence using explicit fields with fallback parsing."""
+    deadline = _parse_date_field(h.deadline_date)
+    start = _parse_date_field(h.start_date)
+    end = _parse_date_field(h.end_date)
+
+    timing_confidence = "low"
+    if h.deadline_date or h.start_date or h.end_date:
+        timing_confidence = "high"
+
+    bucket = "unknown"
+    score = 5
+    days: Optional[int] = None
+
+    if deadline:
+        days = (deadline - today).days
+    elif start or end:
+        if start and end:
+            if start <= today <= end:
+                bucket = "ongoing"
+                score = 16
+            elif today < start:
+                bucket = "future"
+                score = 12
+            else:
+                bucket = "expired"
+                score = 0
+        elif start and today < start:
+            bucket = "future"
+            score = 12
+        elif end and today > end:
+            bucket = "expired"
+            score = 0
+    else:
+        text = " ".join([h.timing_summary or "", h.trigger_excerpt or "", h.eligibility_excerpt or ""])
+        parsed = _parse_date_from_text(text)
+        if parsed:
+            timing_confidence = "medium"
+            days = (parsed - today).days
+
+    if days is not None:
+        if days < 0:
+            bucket = "expired"
+            score = 0
+        elif days <= 7:
+            bucket = "near_term"
+            score = 8
+        elif days <= 14:
+            bucket = "near_term"
+            score = 12
+        elif days <= 45:
+            bucket = "near_term"
+            score = 18
+        elif days <= 90:
+            bucket = "near_term"
+            score = 16
+        else:
+            bucket = "future"
+            score = 12
+
+    return {
+        "timing_bucket": bucket,
+        "timing_score": score,
+        "timing_confidence": timing_confidence,
+    }
+
+
+def _shorten_text(text: str, max_len: int = 140) -> str:
+    t = (text or "").strip()
+    if len(t) <= max_len:
+        return t
+    return t[: max_len - 1].rstrip() + "…"
+
+
+def compute_buying_intent(h: WebHook) -> Dict[str, Any]:
+    """Detect buying intent signals from hook content."""
+    text = " ".join([
+        h.timing_summary or "",
+        h.trigger_excerpt or "",
+        h.eligibility_excerpt or "",
+        h.quote or "",
+        h.why_relevant or "",
+    ]).lower()
+
+    signals = [
+        ("consent_decree_milestone", re.compile(r"\b(consent decree|doj|ocr)\b", re.I), 18),
+        ("monitoring_window", re.compile(r"\b(monitoring|corrective action|cap|compliance review)\b", re.I), 18),
+        ("rfp_open", re.compile(r"\b(rfp|request for proposals|procurement|bid)\b", re.I), 18),
+        ("board_vote", re.compile(r"\b(board agenda|board meeting|board vote|board approval)\b", re.I), 16),
+        ("grant_window", re.compile(r"\b(application window|apply by|applications due|grant deadline)\b", re.I), 16),
+        ("budget_cycle", re.compile(r"\b(budget adoption|budget cycle|fiscal year|fy\d{2,4})\b", re.I), 12),
+        ("mandate_effective", re.compile(r"\b(effective date|takes effect|implementation begins)\b", re.I), 16),
+        ("improvement_plan_review", re.compile(r"\b(improvement plan|csi|tsi|atsi)\b", re.I), 12),
+    ]
+
+    for signal_type, pattern, strength in signals:
+        if pattern.search(text):
+            summary = h.timing_summary or h.trigger_excerpt or h.quote or ""
+            return {
+                "signal_type": signal_type,
+                "signal_strength": strength,
+                "signal_summary": _shorten_text(summary),
+            }
+
+    return {
+        "signal_type": None,
+        "signal_strength": None,
+        "signal_summary": None,
+    }
+
+
+def compute_stale_metadata(h: WebHook, *, timing_bucket: str, timing_confidence: str) -> Dict[str, Any]:
+    """Compute staleness score and reason."""
+    source_reason = (h.source_quality_reason or "").lower()
+    if timing_bucket == "expired":
+        return {"stale_score": 100, "stale_reason": "deadline_passed", "stale_confidence": "high"}
+    if "unverified" in source_reason and timing_confidence in ("low", "medium"):
+        return {"stale_score": 40, "stale_reason": "unverified_status", "stale_confidence": "medium"}
+    if timing_bucket == "unknown" and timing_confidence == "low":
+        return {"stale_score": 20, "stale_reason": "unknown_timing", "stale_confidence": "low"}
+    return {"stale_score": None, "stale_reason": None, "stale_confidence": None}
 
 
 def get_deadline_warning(h: WebHook, warn_days: int = 45) -> Optional[str]:
@@ -452,6 +588,8 @@ def gate_treasure_hooks(
             reason_label=REASON_LABELS.get(reason, reason),
         ))
 
+    today = date.today()
+
     for h in hooks or []:
         # Basic sanity
         if not h or not (h.link and str(h.link).strip()):
@@ -481,25 +619,28 @@ def gate_treasure_hooks(
             _filter(h, "missing_deliverable_tie_in")
             continue
 
+        timing = compute_timing_metadata(h, today=today)
+        if timing.get("timing_bucket") == "expired":
+            _filter(h, "expired_deadline")
+            continue
+
+        signal = compute_buying_intent(h)
+        stale = compute_stale_metadata(
+            h,
+            timing_bucket=timing.get("timing_bucket", "unknown"),
+            timing_confidence=timing.get("timing_confidence", "low"),
+        )
+
         # Add deadline warning if applicable (hook passes but deadline is approaching)
         warning = get_deadline_warning(h)
+
+        payload = h.model_dump()
+        payload.update(timing)
+        payload.update(signal)
+        payload.update(stale)
         if warning:
-            # Create a copy with the warning added
-            h = WebHook(
-                hook_id=h.hook_id,
-                hook_type=h.hook_type,
-                quote=h.quote,
-                link=h.link,
-                trigger_excerpt=h.trigger_excerpt,
-                eligibility_excerpt=h.eligibility_excerpt,
-                why_relevant=h.why_relevant,
-                confidence=h.confidence,
-                source_quality_reason=h.source_quality_reason,
-                source_level=h.source_level,
-                district_name=h.district_name,
-                why_district_specific=h.why_district_specific,
-                deadline_warning=warning,
-            )
+            payload["deadline_warning"] = warning
+        h = WebHook(**payload)
         
         kept.append(h)
 
@@ -706,4 +847,3 @@ def _merge_improvement_hooks(hooks: List[WebHook]) -> Optional[WebHook]:
         source_quality_reason=f"Consolidated from {len(hooks)} sources; primary source: {best_hook.link}",
         hook_id=f"consolidated_{best_hook.hook_id or 'monitoring'}",
     )
-
