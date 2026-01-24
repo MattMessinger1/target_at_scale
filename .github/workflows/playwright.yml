@@ -35,7 +35,7 @@ jobs:
 
       - name: Run Playwright tests
         working-directory: frontend
-        run: npm run test:e2e -- --project=chromium
+        run: npm run test:e2e -- --config=playwright.config.ts
 
       - name: Upload Playwright artifacts
         if: failure()
