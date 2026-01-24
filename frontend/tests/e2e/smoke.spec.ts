@@ -11,7 +11,7 @@ test('saved research loads', async ({ page }) => {
   await expect(page.getByText('Saved Research', { exact: false })).toBeVisible()
 })
 
-test('selected hook appears in generated email', async ({ page }) => {
+test('selected hook appears in generated email and saves feedback', async ({ page }) => {
   test.setTimeout(240_000)
   await page.goto('/email')
 
@@ -48,4 +48,26 @@ test('selected hook appears in generated email', async ({ page }) => {
 
   expect(prioritizedTokens.length).toBeGreaterThan(0)
   expect(prioritizedTokens.some((token) => emailBody.includes(token))).toBeTruthy()
+
+  const marker = `PW-${Date.now()}`
+  await page.getByTestId('edited-subject').fill(`CARE Coaching ${marker}`)
+  await page.getByTestId('edited-email').fill(`${emailBody}\n\nEdited for review ${marker}.`)
+  await page.getByTestId('save-email').click()
+  await expect(page.getByText('Email saved', { exact: false })).toBeVisible({ timeout: 30_000 })
+
+  let found = false
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const reviewResponse = await page.request.get(
+      '/feedback/email-reviews?product=CARE%20Coaching&state_code=GA&limit=10'
+    )
+    if (reviewResponse.ok()) {
+      const reviewData = await reviewResponse.json()
+      found = (reviewData.items || []).some((item: { subject_preview?: string }) =>
+        (item.subject_preview || '').includes(marker)
+      )
+    }
+    if (found) break
+    await page.waitForTimeout(3000)
+  }
+  expect(found).toBeTruthy()
 })

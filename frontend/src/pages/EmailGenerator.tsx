@@ -2941,6 +2941,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
           <div>
             <label className="block text-xs text-slate-500 uppercase tracking-wide">Edited subject</label>
             <input
+              data-testid="edited-subject"
               value={draft.edited_subject_line}
               onChange={(e) =>
                 setReviewDrafts((prev) => ({
@@ -2955,6 +2956,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
           <div>
             <label className="block text-xs text-slate-500 uppercase tracking-wide">Edited email</label>
             <textarea
+              data-testid="edited-email"
               value={draft.edited_email_body}
               onChange={(e) =>
                 setReviewDrafts((prev) => ({
@@ -3063,6 +3065,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
         </div>
 
         <button
+          data-testid="save-email"
           onClick={async () => {
             const rubric = draft.rubric
             const getScore = (key: ReviewSectionKey) => {
