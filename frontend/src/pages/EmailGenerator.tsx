@@ -4208,7 +4208,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                                 const key = `state:${st.code}:${getHookKey(h)}`
                                 const selected = isCachedHookSelected(key)
                                 return (
-                                  <div key={key}>
+                                  <div key={key} data-testid="cached-state-hook">
                                     {renderRequirementCard(h, {
                                       isSelected: selected,
                                       onToggle: () => toggleCachedHook({ key, category: 'state', state_code: st.code, hook: h }),
@@ -4249,7 +4249,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                                 const key = `district:${st.code}:${getHookKey(h)}`
                                 const selected = isCachedHookSelected(key)
                                 return (
-                                  <div key={key}>
+                                  <div key={key} data-testid="cached-district-hook">
                                     {renderRequirementCard(h, {
                                       isSelected: selected,
                                       onToggle: () => toggleCachedHook({ key, category: 'district', state_code: st.code, hook: h }),
@@ -4896,7 +4896,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                         {activeVariant.email_draft.subject_line}
                       </div>
                     </div>
-                    <div className="px-4 py-3">
+                    <div className="px-4 py-3" data-testid="email-body">
                       <div className="text-xs text-slate-500 uppercase tracking-wide">Email Body</div>
                       <div className="mt-2 text-slate-300 whitespace-pre-wrap leading-relaxed">
                         {activeVariant.email_draft.email_body}
@@ -4958,7 +4958,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                                 {hook.trigger_excerpt && (
                                   <div className="mt-1">
                                     <span className="text-slate-500">Trigger:</span>{' '}
-                                    {hook.trigger_excerpt}
+                                    <span data-testid="selected-trigger-excerpt">{hook.trigger_excerpt}</span>
                                   </div>
                                 )}
                                 {hook.eligibility_excerpt && (
@@ -4986,7 +4986,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                                 {hook.trigger_excerpt && (
                                   <div className="mt-1">
                                     <span className="text-slate-500">Trigger:</span>{' '}
-                                    {hook.trigger_excerpt}
+                                    <span data-testid="selected-trigger-excerpt">{hook.trigger_excerpt}</span>
                                   </div>
                                 )}
                                 {hook.eligibility_excerpt && (
@@ -5011,10 +5011,10 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                               </div>
                               {hook.trigger_excerpt && (
                                 <div className="mt-1">
-                                  <span className="text-slate-500">Trigger:</span>{' '}
-                                  {hook.trigger_excerpt}
-                                </div>
-                              )}
+                                    <span className="text-slate-500">Trigger:</span>{' '}
+                                    <span data-testid="selected-trigger-excerpt">{hook.trigger_excerpt}</span>
+                                  </div>
+                                )}
                               {hook.eligibility_excerpt && (
                                 <div className="mt-1">
                                   <span className="text-slate-500">Eligibility info:</span>{' '}
