@@ -4173,6 +4173,13 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                                       <div>
                                         <div className="text-xs text-slate-500 uppercase">{h.hook_type}</div>
                                         <div className="text-sm text-slate-200 mt-1">"{cleanQuoteText(h.quote)}"</div>
+                                        {(h.timing_summary || h.signal_summary || h.stale_reason) && (
+                                          <div className="mt-2 space-y-1 text-xs text-slate-500">
+                                            {h.timing_summary && <div>Timing: {cleanQuoteText(h.timing_summary)}</div>}
+                                            {h.signal_summary && <div>Intent: {cleanQuoteText(h.signal_summary)}</div>}
+                                            {h.stale_reason && <div>Stale: {h.stale_reason}</div>}
+                                          </div>
+                                        )}
                                       </div>
                                       <button
                                         onClick={() => toggleCachedHook({ key, category: 'state', state_code: st.code, hook: h })}
@@ -4224,6 +4231,13 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                                       <div>
                                         <div className="text-xs text-slate-500 uppercase">{h.district_name || 'District'}</div>
                                         <div className="text-sm text-slate-200 mt-1">"{cleanQuoteText(h.quote)}"</div>
+                                        {(h.timing_summary || h.signal_summary || h.stale_reason) && (
+                                          <div className="mt-2 space-y-1 text-xs text-slate-500">
+                                            {h.timing_summary && <div>Timing: {cleanQuoteText(h.timing_summary)}</div>}
+                                            {h.signal_summary && <div>Intent: {cleanQuoteText(h.signal_summary)}</div>}
+                                            {h.stale_reason && <div>Stale: {h.stale_reason}</div>}
+                                          </div>
+                                        )}
                                       </div>
                                       <button
                                         onClick={() => toggleCachedHook({ key, category: 'district', state_code: st.code, hook: h })}

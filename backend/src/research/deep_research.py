@@ -558,15 +558,25 @@ async def get_cache_status(
         "cached_at": entry.created_at.isoformat(),
     }
     
-    if entry.status == "completed" and entry.results_json:
-        # Count hooks in results
-        results = entry.results_json
-        hook_count = (
-            len(results.get("funding_items", [])) +
-            len(results.get("compliance_items", [])) +
-            len(results.get("state_interventions", []))
-        )
-        response["hook_count"] = hook_count
+    if entry.status == "completed":
+        # Prefer the cached prep payload (post-gating) so counts match what the UI can display.
+        hook_count = None
+        if entry.full_prep_json:
+            prep = entry.full_prep_json or {}
+            treasure_count = len(prep.get("treasure_hooks", []))
+            district = prep.get("district_research") or {}
+            district_count = len(district.get("passed_hooks", [])) if isinstance(district, dict) else 0
+            hook_count = treasure_count + district_count
+        elif entry.results_json:
+            # Fallback to raw Deep Research payload for legacy cache entries.
+            results = entry.results_json
+            hook_count = (
+                len(results.get("funding_items", [])) +
+                len(results.get("compliance_items", [])) +
+                len(results.get("state_interventions", []))
+            )
+        if hook_count is not None:
+            response["hook_count"] = hook_count
         response["expires_in_days"] = max(0, CACHE_TTL_DAYS - cache_age.days)
         
         # If it's older than TTL, keep it usable but mark as expired/stale for UI messaging.
