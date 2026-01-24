@@ -127,6 +127,15 @@ Use it to find RELEVANT funding and compliance that matches our deliverables:
    - This is a statewide hook affecting ALL districts - very high value!
 
 ---
+## Inputs (do not assume anything else)
+
+- State: {state_full} ({state_code})
+- Product context: the offerings, problems solved, and compliance hooks listed above
+- Time window: ONLY current or upcoming items relative to {current_date}
+
+If you cannot verify a match to the product context or the timing window, EXCLUDE the item.
+
+---
 
 ## IMPORTANT - EXCLUDE "TABLE STAKES" (what every district already knows)
 
@@ -217,6 +226,11 @@ For each compliance item:
 - What are the consequences of non-compliance?
 - Is this currently active or upcoming? (REQUIRED - skip if historical)
 - Direct URL to official source
+ 
+If a requirement is truly statewide (applies to every district), you may list:
+- districts_eligible: ["Statewide"]
+- districts_affected: ["Statewide"]
+Otherwise, do not include the item.
 
 ### Underperforming Schools (HIGH PRIORITY for CARE Coaching!)
 
@@ -325,7 +339,7 @@ Return your findings as a structured JSON object:
       "districts_eligible": ["Specific District 1", "Specific District 2"],
       "url": "Direct URL to source",
       "status": "active|upcoming|unverified",
-      "relevance_to_product": "SPECIFIC: How this connects to a product offering (name the offering)"
+      "relevance_to_product": "SPECIFIC: How this connects to a product offering (name the exact offering phrase from Product Context)"
     }}
   ],
   "compliance_items": [
@@ -344,7 +358,7 @@ Return your findings as a structured JSON object:
       "el_link_explicit": true,
       "url": "Direct URL to source",
       "status": "active|unverified",
-      "relevance_to_product": "SPECIFIC: How this connects to a product offering (name the offering)"
+      "relevance_to_product": "SPECIFIC: How this connects to a product offering (name the exact offering phrase from Product Context)"
     }}
   ],
   "state_interventions": [
@@ -371,6 +385,7 @@ Return your findings as a structured JSON object:
 3. **MATCH TO PRODUCT** - Only include items where our product can help
 4. **BE SPECIFIC IN RELEVANCE** - Name the exact product offering that connects
 5. **QUALITY OVER QUANTITY** - 5 actionable items beats 20 generic ones
+6. **TIMEBOUND** - Exclude any item without a verifiable current/future timing window
 """
 
 
