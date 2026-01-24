@@ -301,7 +301,7 @@ class FilteredDistrictHook(BaseModel):
 class DistrictResearchResult(BaseModel):
     """Results from district-level deep research."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     districts_surveyed: List[str] = Field(
         default_factory=list,
