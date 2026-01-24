@@ -35,6 +35,11 @@ implementation:
 compliance_hooks:
   - "State-mandated requirements we help address"
   - "Compliance situations that create urgency"
+offering_map:
+  - offering: "Exact offering phrase"
+    keywords:
+      - "keywords that should trigger this offering"
+      - "use short, specific terms found in hook text"
 state_fit_notes:
   - "…"
 case_studies:

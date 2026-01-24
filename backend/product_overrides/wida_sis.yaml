@@ -9,6 +9,39 @@ offerings:
   - "Parent notification and communication logging"
   - "Assessment data integration (ACCESS, WIDA MODEL)"
 
+offering_map:
+  - offering: "Automated compliance tracking and alerts"
+    keywords:
+      - "compliance"
+      - "deadline"
+      - "monitoring"
+      - "alert"
+  - offering: "State and federal reporting tools (Title III, ESSA)"
+    keywords:
+      - "title iii"
+      - "essa"
+      - "reporting"
+      - "federal reporting"
+  - offering: "Home Language Survey and identification workflow management"
+    keywords:
+      - "home language survey"
+      - "identification"
+      - "entry"
+  - offering: "Reclassification and exit criteria tracking"
+    keywords:
+      - "reclassification"
+      - "exit criteria"
+  - offering: "Parent notification and communication logging"
+    keywords:
+      - "parent notification"
+      - "communication"
+      - "notice"
+  - offering: "Assessment data integration (ACCESS, WIDA MODEL)"
+    keywords:
+      - "access"
+      - "model data"
+      - "assessment integration"
+
 who_its_for:
   - "EL/ESL/ESOL directors and coordinators"
   - "District data and accountability staff"

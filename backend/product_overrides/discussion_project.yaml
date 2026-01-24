@@ -8,6 +8,32 @@ offerings:
   - "Classroom discussion observation and coaching"
   - "Train-the-trainer programs for sustainability"
 
+offering_map:
+  - offering: "Structured Academic Controversy (SAC) training"
+    keywords:
+      - "structured academic controversy"
+      - "sac"
+      - "controversy"
+  - offering: "Talk moves and discussion strategies workshops"
+    keywords:
+      - "talk moves"
+      - "discussion strategies"
+      - "discussion"
+  - offering: "Discussion-based learning curriculum design support"
+    keywords:
+      - "curriculum design"
+      - "discussion-based"
+      - "lesson design"
+  - offering: "Classroom discussion observation and coaching"
+    keywords:
+      - "coaching"
+      - "observation"
+      - "classroom discussion"
+  - offering: "Train-the-trainer programs for sustainability"
+    keywords:
+      - "train-the-trainer"
+      - "sustainability"
+
 who_its_for:
   - "K-12 classroom teachers across content areas"
   - "Higher education instructors"

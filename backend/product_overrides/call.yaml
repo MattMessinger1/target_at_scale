@@ -7,6 +7,27 @@ offerings:
   - "Professional development planning support based on assessment results"
   - "School improvement planning tools"
 
+offering_map:
+  - offering: "Multi-source survey assessing distributed leadership practices across the school"
+    keywords:
+      - "survey"
+      - "distributed leadership"
+      - "leadership assessment"
+  - offering: "Automated, targeted data and feedback reports"
+    keywords:
+      - "feedback report"
+      - "report"
+      - "data"
+  - offering: "Professional development planning support based on assessment results"
+    keywords:
+      - "professional development"
+      - "pd"
+      - "planning"
+  - offering: "School improvement planning tools"
+    keywords:
+      - "school improvement"
+      - "improvement plan"
+
 who_its_for:
   - "District leadership"
   - "Principals and assistant principals"

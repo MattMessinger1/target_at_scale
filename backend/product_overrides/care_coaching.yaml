@@ -8,6 +8,35 @@ offerings:
   - "CARE Coaching Needs Assessment (CCNA)"
   - "Empowering Newcomers for Academic Success"
 
+offering_map:
+  - offering: "Empowering Newcomers for Academic Success"
+    keywords:
+      - "newcomer"
+      - "newcomers"
+      - "refugee"
+      - "refugees"
+      - "orr"
+      - "resettlement"
+      - "immigrant"
+      - "slife"
+  - offering: "CARE Coaching Needs Assessment (CCNA)"
+    keywords:
+      - "needs assessment"
+      - "diagnostic"
+      - "baseline"
+  - offering: "Job-embedded coaching cycles aligned to district priorities"
+    keywords:
+      - "coaching cycle"
+      - "coaching cycles"
+      - "job-embedded"
+      - "implementation"
+  - offering: "Artifacts and documentation support to evidence PD completion"
+    keywords:
+      - "documentation"
+      - "evidence"
+      - "compliance"
+      - "monitoring"
+
 who_its_for:
   - "District leadership"
   - "ELL/Multilingual directors"

@@ -12,6 +12,36 @@ offerings:
   - "Instructional design using AIW criteria"
   - "Leadership development for AIW implementation"
 
+offering_map:
+  - offering: "AIW Framework professional development workshops"
+    keywords:
+      - "aiw framework"
+      - "professional development"
+      - "workshop"
+  - offering: "AIW rubrics training for scoring instructional artifacts"
+    keywords:
+      - "aiw rubric"
+      - "rubrics"
+      - "scoring"
+      - "artifacts"
+  - offering: "AIW scoring calibration sessions"
+    keywords:
+      - "calibration"
+      - "scoring session"
+  - offering: "School-based AIW team coaching and support"
+    keywords:
+      - "coaching"
+      - "team"
+      - "implementation"
+  - offering: "Instructional design using AIW criteria"
+    keywords:
+      - "instructional design"
+      - "task design"
+  - offering: "Leadership development for AIW implementation"
+    keywords:
+      - "leadership development"
+      - "leadership"
+
 who_its_for:
   - "K-12 teachers across all content areas"
   - "Instructional coaches"

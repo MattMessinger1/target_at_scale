@@ -8,6 +8,38 @@ offerings:
   - "Progress monitoring tools for EL students"
   - "Professional development on using MODEL data"
 
+offering_map:
+  - offering: "Interim ELP assessment aligned to WIDA standards"
+    keywords:
+      - "interim"
+      - "elp"
+      - "assessment"
+      - "wida standards"
+  - offering: "Predictive scoring that correlates to ACCESS performance"
+    keywords:
+      - "access"
+      - "predict"
+      - "prediction"
+      - "projection"
+  - offering: "Detailed domain-level reporting (listening, speaking, reading, writing)"
+    keywords:
+      - "domain"
+      - "listening"
+      - "speaking"
+      - "reading"
+      - "writing"
+  - offering: "Progress monitoring tools for EL students"
+    keywords:
+      - "progress monitoring"
+      - "monitoring"
+      - "growth"
+  - offering: "Professional development on using MODEL data"
+    keywords:
+      - "assessment literacy"
+      - "data use"
+      - "professional development"
+      - "training"
+
 who_its_for:
   - "EL/ESL/ESOL directors and coordinators"
   - "District assessment coordinators"

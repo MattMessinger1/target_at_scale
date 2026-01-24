@@ -10,6 +10,39 @@ offerings:
   - "Assessment literacy for ELP assessment data"
   - "Train-the-trainer programs for sustainability"
 
+offering_map:
+  - offering: "Online self-paced courses for WIDA framework foundations"
+    keywords:
+      - "online course"
+      - "self-paced"
+      - "asynchronous"
+  - offering: "Live virtual and in-person workshops facilitated by WIDA experts"
+    keywords:
+      - "workshop"
+      - "in-person"
+      - "virtual"
+      - "live"
+  - offering: "WIDA ELD Standards Framework training"
+    keywords:
+      - "wida standards"
+      - "eld standards"
+      - "framework"
+  - offering: "Can Do Descriptors implementation support"
+    keywords:
+      - "can do"
+      - "descriptors"
+  - offering: "Assessment literacy for ELP assessment data"
+    keywords:
+      - "assessment literacy"
+      - "access"
+      - "model data"
+      - "elp data"
+  - offering: "Train-the-trainer programs for sustainability"
+    keywords:
+      - "train-the-trainer"
+      - "sustainability"
+      - "internal capacity"
+
 who_its_for:
   - "EL/ESL/ESOL teachers"
   - "Classroom teachers with ELs in mainstream settings"

@@ -12,6 +12,7 @@ This module intentionally keeps stage orchestration explicit and traceable:
 from __future__ import annotations
 
 import logging
+import re
 import time
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -94,14 +95,14 @@ def _choose_best_attempt(attempts: List[Tuple]):
 def _select_required_offering(
     evidence_pack,
     selected_hook,
+    purpose_prompt: Optional[str] = None,
 ) -> Optional[str]:
-    """Pick a required offering phrase based on hook signals (CARE Coaching only)."""
-    product_key = (getattr(evidence_pack, "product_key", "") or "").strip().lower()
-    if product_key != "care_coaching":
+    """Pick a required offering phrase based on hook/purpose signals."""
+    brief = evidence_pack.supplemental_brief if isinstance(evidence_pack.supplemental_brief, dict) else None
+    if not isinstance(brief, dict):
         return None
 
-    brief = evidence_pack.supplemental_brief if isinstance(evidence_pack.supplemental_brief, dict) else None
-    offerings = brief.get("offerings") if isinstance(brief, dict) else None
+    offerings = brief.get("offerings")
     if not isinstance(offerings, list):
         return None
     cleaned = [str(o).strip() for o in offerings if isinstance(o, str) and o.strip()]
@@ -115,26 +116,66 @@ def _select_required_offering(
             hook.trigger_excerpt or "",
             hook.eligibility_excerpt or "",
             hook.why_relevant or "",
+            hook.timing_summary or "",
+            hook.signal_summary or "",
+            purpose_prompt or "",
         ]
     ).lower()
 
-    newcomer_terms = [
-        "newcomer",
-        "newcomers",
-        "refugee",
-        "refugees",
-        "orr",
-        "resettlement",
-        "immigrant",
-        "slife",
-    ]
-    if any(term in text for term in newcomer_terms):
-        for phrase in cleaned:
-            if phrase.lower() == "empowering newcomers for academic success":
-                return phrase
-        for phrase in cleaned:
-            if "newcomer" in phrase.lower():
-                return phrase
+    def _score_keyword_list(keywords: List[str]) -> int:
+        score = 0
+        for kw in keywords:
+            if not kw:
+                continue
+            kw_norm = str(kw).strip().lower()
+            if kw_norm and kw_norm in text:
+                score += 1
+        return score
+
+    # Prefer explicit offering_map in overrides if provided.
+    offering_map = brief.get("offering_map")
+    if isinstance(offering_map, list):
+        best_score = 0
+        best_offering: Optional[str] = None
+        for entry in offering_map:
+            if not isinstance(entry, dict):
+                continue
+            offering = entry.get("offering")
+            keywords = entry.get("keywords")
+            if not offering or not isinstance(keywords, list):
+                continue
+            score = _score_keyword_list(keywords)
+            if score > best_score:
+                best_score = score
+                best_offering = str(offering).strip()
+        if best_offering and best_score >= 1:
+            return best_offering
+
+    # Fallback: token overlap between hook text and offering phrase.
+    stopwords = {
+        "the", "and", "for", "with", "from", "that", "this", "into", "over", "under",
+        "your", "their", "our", "are", "is", "of", "to", "in", "on", "by", "as",
+        "a", "an", "or", "at", "be", "it", "we", "you", "they", "will", "can",
+        "support", "services", "program", "programs", "professional", "learning",
+        "training", "supporting", "district", "districts", "schools", "school",
+    }
+    tokens = {t for t in re.findall(r"[a-z0-9]+", text) if len(t) >= 4 and t not in stopwords}
+    if not tokens:
+        return None
+
+    best_score = 0
+    best_offering = None
+    for offering in cleaned:
+        offering_tokens = {
+            t for t in re.findall(r"[a-z0-9]+", offering.lower())
+            if len(t) >= 4 and t not in stopwords
+        }
+        score = len(tokens & offering_tokens)
+        if score > best_score:
+            best_score = score
+            best_offering = offering
+    if best_offering and best_score >= 2:
+        return best_offering
     return None
 
 
@@ -165,7 +206,7 @@ async def _run_variant(
     variant_trace = AudienceVariantTrace(audience=audience, attempts=[], stage_ms={})
 
     attempts: List[Tuple] = []
-    required_offering = _select_required_offering(evidence_pack, selected_hook)
+    required_offering = _select_required_offering(evidence_pack, selected_hook, purpose_prompt)
 
     # Attempt 0 (initial)
     t0 = time.perf_counter()

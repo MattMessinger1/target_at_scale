@@ -19,6 +19,37 @@ offerings:
   - "Customized support for state education agencies, assessment publishers, and industry partners"
   - "Multiple delivery formats: in-person workshops, virtual sessions, hybrid, ongoing coaching, multi-day institutes"
 
+offering_map:
+  - offering: "Formal Webb Alignment Study - systematic research process evaluating alignment between standards, curriculum, and assessments"
+    keywords:
+      - "alignment study"
+      - "alignment"
+      - "standards"
+      - "curriculum"
+      - "assessment"
+  - offering: "DOK analysis applying all four levels (Recall, Skills/Concepts, Strategic Thinking, Extended Thinking)"
+    keywords:
+      - "dok"
+      - "depth of knowledge"
+      - "cognitive demand"
+  - offering: "Alignment matrices showing Content Focus, DOK Consistency, Range of Knowledge, and Balance of Representation"
+    keywords:
+      - "alignment matrix"
+      - "content focus"
+      - "range of knowledge"
+      - "balance of representation"
+  - offering: "Gap analysis identifying misalignment between standards and instruction/assessment"
+    keywords:
+      - "gap analysis"
+      - "misalignment"
+      - "audit"
+  - offering: "DOK Foundations PD - what DOK is (and is not), accurate interpretation, differentiating complexity from difficulty"
+    keywords:
+      - "professional development"
+      - "workshop"
+      - "pd"
+      - "training"
+
 who_its_for:
   - "Curriculum and assessment directors"
   - "State education agency staff"
