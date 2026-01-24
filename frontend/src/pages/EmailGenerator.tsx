@@ -2428,20 +2428,22 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
     },
   })
 
-  const pipelineMutation = useMutation<PipelineRunResponse, Error, void>({
-    mutationFn: () => {
+  const pipelineMutation = useMutation<PipelineRunResponse, Error, { selectedCachedHooks?: SelectedCachedHook[] } | void>({
+    mutationFn: (overrides) => {
       const req: PipelineRunStreamRequest = {
         product: selectedProduct || '',
         state: selectedStates[0]?.code || '',
         state_full: selectedStates[0]?.name || undefined,
         audiences: [selectedAudience],
       }
+      const cachedHooksOverride = overrides && 'selectedCachedHooks' in overrides ? overrides.selectedCachedHooks : undefined
+      const cachedHooksToUse = cachedHooksOverride ?? selectedCachedHooks
       if (purposePrompt.trim()) {
         req.purpose_prompt = purposePrompt.trim()
       }
       // IMPORTANT: cached hooks can be used without a purpose prompt (hook-only flow).
-      if (selectedCachedHooks.length > 0) {
-        req.selected_cached_hooks = selectedCachedHooks.map((item) => ({
+      if (cachedHooksToUse.length > 0) {
+        req.selected_cached_hooks = cachedHooksToUse.map((item) => ({
           category: item.category,
           state_code: item.state_code || null,
           hook: item.hook,
@@ -2740,6 +2742,20 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
     setEmailProgress(null) // Reset progress
     setWizardStep(4) // Go to Generate step
     pipelineMutation.mutate()
+  }
+
+  const handleDistrictGenerate = (hook: WebHook, stateCode: string) => {
+    const selected = [{
+      key: `district:${stateCode}:${getHookKey(hook)}`,
+      category: 'district' as const,
+      state_code: stateCode,
+      hook,
+    }]
+    setSelectedCachedHooks(selected)
+    setTraceEvents([])
+    setEmailProgress(null)
+    setWizardStep(4)
+    pipelineMutation.mutate({ selectedCachedHooks: selected })
   }
 
   const handleReset = () => {
@@ -4508,11 +4524,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                                 <h4 className="font-medium text-amber-400">{district}</h4>
                                 <button
                                   onClick={() => {
-                                    // TODO: Generate email for this district
-                                    toast({
-                                      title: 'Coming soon',
-                                      description: `Generate email for ${district} will be available soon.`,
-                                    })
+                                    handleDistrictGenerate(hooks[0], selectedStates[0]?.code || '')
                                   }}
                                   className="px-3 py-1.5 text-sm bg-amber-600 hover:bg-amber-500 text-white rounded transition-colors"
                                 >
