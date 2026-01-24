@@ -1901,6 +1901,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
     async def _run_research_task(task_id: str, task_data: Dict[str, Any], db: AsyncSession) -> None:
         """Background task that runs the research pipeline."""
         from ...research.product_briefs import normalize_product_key
+        from ...pipeline.hook_gate import gate_treasure_hooks
         from ...pipeline.stages.evidence_pack import build_product_evidence_pack
         from ...pipeline.stages.treasure_hunter import run_treasure_hunter
         _research_tasks[task_id] = task_data
