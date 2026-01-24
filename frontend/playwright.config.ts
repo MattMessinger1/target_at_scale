@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test'
 
-const baseURL = process.env.BASE_URL || 'https://targetatscale-production.up.railway.app'
+const baseURL = process.env.BASE_URL || 'https://sunny-curiosity-production.up.railway.app'
 
 export default defineConfig({
   testDir: 'tests/e2e',
