@@ -412,10 +412,14 @@ export default function SavedRuns() {
                   className={`h-full transition-all ${
                     job.status === 'completed' ? 'bg-emerald-500' :
                     job.status === 'failed' ? 'bg-red-500' :
-                    job.status === 'running' ? 'bg-blue-500' :
+                    job.status === 'running' ? 'bg-blue-500 animate-pulse' :
                     'bg-slate-500'
                   }`}
-                  style={{ width: `${(job.completed_states / job.total_states) * 100}%` }}
+                  style={{
+                    width: `${job.status === 'running' && job.completed_states === 0
+                      ? 8
+                      : (job.completed_states / job.total_states) * 100}%`,
+                  }}
                 />
               </div>
               {job.failed_states > 0 && (
