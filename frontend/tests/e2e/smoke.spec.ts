@@ -70,4 +70,10 @@ test('selected hook appears in generated email and saves feedback', async ({ pag
     await page.waitForTimeout(3000)
   }
   expect(found).toBeTruthy()
+
+  await page.goto('/training')
+  await page.getByRole('button', { name: /^Reviews/ }).click()
+  await expect(
+    page.getByTestId('review-subject').filter({ hasText: marker }).first()
+  ).toBeVisible({ timeout: 30_000 })
 })

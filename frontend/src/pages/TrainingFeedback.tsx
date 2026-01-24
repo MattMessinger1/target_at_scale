@@ -492,7 +492,7 @@ function ReviewsList({
                   <span className="text-xs text-slate-600">•</span>
                   <span className="text-xs text-slate-500">{item.state_code}</span>
                 </div>
-                <h3 className="text-sm font-medium text-slate-200 truncate">
+                <h3 className="text-sm font-medium text-slate-200 truncate" data-testid="review-subject">
                   {item.subject_preview}
                 </h3>
                 <div className="flex items-center gap-3 mt-2 text-xs text-slate-500">
