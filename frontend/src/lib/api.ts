@@ -1380,6 +1380,7 @@ export const api = {
         progress: number
         message: string
         started_at?: string
+        saved_run_id?: number
         result?: PipelineRunResponse
         error?: string
       }>(`/generate/pipeline/run/status?task_id=${encodeURIComponent(taskId)}`),
@@ -1413,6 +1414,7 @@ export const api = {
           status: 'queued' | 'in_progress' | 'completed' | 'failed'
           progress: number
           message: string
+          saved_run_id?: number
           result?: PipelineRunResponse
           error?: string
         }>(`/generate/pipeline/run/status?task_id=${encodeURIComponent(taskId)}`)

@@ -2002,18 +2002,20 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
             
             // Auto-save to backend
             try {
-              await api.savedRuns.save({
-                name: `Auto-saved: ${pending.product} - ${pending.stateName}`,
-                product: pending.product,
-                state_code: pending.stateCode,
-                state_full: pending.stateName,
-                audiences: [pending.audience],
-                pipeline_response: status.result,
-                selected_hook_links: pending.selectedHookLinks || [],
-                primary_hook_link: pending.primaryHookLink || null,
-                hook_reason_tags: pending.hookReasonTags || {},
-                hook_reason_notes: pending.hookReasonNotes || {},
-              })
+              if (!status.saved_run_id) {
+                await api.savedRuns.save({
+                  name: `Auto-saved: ${pending.product} - ${pending.stateName}`,
+                  product: pending.product,
+                  state_code: pending.stateCode,
+                  state_full: pending.stateName,
+                  audiences: [pending.audience],
+                  pipeline_response: status.result,
+                  selected_hook_links: pending.selectedHookLinks || [],
+                  primary_hook_link: pending.primaryHookLink || null,
+                  hook_reason_tags: pending.hookReasonTags || {},
+                  hook_reason_notes: pending.hookReasonNotes || {},
+                })
+              }
             } catch {
               // Silent fail - still saved locally
             }
@@ -2077,21 +2079,25 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
             
             // Auto-save
             try {
-              await api.savedRuns.save({
-                name: `Auto-saved: ${pending.product} - ${pending.stateName}`,
-                product: pending.product,
-                state_code: pending.stateCode,
-                state_full: pending.stateName,
-                audiences: [pending.audience],
-                pipeline_response: status.result,
-                selected_hook_links: pending.selectedHookLinks || [],
-                primary_hook_link: pending.primaryHookLink || null,
-                hook_reason_tags: pending.hookReasonTags || {},
-                hook_reason_notes: pending.hookReasonNotes || {},
-              })
+              if (!status.saved_run_id) {
+                await api.savedRuns.save({
+                  name: `Auto-saved: ${pending.product} - ${pending.stateName}`,
+                  product: pending.product,
+                  state_code: pending.stateCode,
+                  state_full: pending.stateName,
+                  audiences: [pending.audience],
+                  pipeline_response: status.result,
+                  selected_hook_links: pending.selectedHookLinks || [],
+                  primary_hook_link: pending.primaryHookLink || null,
+                  hook_reason_tags: pending.hookReasonTags || {},
+                  hook_reason_notes: pending.hookReasonNotes || {},
+                })
+              }
               toast({
                 title: 'Background email complete!',
-                description: `${pending.product} - ${pending.stateName} has been auto-saved.`,
+                description: status.saved_run_id
+                  ? `${pending.product} - ${pending.stateName} saved.`
+                  : `${pending.product} - ${pending.stateName} has been auto-saved.`,
               })
             } catch {
               toast({
@@ -2448,6 +2454,24 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
           state_code: item.state_code || null,
           hook: item.hook,
         }))
+      }
+      if (selectedHookLinks.length === 0 && cachedHooksToUse.length > 0) {
+        const cachedStateHooks = cachedHooksToUse.filter(
+          (item) => item.category === 'state' && item.hook && ('hook_id' in item.hook || 'link' in item.hook)
+        )
+        const cachedIds = cachedStateHooks
+          .map((item) => ('hook_id' in item.hook ? item.hook.hook_id : undefined))
+          .filter((id): id is string => Boolean(id))
+        const cachedLinks = cachedStateHooks
+          .map((item) => ('link' in item.hook ? item.hook.link : undefined))
+          .filter((link): link is string => Boolean(link))
+        if (cachedIds.length > 0) {
+          req.selected_hook_ids = cachedIds
+          req.primary_hook_id = cachedIds[0]
+        } else if (cachedLinks.length > 0) {
+          req.selected_hook_links = cachedLinks
+          req.primary_hook_link = cachedLinks[0]
+        }
       }
       // Reuse existing prep outputs if we have them.
       // If we're in the cached-hooks flow (Step 2), `prep` may be null even though we have cached
