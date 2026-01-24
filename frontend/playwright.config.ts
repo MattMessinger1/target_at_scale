@@ -1,4 +1,4 @@
-import { defineConfig } from '@playwright/test'
+import { defineConfig, devices } from '@playwright/test'
 
 const baseURL = process.env.BASE_URL || 'https://sunny-curiosity-production.up.railway.app'
 
@@ -9,6 +9,12 @@ export default defineConfig({
     timeout: 10_000,
   },
   reporter: 'list',
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
   use: {
     baseURL,
     trace: 'retain-on-failure',
