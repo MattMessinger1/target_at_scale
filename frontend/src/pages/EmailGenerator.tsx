@@ -4163,37 +4163,20 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                           {hooks.length === 0 ? (
                             <div className="text-xs text-slate-600">No cached state hooks.</div>
                           ) : (
-              <div className="space-y-2">
+                            <div className="space-y-3">
                               {hooks.map((h) => {
                                 const key = `state:${st.code}:${getHookKey(h)}`
                                 const selected = isCachedHookSelected(key)
                                 return (
-                                  <div key={key} className="p-3 rounded border border-slate-700 bg-slate-900/40">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div>
-                                        <div className="text-xs text-slate-500 uppercase">{h.hook_type}</div>
-                                        <div className="text-sm text-slate-200 mt-1">"{cleanQuoteText(h.quote)}"</div>
-                                        {(h.timing_summary || h.signal_summary || h.stale_reason) && (
-                                          <div className="mt-2 space-y-1 text-xs text-slate-500">
-                                            {h.timing_summary && <div>Timing: {cleanQuoteText(h.timing_summary)}</div>}
-                                            {h.signal_summary && <div>Intent: {cleanQuoteText(h.signal_summary)}</div>}
-                                            {h.stale_reason && <div>Stale: {h.stale_reason}</div>}
-                                          </div>
-                                        )}
-                                      </div>
-                                      <button
-                                        onClick={() => toggleCachedHook({ key, category: 'state', state_code: st.code, hook: h })}
-                                        className={`px-2 py-1 text-xs rounded border ${
-                                          selected ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'border-slate-600 text-slate-300'
-                                        }`}
-                                      >
-                                        {selected ? 'Selected' : 'Select'}
-                                      </button>
-                </div>
-                </div>
+                                  <div key={key}>
+                                    {renderRequirementCard(h, {
+                                      isSelected: selected,
+                                      onToggle: () => toggleCachedHook({ key, category: 'state', state_code: st.code, hook: h }),
+                                    })}
+                                  </div>
                                 )
                               })}
-              </div>
+                            </div>
                           )}
                         </div>
                       )
@@ -4221,33 +4204,16 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                           {hooks.length === 0 ? (
                             <div className="text-xs text-slate-600">No cached district hooks.</div>
                           ) : (
-                            <div className="space-y-2">
+                            <div className="space-y-3">
                               {hooks.map((h) => {
                                 const key = `district:${st.code}:${getHookKey(h)}`
                                 const selected = isCachedHookSelected(key)
                                 return (
-                                  <div key={key} className="p-3 rounded border border-slate-700 bg-slate-900/40">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div>
-                                        <div className="text-xs text-slate-500 uppercase">{h.district_name || 'District'}</div>
-                                        <div className="text-sm text-slate-200 mt-1">"{cleanQuoteText(h.quote)}"</div>
-                                        {(h.timing_summary || h.signal_summary || h.stale_reason) && (
-                                          <div className="mt-2 space-y-1 text-xs text-slate-500">
-                                            {h.timing_summary && <div>Timing: {cleanQuoteText(h.timing_summary)}</div>}
-                                            {h.signal_summary && <div>Intent: {cleanQuoteText(h.signal_summary)}</div>}
-                                            {h.stale_reason && <div>Stale: {h.stale_reason}</div>}
-                                          </div>
-                                        )}
-                                      </div>
-                                      <button
-                                        onClick={() => toggleCachedHook({ key, category: 'district', state_code: st.code, hook: h })}
-                                        className={`px-2 py-1 text-xs rounded border ${
-                                          selected ? 'bg-emerald-900/40 text-emerald-300 border-emerald-700/50' : 'border-slate-600 text-slate-300'
-                                        }`}
-                                      >
-                                        {selected ? 'Selected' : 'Select'}
-                                      </button>
-                                    </div>
+                                  <div key={key}>
+                                    {renderRequirementCard(h, {
+                                      isSelected: selected,
+                                      onToggle: () => toggleCachedHook({ key, category: 'district', state_code: st.code, hook: h }),
+                                    })}
                                   </div>
                                 )
                               })}
