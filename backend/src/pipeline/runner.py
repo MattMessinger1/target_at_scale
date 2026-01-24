@@ -91,6 +91,53 @@ def _choose_best_attempt(attempts: List[Tuple]):
     return attempts_sorted[0] if attempts_sorted else None
 
 
+def _select_required_offering(
+    evidence_pack,
+    selected_hook,
+) -> Optional[str]:
+    """Pick a required offering phrase based on hook signals (CARE Coaching only)."""
+    product_key = (getattr(evidence_pack, "product_key", "") or "").strip().lower()
+    if product_key != "care_coaching":
+        return None
+
+    brief = evidence_pack.supplemental_brief if isinstance(evidence_pack.supplemental_brief, dict) else None
+    offerings = brief.get("offerings") if isinstance(brief, dict) else None
+    if not isinstance(offerings, list):
+        return None
+    cleaned = [str(o).strip() for o in offerings if isinstance(o, str) and o.strip()]
+    if not cleaned:
+        return None
+
+    hook = selected_hook.hook
+    text = " ".join(
+        [
+            hook.quote or "",
+            hook.trigger_excerpt or "",
+            hook.eligibility_excerpt or "",
+            hook.why_relevant or "",
+        ]
+    ).lower()
+
+    newcomer_terms = [
+        "newcomer",
+        "newcomers",
+        "refugee",
+        "refugees",
+        "orr",
+        "resettlement",
+        "immigrant",
+        "slife",
+    ]
+    if any(term in text for term in newcomer_terms):
+        for phrase in cleaned:
+            if phrase.lower() == "empowering newcomers for academic success":
+                return phrase
+        for phrase in cleaned:
+            if "newcomer" in phrase.lower():
+                return phrase
+    return None
+
+
 async def _run_variant(
     *,
     product: str,
@@ -118,6 +165,7 @@ async def _run_variant(
     variant_trace = AudienceVariantTrace(audience=audience, attempts=[], stage_ms={})
 
     attempts: List[Tuple] = []
+    required_offering = _select_required_offering(evidence_pack, selected_hook)
 
     # Attempt 0 (initial)
     t0 = time.perf_counter()
@@ -133,6 +181,7 @@ async def _run_variant(
         district_url=district_url,
         purpose_prompt=purpose_prompt,
         supporting_context=supporting_context,
+        required_offering=required_offering,
         repair_instructions=None,
         prior_email_body=None,
         on_progress=on_progress,
@@ -149,6 +198,7 @@ async def _run_variant(
         claims_map=claims,
         evidence_pack=evidence_pack,
         treasure_hooks=treasure_hooks,
+        required_offering=required_offering,
     )
     variant_trace.attempts.append(IterationTrace(iteration=0, validation=v0))
     attempts.append((draft, claims, v0, variant_trace))
@@ -176,6 +226,7 @@ async def _run_variant(
             district_url=district_url,
             purpose_prompt=purpose_prompt,
             supporting_context=supporting_context,
+            required_offering=required_offering,
             repair_instructions=instructions,
             prior_email_body=prev_email,
             on_progress=on_progress,
@@ -192,6 +243,7 @@ async def _run_variant(
             claims_map=claims_i,
             evidence_pack=evidence_pack,
             treasure_hooks=treasure_hooks,
+            required_offering=required_offering,
         )
 
         stop, reason = should_stop_repair(prev_validation, v_i)
@@ -511,4 +563,3 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
         trace=trace,
         warnings=warnings,
     )
-

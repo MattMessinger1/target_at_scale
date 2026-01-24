@@ -107,6 +107,8 @@ async def _run_eval(db: AsyncSession, scenarios: List[Dict[str, Any]]) -> Dict[s
         product = str(sc.get("product") or "").strip()
         state = str(sc.get("state") or "").strip().upper()
         audiences = [str(x).strip() for x in _safe_list(sc.get("audiences")) if str(x).strip()]
+        # NEW: Support purpose_prompt for purpose-aware retrieval testing
+        purpose_prompt = str(sc.get("purpose_prompt") or "").strip() or None
 
         expected = sc.get("expected") if isinstance(sc.get("expected"), dict) else {}
         must_have_files = [str(x).strip() for x in _safe_list(expected.get("must_have_files")) if str(x).strip()]
@@ -127,6 +129,7 @@ async def _run_eval(db: AsyncSession, scenarios: List[Dict[str, Any]]) -> Dict[s
                 product_display_name=product,
                 state_code=state,
                 audiences=audiences or [],
+                purpose_prompt=purpose_prompt,
             )
             pack_dict = pack.model_dump()
             chunks = pack_dict.get("retrieved_chunks") or []
@@ -148,6 +151,7 @@ async def _run_eval(db: AsyncSession, scenarios: List[Dict[str, Any]]) -> Dict[s
                     "product": product,
                     "state": state,
                     "audiences": audiences,
+                    "purpose_prompt": purpose_prompt,  # NEW: Track purpose for analysis
                     "summary": summary,
                     "expectations": exp,
                     # Keep the full evidence chunk objects for debugging/tuning.

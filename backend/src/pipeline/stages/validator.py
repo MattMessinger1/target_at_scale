@@ -449,6 +449,7 @@ def validate_email_draft(
     claims_map: Sequence[ClaimsMapEntry],
     evidence_pack: EvidencePack,
     treasure_hooks: Sequence[WebHook],
+    required_offering: Optional[str] = None,
 ) -> ValidationResult:
     failures: List[ValidationFailure] = []
 
@@ -533,6 +534,17 @@ def validate_email_draft(
                 details={"offerings": _product_offerings(evidence_pack)[:8]},
             )
         )
+    if required_offering:
+        hay = normalize_ws(email_body).lower()
+        target = normalize_ws(required_offering).lower()
+        if target and target not in hay:
+            failures.append(
+                ValidationFailure(
+                    code="missing_required_offering",
+                    message="Email must include the required offering phrase verbatim.",
+                    details={"required_offering": required_offering},
+                )
+            )
 
     # Greeting: must start with "Dear [Name]," on its own line.
     first_non_empty = ""

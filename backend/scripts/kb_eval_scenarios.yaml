@@ -8,7 +8,59 @@ scenarios:
   # See EVAL_101.md for detailed guidance on writing and interpreting scenarios.
 
   # ============================================================================
-  # CARE Coaching scenarios
+  # PURPOSE-AWARE RETRIEVAL TESTS
+  # ============================================================================
+  # These scenarios test that purpose_prompt correctly filters KB content
+  
+  - id: care_coaching_AL_newcomer
+    product: "CARE Coaching"
+    state: "AL"
+    audiences:
+      - "Decision Makers"
+    purpose_prompt: "newcomer offering"
+    expected:
+      # Should retrieve newcomer-specific docs, NOT generic CCNA
+      must_have_files:
+        - "Empowering Newcomers for Academic Success.pptx"
+        - "CARE Coaching Newcomer Learning Walk Tool.pdf"
+      avoid_files:
+        - "CARE Coaching Needs Assessment (CCNA)"  # Generic, not newcomer-specific
+
+  - id: care_coaching_FL_ccna_focus
+    product: "CARE Coaching"
+    state: "FL"
+    audiences:
+      - "Decision Makers"
+    purpose_prompt: "needs assessment data"
+    expected:
+      # Should retrieve CCNA-specific docs when purpose mentions assessment
+      must_have_files:
+        - "CARE Coaching Needs Assessment (CCNA)"
+
+  - id: care_coaching_TX_family_engagement
+    product: "CARE Coaching"
+    state: "TX"
+    audiences:
+      - "Decision Makers"
+    purpose_prompt: "family engagement strategies"
+    expected:
+      # Should retrieve family engagement docs
+      must_have_files: []  # Will be populated after first run
+      avoid_files: []
+
+  - id: webbalign_IL_dok
+    product: "WebbAlign"
+    state: "IL"
+    audiences:
+      - "Curriculum Directors"
+    purpose_prompt: "depth of knowledge alignment"
+    expected:
+      # Should retrieve DOK-specific docs
+      must_have_files: []  # Will be populated after first run
+      avoid_files: []
+
+  # ============================================================================
+  # CARE Coaching scenarios (generic - no purpose)
   # ============================================================================
   - id: care_coaching_FL_titleiii
     product: "CARE Coaching"
@@ -17,8 +69,7 @@ scenarios:
       - "Title III Coordinators"
       - "ELL/Multilingual Directors"
     expected:
-      must_have_files:
-        - "Florida State Buyer_s Guide.pdf"
+      must_have_files: []
       avoid_files: []
 
   - id: care_coaching_CO

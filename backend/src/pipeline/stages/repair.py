@@ -78,6 +78,8 @@ def failures_to_instructions(failures: Sequence[ValidationFailure]) -> List[str]
         instructions.append("Remove any non-Calendly URLs from the email body (only the Calendly scheduling link is allowed).")
     if "missing_product_offering_phrase" in code_set:
         instructions.append("Include at least ONE ProductBrief offering phrase verbatim (prefer using it as a bullet deliverable).")
+    if "missing_required_offering" in code_set:
+        instructions.append("Include the required offering phrase verbatim (copy it exactly as given).")
     if "missing_greeting" in code_set:
         instructions.append("Start the email with the greeting line: 'Dear [Name],' (capital D), on its own line, followed by a blank line.")
     if "missing_or_unsourced_trigger" in code_set:
