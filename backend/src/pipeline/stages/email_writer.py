@@ -18,7 +18,7 @@ import time
 from typing import Awaitable, Callable, List, Optional, Tuple
 
 from openai import AsyncOpenAI
-from sqlalchemy import select, or_
+from sqlalchemy import String, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...config import get_settings
@@ -62,7 +62,7 @@ def _build_hook_filter(hook_types: Optional[List[str]]):
     filters = []
     for hook_type in hook_types:
         # JSON array contains the hook type (works for both SQLite and PostgreSQL)
-        filters.append(GoldenEmail.hook_types_used.cast(str).ilike(f'%"{hook_type}"%'))
+        filters.append(GoldenEmail.hook_types_used.cast(String).ilike(f'%"{hook_type}"%'))
     return or_(*filters) if filters else None
 
 
@@ -474,7 +474,7 @@ def _build_negative_hook_filter(hook_types: Optional[List[str]]):
     
     filters = []
     for hook_type in hook_types:
-        filters.append(NegativeEmailExample.hook_types_used.cast(str).ilike(f'%"{hook_type}"%'))
+        filters.append(NegativeEmailExample.hook_types_used.cast(String).ilike(f'%"{hook_type}"%'))
     return or_(*filters) if filters else None
 
 

@@ -78,6 +78,8 @@ def failures_to_instructions(failures: Sequence[ValidationFailure]) -> List[str]
         instructions.append("Remove any non-Calendly URLs from the email body (only the Calendly scheduling link is allowed).")
     if "missing_product_offering_phrase" in code_set:
         instructions.append("Include at least ONE ProductBrief offering phrase verbatim (prefer using it as a bullet deliverable).")
+    if "missing_greeting" in code_set:
+        instructions.append("Start the email with the greeting line: 'Dear [Name],' (capital D), on its own line, followed by a blank line.")
     if "missing_or_unsourced_trigger" in code_set:
         instructions.append("FIRST paragraph must include a specific trigger token that appears in the hook trigger_excerpt from the same URL (date/FY/monitor/monitored/CAP/budget code/allocation/allowable activities/eligible activities/job-embedded coaching). Use the exact phrase from the trigger_excerpt (do not paraphrase).")
     if "missing_or_unsourced_secondary_trigger" in code_set:
@@ -102,4 +104,3 @@ def failures_to_instructions(failures: Sequence[ValidationFailure]) -> List[str]
         seen.add(ins)
         out.append(ins)
     return out
-

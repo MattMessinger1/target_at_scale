@@ -534,6 +534,21 @@ def validate_email_draft(
             )
         )
 
+    # Greeting: must start with "Dear [Name]," on its own line.
+    first_non_empty = ""
+    for line in (email_body or "").splitlines():
+        if line.strip():
+            first_non_empty = line.strip()
+            break
+    if first_non_empty != "Dear [Name],":
+        failures.append(
+            ValidationFailure(
+                code="missing_greeting",
+                message="Email must start with greeting: Dear [Name], on its own line.",
+                details={"first_line": first_non_empty},
+            )
+        )
+
     # Opener (no URLs printed): must include a sourced trigger token (see trigger gate below).
     opener = first_paragraph(email_body)
     hook_link = selected_hook.hook.link
@@ -727,4 +742,3 @@ def validate_email_draft(
         bullet_count=len(bullets),
         bullet_word_counts=bullet_word_counts,
     )
-
