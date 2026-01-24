@@ -485,7 +485,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
     class PipelineRunStreamRequest(PipelineRequest):
         """V3-compatible run request (allows optional human-selected hooks)."""
 
-        model_config = ConfigDict(extra="forbid")
+        model_config = ConfigDict(extra="ignore")
 
         # Optional: who started this task (for team attribution)
         created_by: Optional[str] = Field(
