@@ -549,6 +549,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         from ...pipeline.hook_gate import gate_treasure_hooks
         from ...pipeline.runner import DEFAULT_AUDIENCES, _mode, _utcnow, _run_variant
         from ...pipeline.schemas import PipelineRequest as PipelineRequestModel, PipelineTrace, SelectedHook
+        from ...pipeline.hook_gate import gate_treasure_hooks
         from ...pipeline.stages.evidence_pack import build_product_evidence_pack
         from ...pipeline.stages.hook_selector import select_primary_hooks
         from ...pipeline.stages.treasure_hunter import run_treasure_hunter
