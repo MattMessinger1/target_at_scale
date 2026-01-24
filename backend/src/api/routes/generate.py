@@ -2522,6 +2522,55 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         )
         cached = deep_result.scalar_one_or_none()
         
+        use_saved = bool(
+            saved
+            and (
+                not cached
+                or not cached.full_prep_json
+                or cached.created_at < saved.created_at
+            )
+        )
+        if use_saved and isinstance(saved.pipeline_response, dict):
+            pr: Dict[str, Any] = dict(saved.pipeline_response or {})
+            hooks = pr.get("treasure_hooks") or pr.get("hooks") or []
+            
+            # Filter out "custom" hooks - these are synthetic hooks created from purpose prompts
+            # and should not be shown as reusable cached research hooks
+            if isinstance(hooks, list):
+                hooks = [
+                    h for h in hooks 
+                    if not (isinstance(h, dict) and h.get("hook_type") == "custom")
+                ]
+            
+            # Minimal evidence pack if missing (not required for cached-hook selection mode)
+            evidence_pack = pr.get("evidence_pack")
+            if not isinstance(evidence_pack, dict):
+                evidence_pack = {
+                    "product": product,
+                    "product_key": product_key,
+                    "state": state_code,
+                    "retrieved_chunks": [],
+                    "micro_offer_candidates": [],
+                    "case_study_chunks": [],
+                    "supplemental_brief": None,
+                }
+            
+            result_payload = {
+                "evidence_pack": evidence_pack,
+                "treasure_hooks": hooks if isinstance(hooks, list) else [],
+                "filtered_requirements": pr.get("filtered_requirements") if isinstance(pr.get("filtered_requirements"), list) else [],
+                "district_research": pr.get("district_research"),
+                "conferences": pr.get("conferences") if isinstance(pr.get("conferences"), list) else [],
+                "warnings": pr.get("warnings") if isinstance(pr.get("warnings"), list) else [],
+            }
+            cache_age = datetime.utcnow() - saved.created_at
+            return {
+                "cached": True,
+                "result": result_payload,
+                "cache_age_days": cache_age.days,
+                "cached_at": saved.created_at.isoformat(),
+            }
+
         if cached and cached.full_prep_json:
             cache_age = datetime.utcnow() - cached.created_at
             return {
@@ -2533,47 +2582,6 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
 
         # If DeepResearchCache has no usable record, fall back to most recent Saved Research run.
         if not cached or not (cached.results_json and isinstance(cached.results_json, dict) and cached.results_json):
-            if saved and isinstance(saved.pipeline_response, dict):
-                pr: Dict[str, Any] = dict(saved.pipeline_response or {})
-                hooks = pr.get("treasure_hooks") or pr.get("hooks") or []
-                
-                # Filter out "custom" hooks - these are synthetic hooks created from purpose prompts
-                # and should not be shown as reusable cached research hooks
-                if isinstance(hooks, list):
-                    hooks = [
-                        h for h in hooks 
-                        if not (isinstance(h, dict) and h.get("hook_type") == "custom")
-                    ]
-                
-                # Minimal evidence pack if missing (not required for cached-hook selection mode)
-                evidence_pack = pr.get("evidence_pack")
-                if not isinstance(evidence_pack, dict):
-                    evidence_pack = {
-                        "product": product,
-                        "product_key": product_key,
-                        "state": state_code,
-                        "retrieved_chunks": [],
-                        "micro_offer_candidates": [],
-                        "case_study_chunks": [],
-                        "supplemental_brief": None,
-                    }
-                
-                result_payload = {
-                    "evidence_pack": evidence_pack,
-                    "treasure_hooks": hooks if isinstance(hooks, list) else [],
-                    "filtered_requirements": pr.get("filtered_requirements") if isinstance(pr.get("filtered_requirements"), list) else [],
-                    "district_research": pr.get("district_research"),
-                    "conferences": pr.get("conferences") if isinstance(pr.get("conferences"), list) else [],
-                    "warnings": pr.get("warnings") if isinstance(pr.get("warnings"), list) else [],
-                }
-                cache_age = datetime.utcnow() - saved.created_at
-                return {
-                    "cached": True,
-                    "result": result_payload,
-                    "cache_age_days": cache_age.days,
-                    "cached_at": saved.created_at.isoformat(),
-                }
-            
             raise HTTPException(status_code=404, detail="No cached prep available")
 
         # --------------------------------------------------------------------
