@@ -1553,9 +1553,9 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
             if on_openai_started:
                 await on_openai_started(resp.id, audience)
             
-            # Poll for completion (xhigh can take 2-5 minutes)
+            # Poll for completion (xhigh can take 2-5 minutes, sometimes longer)
             poll_interval = 15  # seconds
-            max_polls = 40  # 10 minutes max (40 * 15s = 600s)
+            max_polls = 80  # 20 minutes max (80 * 15s = 1200s)
             
             for poll_count in range(max_polls):
                 # Check if completed
@@ -2057,4 +2057,3 @@ async def resume_email_generation(
         pass
     
     return draft, claims_map
-
