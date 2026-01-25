@@ -2776,6 +2776,8 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
       hook,
     }]
     setSelectedCachedHooks(selected)
+    setSelectedHookLinks([])
+    setPrimaryHookLink(null)
     setTraceEvents([])
     setEmailProgress(null)
     setWizardStep(4)
