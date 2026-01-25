@@ -30,6 +30,7 @@ export default function SavedRuns() {
   const [runTypeFilter, setRunTypeFilter] = useState<RunTypeFilter>('all')
   const [expandedProducts, setExpandedProducts] = useState<Record<string, boolean>>({})
   const [expandedStates, setExpandedStates] = useState<Record<string, boolean>>({})
+  const [batchJobFilter, setBatchJobFilter] = useState<number | null>(null)
   
   // Fetch grouped runs
   const { data: groupedRuns, isLoading: groupedLoading } = useQuery({
@@ -335,7 +336,10 @@ export default function SavedRuns() {
       )
     }
     
-    const filtered = filterRuns(listRuns)
+    let filtered = filterRuns(listRuns)
+    if (batchJobFilter !== null) {
+      filtered = filtered.filter(run => run.batch_job_id === batchJobFilter)
+    }
     
     if (filtered.length === 0) {
       return (
@@ -352,8 +356,22 @@ export default function SavedRuns() {
     }
     
     return (
-      <div className="space-y-2">
-        {filtered.map(renderRunCard)}
+      <div className="space-y-3">
+        {batchJobFilter !== null && (
+          <div className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/40 px-3 py-2 text-sm">
+            <span className="text-slate-300">Showing results for batch #{batchJobFilter}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBatchJobFilter(null)}
+            >
+              Clear filter
+            </Button>
+          </div>
+        )}
+        <div className="space-y-2">
+          {filtered.map(renderRunCard)}
+        </div>
       </div>
     )
   }
@@ -435,11 +453,12 @@ export default function SavedRuns() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  // View batch results - filter saved runs by batch_job_id
-                  // For now, switch to list view filtered by this batch
+                  setViewMode('list')
+                  setRunTypeFilter('research')
+                  setBatchJobFilter(job.id)
                   toast({
-                    title: 'View batch results',
-                    description: 'Feature coming soon - check Saved Research list for results.',
+                    title: 'Batch results loaded',
+                    description: `Showing saved research runs for batch #${job.id}.`,
                   })
                 }}
               >
