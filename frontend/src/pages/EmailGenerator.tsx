@@ -2456,6 +2456,13 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
         }))
       }
       if (cachedHooksOverride && cachedHooksOverride.length > 0) {
+        const districtOverride = cachedHooksOverride.find((item) => item.category === 'district')
+        if (districtOverride && 'district_name' in districtOverride.hook) {
+          const hookDistrict = districtOverride.hook.district_name
+          if (hookDistrict) {
+            req.district_name = hookDistrict
+          }
+        }
         const overrideIds = cachedHooksOverride
           .map((item) => ('hook_id' in item.hook ? item.hook.hook_id : undefined))
           .filter((id): id is string => Boolean(id))

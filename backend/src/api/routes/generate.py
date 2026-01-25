@@ -2799,6 +2799,19 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     request.state_full = STATE_NAMES[request.state.strip().upper()]
             except Exception:
                 pass
+        
+        # If caller selected a district cached hook, ensure district_name is set.
+        if not request.district_name and request.selected_cached_hooks:
+            for cached in request.selected_cached_hooks:
+                try:
+                    if cached.category == "district":
+                        hook = cached.hook
+                        district_name = getattr(hook, "district_name", None)
+                        if district_name:
+                            request.district_name = district_name
+                            break
+                except Exception:
+                    continue
 
         try:
             return await run_email_pipeline(request=request, db=db)
