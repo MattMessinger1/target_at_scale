@@ -567,12 +567,43 @@ def validate_email_draft(
     if required_offering:
         opener_norm = normalize_ws(opener).lower()
         req_norm = normalize_ws(required_offering).lower()
+        first_sentence = re.split(r"(?<=[.!?])\s+", opener.strip(), maxsplit=1)[0] if opener.strip() else ""
+        first_sentence_norm = normalize_ws(first_sentence).lower()
         if req_norm and req_norm not in opener_norm:
             failures.append(
                 ValidationFailure(
                     code="required_offering_not_in_opener",
                     message="Required offering must appear in the opener paragraph.",
                     details={"required_offering": required_offering},
+                )
+            )
+        if req_norm and req_norm not in first_sentence_norm:
+            failures.append(
+                ValidationFailure(
+                    code="required_offering_not_in_first_sentence",
+                    message="Required offering must appear in the first sentence after the greeting.",
+                    details={"required_offering": required_offering},
+                )
+            )
+        timing_terms = [
+            "deadline",
+            "due",
+            "by ",
+            "must be",
+            "obligat",
+            "liquidat",
+            "fiscal",
+            "fy",
+            "window",
+        ]
+        has_timing_term = any(term in first_sentence_norm for term in timing_terms)
+        has_date = bool(re.search(r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|\\b20\\d{2}\\b|\\b\\d{1,2}/\\d{1,2}\\b", first_sentence_norm))
+        if has_timing_term or has_date:
+            failures.append(
+                ValidationFailure(
+                    code="timing_in_first_sentence",
+                    message="Do not lead with deadlines or dates in the first sentence after the greeting.",
+                    details={"first_sentence": first_sentence},
                 )
             )
 
