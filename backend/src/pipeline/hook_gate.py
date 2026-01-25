@@ -369,6 +369,34 @@ def _is_hook_expired(h: WebHook) -> bool:
             ctx = text[max(0, m.start()-40):min(len(text), m.end()+40)].lower()
             if any(kw in ctx for kw in ["deadline", "due", "grant", "was", "expired", "2023-24", "2022-23"]):
                 return True
+
+    # Pattern 4: Past school-year references without ongoing/renewal signals
+    ongoing_markers = [
+        "ongoing",
+        "currently",
+        "continues",
+        "continuing",
+        "renewed",
+        "renewal",
+        "this year",
+        "current year",
+        "sy",
+        "school year",
+        "fy",
+        "fiscal year",
+        "2024-25",
+        "2025-26",
+        "2026-27",
+    ]
+    school_year = re.search(r"\b(20\d{2})\s*[-–]\s*(\d{2,4})\b", text)
+    if school_year:
+        start_year = int(school_year.group(1))
+        end_raw = school_year.group(2)
+        end_year = int(end_raw) if len(end_raw) == 4 else int(f"{start_year//100}{end_raw}")
+        if end_year < current_year - 1:
+            ctx = text.lower()
+            if not any(marker in ctx for marker in ongoing_markers):
+                return True
     
     return False
 

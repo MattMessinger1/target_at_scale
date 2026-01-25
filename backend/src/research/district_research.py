@@ -123,6 +123,7 @@ Return your findings as a structured JSON object:
 - Only include items with verifiable sources
 - Prefer official .gov sources, district websites, or authoritative news
 - If deadline has passed, do NOT include
+- If the opportunity is tied to a past school year (e.g., 2022-23) and is NOT explicitly ongoing or renewed, do NOT include
 - If you cannot find district-specific information beyond state programs, note it in districts_with_no_findings
 
 ## Quality Bar
@@ -332,6 +333,34 @@ def _is_finding_expired(finding: Dict[str, Any]) -> Tuple[bool, str]:
             ctx = text[max(0, m.start()-40):min(len(text), m.end()+40)].lower()
             if any(kw in ctx for kw in ["deadline", "due", "grant", "was", "expired", "levy", "vote"]):
                 return True, f"Stale deadline (year {year})"
+
+    # Pattern 3: Past school-year references without ongoing/renewal signals
+    ongoing_markers = [
+        "ongoing",
+        "currently",
+        "continues",
+        "continuing",
+        "renewed",
+        "renewal",
+        "this year",
+        "current year",
+        "sy",
+        "school year",
+        "fy",
+        "fiscal year",
+        "2024-25",
+        "2025-26",
+        "2026-27",
+    ]
+    school_year = re.search(r"\b(20\d{2})\s*[-–]\s*(\d{2,4})\b", text)
+    if school_year:
+        start_year = int(school_year.group(1))
+        end_raw = school_year.group(2)
+        end_year = int(end_raw) if len(end_raw) == 4 else int(f"{start_year//100}{end_raw}")
+        if end_year < current_year - 1:
+            ctx = text.lower()
+            if not any(marker in ctx for marker in ongoing_markers):
+                return True, f"Stale school year ({start_year}-{end_raw})"
     
     return False, ""
 
