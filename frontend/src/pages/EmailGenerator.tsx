@@ -2455,7 +2455,21 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
           hook: item.hook,
         }))
       }
-      if (selectedHookLinks.length === 0 && cachedHooksToUse.length > 0) {
+      if (cachedHooksOverride && cachedHooksOverride.length > 0) {
+        const overrideIds = cachedHooksOverride
+          .map((item) => ('hook_id' in item.hook ? item.hook.hook_id : undefined))
+          .filter((id): id is string => Boolean(id))
+        const overrideLinks = cachedHooksOverride
+          .map((item) => ('link' in item.hook ? item.hook.link : undefined))
+          .filter((link): link is string => Boolean(link))
+        if (overrideIds.length > 0) {
+          req.selected_hook_ids = overrideIds
+          req.primary_hook_id = overrideIds[0]
+        } else if (overrideLinks.length > 0) {
+          req.selected_hook_links = overrideLinks
+          req.primary_hook_link = overrideLinks[0]
+        }
+      } else if (selectedHookLinks.length === 0 && cachedHooksToUse.length > 0) {
         const cachedStateHooks = cachedHooksToUse.filter(
           (item) => item.category === 'state' && item.hook && ('hook_id' in item.hook || 'link' in item.hook)
         )
@@ -2485,7 +2499,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
         if (prepLike.district_research) req.district_research = prepLike.district_research
         if (prepLike.conferences) req.conferences = prepLike.conferences
       }
-      if (prep && selectedHookLinks.length > 0) {
+      if (!cachedHooksOverride && prep && selectedHookLinks.length > 0) {
         // Send hook IDs (preferred) for reliable selection
         req.selected_hook_ids = selectedHookLinks  // selectedHookLinks now contains hook_id or link
         req.primary_hook_id = (primaryHookLink || selectedHookLinks[0] || '').trim() || undefined
