@@ -1116,6 +1116,9 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                 for h in original_hooks:
                                     if h.hook_id == hook_id:
                                         return h
+                                for h in cached_webhooks:
+                                    if h.hook_id == hook_id:
+                                        return h
                                 return None
                             
                             ph = _find_hook_by_id(primary_id)
@@ -1140,6 +1143,9 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                 for h in original_hooks:
                                     if h.link == link:
                                         return h
+                                for h in cached_webhooks:
+                                    if h.link == link:
+                                        return h
                                 return None
 
                             ph = _find_hook(primary_link)
@@ -1158,31 +1164,36 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         
                         if not ph:
                             identifier = primary_id if use_hook_ids else primary_link
-                            raise RuntimeError(f"Primary hook not found: {identifier}")
-                        
-                        logger.info(f"Using primary hook: id={ph.hook_id}, type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
-                        primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected"])
+                            warnings.append(
+                                f"Selected primary hook not found ({identifier}); falling back to auto selection."
+                            )
+                            logger.warning("Primary hook not found (%s); falling back to auto selection.", identifier)
+                            use_explicit_selection = False
+                            use_forced = False
+                        else:
+                            logger.info(f"Using primary hook: id={ph.hook_id}, type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
+                            primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected"])
 
-                        # Handle secondary hook
-                        sh = None
-                        if use_hook_ids and secondary_id:
-                            sh = _find_hook_by_id(secondary_id)
-                            if not sh:
-                                for h in treasure_hooks or []:
-                                    if h.hook_id == secondary_id:
-                                        sh = h
-                                        break
-                        elif not use_hook_ids and secondary_link:
-                            sh = _find_hook(secondary_link)
-                            if not sh:
-                                for h in treasure_hooks or []:
-                                    if h.link == secondary_link:
+                            # Handle secondary hook
+                            sh = None
+                            if use_hook_ids and secondary_id:
+                                sh = _find_hook_by_id(secondary_id)
+                                if not sh:
+                                    for h in treasure_hooks or []:
+                                        if h.hook_id == secondary_id:
                                             sh = h
                                             break
-                        
-                        if sh:
-                            logger.info(f"Using secondary hook: id={sh.hook_id}, type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
-                            secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
+                            elif not use_hook_ids and secondary_link:
+                                sh = _find_hook(secondary_link)
+                                if not sh:
+                                    for h in treasure_hooks or []:
+                                        if h.link == secondary_link:
+                                            sh = h
+                                            break
+                            
+                            if sh:
+                                logger.info(f"Using secondary hook: id={sh.hook_id}, type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
+                                secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
                     elif has_cached_hooks:
                         # User selected cached hooks (from "State-level hooks" section) but not regular hooks
                         logger.info(f"Email task {task_id}: Using CACHED HOOKS mode ({len(request.selected_cached_hooks)} hooks)")
@@ -3349,6 +3360,34 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             use_hook_ids = len(forced_ids) > 0
             use_forced = use_hook_ids or len(forced_links) > 0
 
+            cached_webhooks: List[WebHook] = []
+            if request.selected_cached_hooks:
+                for cached in request.selected_cached_hooks:
+                    hook_data = cached.get("hook") if isinstance(cached, dict) else getattr(cached, "hook", None)
+                    if hook_data:
+                        if isinstance(hook_data, dict):
+                            cached_webhooks.append(WebHook(**hook_data))
+                        elif isinstance(hook_data, WebHook):
+                            cached_webhooks.append(hook_data)
+                        else:
+                            try:
+                                cached_webhooks.append(
+                                    WebHook(
+                                        hook_id=getattr(hook_data, "hook_id", None),
+                                        hook_type=getattr(hook_data, "hook_type", "cached"),
+                                        quote=getattr(hook_data, "quote", ""),
+                                        link=getattr(hook_data, "link", ""),
+                                        trigger_excerpt=getattr(hook_data, "trigger_excerpt", None),
+                                        eligibility_excerpt=getattr(hook_data, "eligibility_excerpt", None),
+                                        why_relevant=getattr(hook_data, "why_relevant", None),
+                                        confidence=getattr(hook_data, "confidence", "medium"),
+                                        district_name=getattr(hook_data, "district_name", None),
+                                        source_level=getattr(hook_data, "source_level", None),
+                                    )
+                                )
+                            except Exception as e:
+                                logger.warning(f"Failed to convert cached hook to WebHook (stream): {e}")
+
             # Evidence pack / hooks: reuse if provided, else compute.
             evidence_pack = request.evidence_pack
             treasure_hooks = request.treasure_hooks
@@ -3501,6 +3540,9 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         for h in original_hooks:
                             if h.hook_id == hook_id:
                                 return h
+                        for h in cached_webhooks:
+                            if h.hook_id == hook_id:
+                                return h
                         return None
                     
                     ph = _find_hook_by_id(primary_id)
@@ -3511,21 +3553,28 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                 ph = h
                                 break
                     if not ph:
-                        raise HTTPException(status_code=422, detail=f"Primary hook ID not found: {primary_id}")
-                    
-                    logger.info(f"Using primary hook (stream): id={ph.hook_id}, type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
-                    primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected"])
+                        warnings.append(
+                            f"Selected primary hook not found ({primary_id}); falling back to auto selection."
+                        )
+                        logger.warning(
+                            "Primary hook not found in stream selection (%s); falling back to auto selection.",
+                            primary_id,
+                        )
+                        use_forced = False
+                    else:
+                        logger.info(f"Using primary hook (stream): id={ph.hook_id}, type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
+                        primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected"])
 
-                    if secondary_id:
-                        sh = _find_hook_by_id(secondary_id)
-                        if not sh:
-                            for h in treasure_hooks or []:
-                                if h.hook_id == secondary_id:
-                                    sh = h
-                                    break
-                        if sh:
-                            logger.info(f"Using secondary hook (stream): id={sh.hook_id}, type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
-                            secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
+                        if secondary_id:
+                            sh = _find_hook_by_id(secondary_id)
+                            if not sh:
+                                for h in treasure_hooks or []:
+                                    if h.hook_id == secondary_id:
+                                        sh = h
+                                        break
+                            if sh:
+                                logger.info(f"Using secondary hook (stream): id={sh.hook_id}, type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
+                                secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
                 else:
                     # Fallback: use links (deprecated, may have collisions with same URL)
                     if len(forced_links) > 2:
@@ -3553,6 +3602,9 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         for h in original_hooks:
                             if h.link == link:
                                 return h
+                        for h in cached_webhooks:
+                            if h.link == link:
+                                return h
                         return None
 
                     ph = _find_hook(primary_link)
@@ -3563,24 +3615,32 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                 ph = h
                                 break
                     if not ph:
-                        raise HTTPException(status_code=422, detail=f"Primary hook URL not found in treasure_hooks: {primary_link}")
-                    
-                    logger.info(f"Using primary hook (stream): type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
-                    primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected"])
+                        warnings.append(
+                            f"Selected primary hook not found ({primary_link}); falling back to auto selection."
+                        )
+                        logger.warning(
+                            "Primary hook URL not found in stream selection (%s); falling back to auto selection.",
+                            primary_link,
+                        )
+                        use_forced = False
+                    else:
+                        logger.info(f"Using primary hook (stream): type={ph.hook_type}, trigger={ph.trigger_excerpt[:80] if ph.trigger_excerpt else 'N/A'}...")
+                        primary = SelectedHook(hook=ph, rank=1, reasons=["human_selected"])
 
-                    if secondary_link:
-                        sh = _find_hook(secondary_link)
-                        if not sh:
-                            for h in treasure_hooks or []:
-                                if h.link == secondary_link:
-                                    sh = h
-                                    break
-                        if not sh:
-                            raise HTTPException(
-                                status_code=422, detail=f"Secondary hook URL not found in treasure_hooks: {secondary_link}"
-                            )
-                        logger.info(f"Using secondary hook (stream): type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
-                        secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
+                        if secondary_link:
+                            sh = _find_hook(secondary_link)
+                            if not sh:
+                                for h in treasure_hooks or []:
+                                    if h.link == secondary_link:
+                                        sh = h
+                                        break
+                            if sh:
+                                logger.info(f"Using secondary hook (stream): type={sh.hook_type}, trigger={sh.trigger_excerpt[:80] if sh.trigger_excerpt else 'N/A'}...")
+                                secondary = SelectedHook(hook=sh, rank=2, reasons=["human_selected_secondary"])
+                            else:
+                                warnings.append(
+                                    f"Selected secondary hook not found ({secondary_link}); continuing with primary only."
+                                )
             else:
                 # Legacy behavior: choose one hook per audience deterministically.
                 yield _ndjson({"type": "stage_start", "ts": _utcnow_iso(), "stage": "hook_selector"})
