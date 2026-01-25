@@ -664,6 +664,13 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                     except Exception as e:
                                         logger.warning(f"Failed to convert cached hook to WebHook: {e}")
 
+                    if not request.district_name and cached_webhooks:
+                        for h in cached_webhooks:
+                            district_name = getattr(h, "district_name", None)
+                            if district_name:
+                                request.district_name = district_name
+                                break
+
                     # If cached district hooks exist and no explicit forced hooks were provided,
                     # force selection to the district hook(s) to prevent state-level fallback.
                     if not forced_ids and not forced_links and cached_webhooks:
@@ -3387,6 +3394,13 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                 )
                             except Exception as e:
                                 logger.warning(f"Failed to convert cached hook to WebHook (stream): {e}")
+
+            if not request.district_name and cached_webhooks:
+                for h in cached_webhooks:
+                    district_name = getattr(h, "district_name", None)
+                    if district_name:
+                        request.district_name = district_name
+                        break
 
             # Evidence pack / hooks: reuse if provided, else compute.
             evidence_pack = request.evidence_pack

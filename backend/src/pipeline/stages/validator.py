@@ -155,15 +155,75 @@ def _product_offerings(evidence_pack: EvidencePack, *, max_items: int = 12) -> L
 
 
 def _has_offering_phrase(email_body: str, evidence_pack: EvidencePack) -> bool:
-    """True if email contains at least one offering phrase (case-insensitive)."""
+    """True if email contains at least one offering phrase (case-insensitive).
+
+    For very long/awkward offerings, allow a shorter distinctive chunk match.
+    """
     offerings = _product_offerings(evidence_pack)
     if not offerings:
         # If no offering phrases exist, do not block generation.
         return True
     hay = normalize_ws(email_body).lower()
+    stop = {
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "for",
+        "to",
+        "of",
+        "in",
+        "on",
+        "with",
+        "by",
+        "from",
+        "at",
+        "as",
+        "is",
+        "are",
+        "be",
+        "been",
+        "being",
+        "that",
+        "this",
+        "these",
+        "those",
+        "it",
+        "its",
+        "their",
+        "your",
+        "our",
+        "you",
+        "we",
+        "they",
+        "will",
+        "can",
+        "may",
+        "must",
+    }
     for o in offerings:
-        if normalize_ws(o).lower() in hay:
+        o_norm = normalize_ws(o).lower()
+        if not o_norm:
+            continue
+        if o_norm in hay:
             return True
+        # If offering is long, accept a distinctive bigram or long token match.
+        tokens = [t for t in _word_tokens(o_norm) if t not in stop]
+        if len(tokens) >= 8 or len(o_norm) >= 60:
+            seen = set()
+            for a, b in zip(tokens, tokens[1:]):
+                if len(a) < 4 or len(b) < 4:
+                    continue
+                bg = f"{a} {b}"
+                if bg in seen:
+                    continue
+                seen.add(bg)
+                if bg in hay:
+                    return True
+            for tok in tokens:
+                if len(tok) >= 10 and tok in hay:
+                    return True
     return False
 
 

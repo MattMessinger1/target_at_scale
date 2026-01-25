@@ -77,7 +77,9 @@ def failures_to_instructions(failures: Sequence[ValidationFailure]) -> List[str]
     if "email_contains_url" in code_set:
         instructions.append("Remove any non-Calendly URLs from the email body (only the Calendly scheduling link is allowed).")
     if "missing_product_offering_phrase" in code_set:
-        instructions.append("Include at least ONE ProductBrief offering phrase verbatim (prefer using it as a bullet deliverable).")
+        instructions.append(
+            "Include at least ONE ProductBrief offering phrase or a distinctive snippet from the offerings list (verbatim preferred, not required if long/awkward)."
+        )
     if "missing_required_offering" in code_set:
         instructions.append("Include the required offering phrase verbatim (copy it exactly as given).")
     if "required_offering_not_in_first_sentence" in code_set:

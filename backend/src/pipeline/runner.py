@@ -207,6 +207,8 @@ async def _run_variant(
 
     attempts: List[Tuple] = []
     required_offering = _select_required_offering(evidence_pack, selected_hook, purpose_prompt)
+    if district_name and selected_hook and selected_hook.hook and not selected_hook.hook.district_name:
+        selected_hook.hook.district_name = district_name
 
     # Attempt 0 (initial)
     t0 = time.perf_counter()
