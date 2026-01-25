@@ -488,12 +488,12 @@ def validate_email_draft(
             )
         )
 
-    # Bullets - require 2-3 bullets
-    if not (2 <= len(bullets) <= 3):
+    # Bullets - optional (0-3)
+    if len(bullets) > 3:
         failures.append(
             ValidationFailure(
                 code="bullet_count_invalid",
-                message=f"Must have 2-3 bullets (got {len(bullets)}).",
+                message=f"Must have 0-3 bullets (got {len(bullets)}).",
                 details={"bullet_count": len(bullets), "bullets": bullets},
             )
         )
@@ -564,6 +564,17 @@ def validate_email_draft(
     # Opener (no URLs printed): must include a sourced trigger token (see trigger gate below).
     opener = first_paragraph(email_body)
     hook_link = selected_hook.hook.link
+    if required_offering:
+        opener_norm = normalize_ws(opener).lower()
+        req_norm = normalize_ws(required_offering).lower()
+        if req_norm and req_norm not in opener_norm:
+            failures.append(
+                ValidationFailure(
+                    code="required_offering_not_in_opener",
+                    message="Required offering must appear in the opener paragraph.",
+                    details={"required_offering": required_offering},
+                )
+            )
 
     # Email body must not print URLs; exception: configured Calendly URL in CTA.
     url_hits = re.findall(r"https?://\S+|\bwww\.\S+", email_body or "", flags=re.I)
@@ -613,7 +624,7 @@ def validate_email_draft(
             )
 
     bullet_claims = _claims_map_find(claims_map, kind="deliverable_bullet")
-    if 2 <= len(bullets) <= 3:
+    if 1 <= len(bullets) <= 3:
         # Require one claim per bullet text (whitespace-normalized)
         normalized_claims = {normalize_ws(c.claim_text) for c in bullet_claims}
         for b in bullets:
@@ -626,7 +637,7 @@ def validate_email_draft(
                     )
                 )
                 break
-    else:
+    elif len(bullets) > 3:
         # If bullet count invalid, still surface missing bullet mapping as secondary info
         if not bullet_claims:
             failures.append(
