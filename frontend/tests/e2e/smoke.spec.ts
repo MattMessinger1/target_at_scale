@@ -2,13 +2,13 @@ import { test, expect } from '@playwright/test'
 
 test('email generator loads', async ({ page }) => {
   await page.goto('/email')
-  await expect(page.getByText('Email Generator', { exact: false })).toBeVisible()
-  await expect(page.getByText('Choose Product & Audience', { exact: false })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Email Generator' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Choose Product & Audience' })).toBeVisible()
 })
 
 test('saved research loads', async ({ page }) => {
   await page.goto('/saved-runs')
-  await expect(page.getByText('Saved Research', { exact: false })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Saved Research' })).toBeVisible()
 })
 
 test('selected hook appears in generated email and saves feedback', async ({ page }) => {
@@ -26,12 +26,12 @@ test('selected hook appears in generated email and saves feedback', async ({ pag
     .filter({ hasText: 'Monitoring' })
     .first()
   await expect(monitoringHook).toBeVisible({ timeout: 20_000 })
+  const hookText = (await monitoringHook.textContent()) || ''
   await monitoringHook.locator('input[type="checkbox"]').check()
 
   await page.getByRole('button', { name: /Generate Email/i }).click()
   await expect(page.getByText('Review and Improve Email', { exact: false })).toBeVisible({ timeout: 180_000 })
 
-  const triggerExcerpt = (await page.locator('[data-testid="selected-trigger-excerpt"]').first().textContent()) || ''
   const emailBody = ((await page.locator('[data-testid="email-body"]').textContent()) || '').toLowerCase()
 
   const stopwords = new Set([
@@ -40,7 +40,7 @@ test('selected hook appears in generated email and saves feedback', async ({ pag
     'funds', 'funding', 'eligible', 'requires', 'requirement', 'requirements',
   ])
   const tokens = Array.from(new Set(
-    (triggerExcerpt.match(/[A-Za-z]{4,}/g) || [])
+    (hookText.match(/[A-Za-z]{4,}/g) || [])
       .map((word) => word.toLowerCase())
       .filter((word) => !stopwords.has(word))
   ))
