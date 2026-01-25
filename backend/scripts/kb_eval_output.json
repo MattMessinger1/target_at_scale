@@ -1,0 +1,2588 @@
+{
+  "scenarios": [
+    {
+      "id": "care_coaching_FL_titleiii",
+      "product": "CARE Coaching",
+      "state": "FL",
+      "audiences": [
+        "Title III Coordinators",
+        "ELL/Multilingual Directors"
+      ],
+      "summary": {
+        "retrieved_chunks": 18,
+        "unique_sources": 14,
+        "unique_files": 12,
+        "top_files": [
+          "1.1 Building Capacity Learning walk took.docx",
+          "3-year Implementation NC Proposal.docx.pdf",
+          "CARE Coaching Needs Assessment (CCNA) | Services | Pathways.html",
+          "CARE Coaching Needs Assessment (CCNA): Action-Based Data for All | Learning Library | WCEPS.html",
+          "CARE Coaching Team | Pathways.html",
+          "CARE Coaching in action: Hall County School District Georgia - Pathways.html",
+          "CARE_Coaching_Program_Overview_1.pdf",
+          "Culturally Responsive InstructionLOGO.pdf",
+          "Denver RFP BD2573 final.docx",
+          "Family EngagementwLOGO.pdf",
+          "Florida State Statute and Guidance related to ELs and school improvement grant information.docx",
+          "Potential Florida Marketing Content.docx"
+        ],
+        "chunks_per_source_top": [
+          [
+            "ff8e487d-1877-4fa8-84fb-7f33320d2833",
+            2
+          ],
+          [
+            "b322e9b3-9e64-4a9d-8665-5c7e370e2c33",
+            2
+          ],
+          [
+            "59ea5cd5-ebad-4b0a-92a0-e2faa6947dee",
+            2
+          ],
+          [
+            "77e237ce-ece4-456a-a4ea-a41cc01172a0",
+            2
+          ],
+          [
+            "15336f33-c4fc-4d29-9e41-763ab3a7278e",
+            1
+          ],
+          [
+            "9d6599ad-9b67-4b1d-a9a6-607bfb3d9dd0",
+            1
+          ],
+          [
+            "d520f3a6-f94c-4e17-b471-1acbcc20c256",
+            1
+          ],
+          [
+            "cd7749c6-bdf9-4fe0-b4c6-5ad8ab9796e8",
+            1
+          ],
+          [
+            "38e04928-3e3a-43b9-958f-1b3ed40f6618",
+            1
+          ],
+          [
+            "0d8b78b5-2996-44d4-b9be-280b8a113941",
+            1
+          ]
+        ]
+      },
+      "expectations": {
+        "must_have_total": 0,
+        "must_have_missing": [],
+        "avoid_present": [],
+        "must_have_recall": null
+      },
+      "retrieved_chunks": [
+        {
+          "chunk_id": "ff8e487d-1877-4fa8-84fb-7f33320d2833_chunk_3",
+          "source_kb_id": "ff8e487d-1877-4fa8-84fb-7f33320d2833",
+          "title": "Potential Florida Marketing Content",
+          "file_name": "Potential Florida Marketing Content.docx",
+          "document_type": "docx",
+          "excerpt": "ucators working with English learner students. CARE Coaching can help meet those requirements. Start with a CARE Coaching Needs Assessment (CCNA) to: Identify strengths, Pinpoint growth areas, and Drive data-informed professional learning plans to ignite sustainable instructional growth with measurable results [include a call to action, maybe something like…",
+          "category": "state_content",
+          "subcategory": "fl",
+          "product_name": "care_coaching",
+          "applicable_states": [
+            "FL"
+          ],
+          "chunk_index": 3,
+          "total_chunks": 4,
+          "similarity": 0.609,
+          "adjusted_score": 0.639,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "b322e9b3-9e64-4a9d-8665-5c7e370e2c33_chunk_0",
+          "source_kb_id": "b322e9b3-9e64-4a9d-8665-5c7e370e2c33",
+          "title": "CARE Coaching Professional Learning Program Overview",
+          "file_name": "CARE_Coaching_Program_Overview_1.pdf",
+          "document_type": "pdf",
+          "excerpt": "CARE Coaching Professional Learning Program Overview CARE Coaching Professional Learning Program - Advancing Equitable Educational Opportunities CARE Coaching is a professional learning program through WCEPS designed to ensure educators provide equitable educational opportunities for multilingual learners. The CARE approach is: Collaborative, Actionable, Re…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 6,
+          "similarity": 0.6047,
+          "adjusted_score": 0.6047,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "59ea5cd5-ebad-4b0a-92a0-e2faa6947dee_chunk_0",
+          "source_kb_id": "59ea5cd5-ebad-4b0a-92a0-e2faa6947dee",
+          "title": "CARE Coaching Team | Pathways",
+          "file_name": "CARE Coaching Team | Pathways.html",
+          "document_type": "website",
+          "excerpt": "CARE Coaching Team | Pathways CARE Coaching Team Meet Our CARE Coaching Team Connect with us Lead Coaches Yvonne WilliamsVice President of Educator Engagement at WCEPS, CARE Coach PreK-12 | English/Spanish | Special Education | InternationalWIDA Español-Trained WCEPS Facilitator Learning Forward Language of Coaching Graduate Read Yvonne’s Bio Yvonne William…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": [
+            "FL",
+            "WA",
+            "CO",
+            "VA"
+          ],
+          "chunk_index": 0,
+          "total_chunks": 18,
+          "similarity": 0.5617,
+          "adjusted_score": 0.5917,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "ff8e487d-1877-4fa8-84fb-7f33320d2833_chunk_1",
+          "source_kb_id": "ff8e487d-1877-4fa8-84fb-7f33320d2833",
+          "title": "Potential Florida Marketing Content",
+          "file_name": "Potential Florida Marketing Content.docx",
+          "document_type": "docx",
+          "excerpt": "specific to that. Comprehensive Support Grant (CSG) Funding Example email subject line: Check out CARE Coaching to meet your CSI, TSI, or ATSI required ESOL Professional Learning [Dear Educator] Is your professional learning for the ESOL section of your Comprehensive Support Grant (CSG) application in need of improvement? Check out how CARE Coaching provide…",
+          "category": "state_content",
+          "subcategory": "fl",
+          "product_name": "care_coaching",
+          "applicable_states": [
+            "FL"
+          ],
+          "chunk_index": 1,
+          "total_chunks": 4,
+          "similarity": 0.5586,
+          "adjusted_score": 0.5886,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "15336f33-c4fc-4d29-9e41-763ab3a7278e_chunk_1",
+          "source_kb_id": "15336f33-c4fc-4d29-9e41-763ab3a7278e",
+          "title": "Florida State Statute, Rules and Guidance related to ELs and school improvement grant information (Part 1/2)",
+          "file_name": "Florida State Statute and Guidance related to ELs and school improvement grant information.docx",
+          "document_type": "docx",
+          "excerpt": "t (CSG), and information about CSG grants is available in a FL DOE PowerPoint, slides 116 to 122. Funding available is discussed on Slide 120 and is $39,282,943, or about $79,000 per eligible school. One of the areas identified where these funds can be used is “Professional Learning Activities”. There is also funding for Underperforming Subgroups, which wou…",
+          "category": "state_content",
+          "subcategory": "fl",
+          "product_name": "care_coaching",
+          "applicable_states": [
+            "FL"
+          ],
+          "chunk_index": 1,
+          "total_chunks": 5,
+          "similarity": 0.5552,
+          "adjusted_score": 0.5852,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "9d6599ad-9b67-4b1d-a9a6-607bfb3d9dd0",
+          "source_kb_id": "9d6599ad-9b67-4b1d-a9a6-607bfb3d9dd0",
+          "title": "Ł CARE Coaching A ,A Advancing Equitable Educational Opportunities",
+          "file_name": "Culturally Responsive InstructionLOGO.pdf",
+          "document_type": "pdf",
+          "excerpt": "Ł CARE Coaching A ,A Advancing Equitable Educational Opportunities Title: Ł CARE Coaching A ,A Advancing Equitable Educational Opportunities Tags: use for content / context in quick tip section. Content: Ł CARE Coaching A ,A Advancing Equitable Educational Opportunities Culturally Responsive Instruction Already Do Need to Enhance Already do, how? Need to en…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 1,
+          "similarity": 0.5803,
+          "adjusted_score": 0.5803,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "59ea5cd5-ebad-4b0a-92a0-e2faa6947dee_chunk_9",
+          "source_kb_id": "59ea5cd5-ebad-4b0a-92a0-e2faa6947dee",
+          "title": "CARE Coaching Team | Pathways",
+          "file_name": "CARE Coaching Team | Pathways.html",
+          "document_type": "website",
+          "excerpt": "of high school ELL and team-taught content courses to multilingual learners at the high school level. At the college level, she has taught ELL Composition and Bilingual Methods to aspiring educators. Chávez-Dávalos is a native of El Paso, Texas, who obtained a BA in English and MA in Curriculum and Instruction from New Mexico State University in Las Cruces,…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": [
+            "FL",
+            "WA",
+            "CO",
+            "VA"
+          ],
+          "chunk_index": 9,
+          "total_chunks": 18,
+          "similarity": 0.5502,
+          "adjusted_score": 0.5802,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "d520f3a6-f94c-4e17-b471-1acbcc20c256_chunk_2",
+          "source_kb_id": "d520f3a6-f94c-4e17-b471-1acbcc20c256",
+          "title": "A directory of the Proposal Submission Requirements is given below. (Part 4/7)",
+          "file_name": "Denver RFP BD2573 final.docx",
+          "document_type": "docx",
+          "excerpt": "es at each school. CARE Coaching Data Retreat An in-person workshop that reviews all input and data, selects focus areas for the 2025–2026 school year and develops improvement plans. DELIVERABLE: Detailed implementation plan, including coaching schedules and PD calendars August 11-15 Professional Learning Workshops The first workshop in a series of professi…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 2,
+          "total_chunks": 5,
+          "similarity": 0.5761,
+          "adjusted_score": 0.5761,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "cd7749c6-bdf9-4fe0-b4c6-5ad8ab9796e8_chunk_0",
+          "source_kb_id": "cd7749c6-bdf9-4fe0-b4c6-5ad8ab9796e8",
+          "title": "3-year Implementation NC Proposal.docx (Part 4/5)",
+          "file_name": "3-year Implementation NC Proposal.docx.pdf",
+          "document_type": "pdf",
+          "excerpt": "3-year Implementation NC Proposal.docx (Part 4/5) nd mainstream teachers will engage in regular collaboration and planning sessions to align instructional strategies and support ELLs' language and content learning. ● Teachers will share effective practices and resources related to ELL instruction to enhance professional growth and knowledge. Educators will …",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 5,
+          "similarity": 0.576,
+          "adjusted_score": 0.576,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "38e04928-3e3a-43b9-958f-1b3ed40f6618_chunk_1",
+          "source_kb_id": "38e04928-3e3a-43b9-958f-1b3ed40f6618",
+          "title": "CARE Coaching in action: Hall County School District Georgia - Pathways",
+          "file_name": "CARE Coaching in action: Hall County School District Georgia - Pathways.html",
+          "document_type": "website",
+          "excerpt": "ions that model real-world strategies teachers can use immediately. Every session connects directly to state language standards and includes ready-to-implement resources to make application seamless. Hall County educators received: Classroom-ready strategies modeled in real time and proven effective with multilingual learners Practical resources including P…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 1,
+          "total_chunks": 2,
+          "similarity": 0.5746,
+          "adjusted_score": 0.5746,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "0d8b78b5-2996-44d4-b9be-280b8a113941_chunk_4",
+          "source_kb_id": "0d8b78b5-2996-44d4-b9be-280b8a113941",
+          "title": "CARE Coaching Needs Assessment (CCNA) | Services | Pathways",
+          "file_name": "CARE Coaching Needs Assessment (CCNA) | Services | Pathways.html",
+          "document_type": "website",
+          "excerpt": "d strategic next steps. Multilingual Learner SupportIncludes focused items and recommendations on how to better serve multilingual learners, while also providing strategies that benefit all students. Ideal for schools with diverse language backgrounds. Request a Demo Learn More about CARE Coaching What is CARE Coaching Needs Assessment (CCNA)? Looking to le…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 4,
+          "total_chunks": 5,
+          "similarity": 0.5733,
+          "adjusted_score": 0.5733,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "8e5baf5d-d607-42fa-9fb4-244c8e8f0ec1_chunk_4",
+          "source_kb_id": "8e5baf5d-d607-42fa-9fb4-244c8e8f0ec1",
+          "title": "CARE Coaching Needs Assessment (CCNA) | Services | Pathways",
+          "file_name": "CARE Coaching Needs Assessment (CCNA) | Services | Pathways.html",
+          "document_type": "website",
+          "excerpt": "d strategic next steps. Multilingual Learner SupportIncludes focused items and recommendations on how to better serve multilingual learners, while also providing strategies that benefit all students. Ideal for schools with diverse language backgrounds. Request a Demo Learn More about CARE Coaching What is CARE Coaching Needs Assessment (CCNA)? Looking to le…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 4,
+          "total_chunks": 5,
+          "similarity": 0.5732,
+          "adjusted_score": 0.5732,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "95ed587f-6e57-4c8c-b7be-a3ceb3f4ec83_chunk_0",
+          "source_kb_id": "95ed587f-6e57-4c8c-b7be-a3ceb3f4ec83",
+          "title": "CARE Coaching Needs Assessment (CCNA): Action-Based Data for All | Learning Library | WCEPS",
+          "file_name": "CARE Coaching Needs Assessment (CCNA): Action-Based Data for All | Learning Library | WCEPS.html",
+          "document_type": "website",
+          "excerpt": "CARE Coaching Needs Assessment (CCNA): Action-Based Data for All | Learning Library | WCEPS Description: Discover how the CARE Coaching Needs Assessment (CCNA) helps school leaders use action-based data to drive improvement, professional learning and support multilingual learners. The CARE Coaching Needs Assessment (CCNA): Action-Based Data for All We all k…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 6,
+          "similarity": 0.5642,
+          "adjusted_score": 0.5642,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "77e237ce-ece4-456a-a4ea-a41cc01172a0_chunk_1",
+          "source_kb_id": "77e237ce-ece4-456a-a4ea-a41cc01172a0",
+          "title": "3-year Implementation NC Proposal.docx (Part 2/5)",
+          "file_name": "3-year Implementation NC Proposal.docx.pdf",
+          "document_type": "pdf",
+          "excerpt": "framework, using an instructional planning template with guiding questions. They connect key language uses to culminating tasks and prioritize language functions and features to scaffold instruction. Extension PD day Tbd Focus: Follow up geared by survey results and teacher voice (Potential topic: Language Charts) Cost for Year #1:TBD Based on menu of optio…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 1,
+          "total_chunks": 5,
+          "similarity": 0.5619,
+          "adjusted_score": 0.5619,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "77e237ce-ece4-456a-a4ea-a41cc01172a0_chunk_2",
+          "source_kb_id": "77e237ce-ece4-456a-a4ea-a41cc01172a0",
+          "title": "3-year Implementation NC Proposal.docx (Part 2/5)",
+          "file_name": "3-year Implementation NC Proposal.docx.pdf",
+          "document_type": "pdf",
+          "excerpt": ". 3. Collaboration with Colleagues: Collaborate with other teachers, ESL specialists, and support staff to share strategies, resources, and insights related to working with English language learners. Engage in professional development opportunities to enhance my knowledge and skills in ESL instruction. 4. Parent and Community Involvement: Foster strong part…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 2,
+          "total_chunks": 5,
+          "similarity": 0.5593,
+          "adjusted_score": 0.5593,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "b322e9b3-9e64-4a9d-8665-5c7e370e2c33_chunk_1",
+          "source_kb_id": "b322e9b3-9e64-4a9d-8665-5c7e370e2c33",
+          "title": "CARE Coaching Professional Learning Program Overview",
+          "file_name": "CARE_Coaching_Program_Overview_1.pdf",
+          "document_type": "pdf",
+          "excerpt": "ical assistance and program review 3. Coaching - Meet you where you are and get where you want to go with guiding questions, reflection, sharing, and goal setting FOUNDATIONAL PRINCIPLES OFFERINGS: Building Capacity to Bridge Content Learning and Language Development - Explore connections between grade-level content standards and language development standa…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 1,
+          "total_chunks": 6,
+          "similarity": 0.5582,
+          "adjusted_score": 0.5582,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "150d40ee-ae30-4191-abb0-f3dfa46ff752",
+          "source_kb_id": "150d40ee-ae30-4191-abb0-f3dfa46ff752",
+          "title": "Ł CARE Coaching A A Advancing Equitable Educational Opportun1t1es",
+          "file_name": "Family EngagementwLOGO.pdf",
+          "document_type": "pdf",
+          "excerpt": "Ł CARE Coaching A A Advancing Equitable Educational Opportun1t1es Title: Ł CARE Coaching A A Advancing Equitable Educational Opportun1t1es Tags: use for content / context in quick tip section. Content: Ł CARE Coaching A A Advancing Equitable Educational Opportun1t1es ABCs of Family Engagement Already Do Need to Enhance Already do, how? Need to enhance, how?…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 1,
+          "similarity": 0.5578,
+          "adjusted_score": 0.5578,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "07560dcb-8559-4b6c-a55a-01467ca9a74a_chunk_3",
+          "source_kb_id": "07560dcb-8559-4b6c-a55a-01467ca9a74a",
+          "title": "Learning Walk Observation Tool",
+          "file_name": "1.1 Building Capacity Learning walk took.docx",
+          "document_type": "docx",
+          "excerpt": "e for diverse proficiency levels? What professional learning or coaching might support next steps? 5. Optional Rating Scale (for consistency across observers) Domain 1 - Emerging 2 - Developing 3 - Applying 4 - Extending Asset-Based Practice Content-Language Integration Student Language Use Differentiation by PLD Multimodal Supports 🔍 Implementation Notes U…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 3,
+          "total_chunks": 4,
+          "similarity": 0.5552,
+          "adjusted_score": 0.5552,
+          "boost": 0.0
+        }
+      ]
+    },
+    {
+      "id": "care_coaching_CO",
+      "product": "CARE Coaching",
+      "state": "CO",
+      "audiences": [
+        "Title III Coordinators",
+        "ELL/Multilingual Directors"
+      ],
+      "summary": {
+        "retrieved_chunks": 18,
+        "unique_sources": 14,
+        "unique_files": 11,
+        "top_files": [
+          "3-year Implementation NC Proposal.docx.pdf",
+          "CARE Coaching Needs Assessment (CCNA) | Services | Pathways.html",
+          "CARE Coaching Team | Pathways.html",
+          "CARE Coaching in action: Hall County School District Georgia - Pathways.html",
+          "CARE_Coaching_International_Flyer_FINAL.pdf",
+          "CARE_Coaching_Program_Overview_1.pdf",
+          "CO statute and info with licensing info.docx",
+          "Culturally Responsive InstructionLOGO.pdf",
+          "Denver RFP BD2573 final.docx",
+          "Learning Library - Resources for Educators | Pathways for Language Learner Success.html",
+          "Title Funding for PD.docx"
+        ],
+        "chunks_per_source_top": [
+          [
+            "d316eb50-bdf5-4ba0-99bb-7a66a0f96807",
+            2
+          ],
+          [
+            "81d5e04b-b903-4b52-a3b9-85481925fd9e",
+            2
+          ],
+          [
+            "8029c7f2-f438-4daa-8220-5f44029047c3",
+            2
+          ],
+          [
+            "59ea5cd5-ebad-4b0a-92a0-e2faa6947dee",
+            2
+          ],
+          [
+            "63afde24-8057-4ee8-9e84-23895c400792",
+            1
+          ],
+          [
+            "b322e9b3-9e64-4a9d-8665-5c7e370e2c33",
+            1
+          ],
+          [
+            "ba629c82-4d72-486d-977d-a9ef290e48bb",
+            1
+          ],
+          [
+            "4a61a87e-947b-4e5d-8a93-214e554a31ac",
+            1
+          ],
+          [
+            "9d6599ad-9b67-4b1d-a9a6-607bfb3d9dd0",
+            1
+          ],
+          [
+            "d520f3a6-f94c-4e17-b471-1acbcc20c256",
+            1
+          ]
+        ]
+      },
+      "expectations": {
+        "must_have_total": 2,
+        "must_have_missing": [
+          "Colorado State Buyer_s Guide.pdf"
+        ],
+        "avoid_present": [],
+        "must_have_recall": 0.5
+      },
+      "retrieved_chunks": [
+        {
+          "chunk_id": "d316eb50-bdf5-4ba0-99bb-7a66a0f96807_chunk_1",
+          "source_kb_id": "d316eb50-bdf5-4ba0-99bb-7a66a0f96807",
+          "title": "CARE COACHING INTERNATIONAL",
+          "file_name": "CARE_Coaching_International_Flyer_FINAL.pdf",
+          "document_type": "pdf",
+          "excerpt": "INSTRUCTIONAL IMPLICATIONS OF LANGUAGE PROFICIENCY SCORES Our CARE Coaches can support your teachers and leaders to determine next steps and instructional implications of language proficiency data. Participants will use the rubrics to plan linguistic scaffolds and review student data with an asset-based approach. BUILDING A COLLABORATIVE CULTURE FOR MULTILI…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": [
+            "WI",
+            "CO"
+          ],
+          "chunk_index": 1,
+          "total_chunks": 2,
+          "similarity": 0.6328,
+          "adjusted_score": 0.6628000000000001,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "81d5e04b-b903-4b52-a3b9-85481925fd9e_chunk_1",
+          "source_kb_id": "81d5e04b-b903-4b52-a3b9-85481925fd9e",
+          "title": "CARE COACHING INTERNATIONAL",
+          "file_name": "CARE_Coaching_International_Flyer_FINAL.pdf",
+          "document_type": "pdf",
+          "excerpt": "means of representation, expression, and engagement to support diverse learners. Formats include virtual, in -person and half day sessions with afternoon co-planning time with a trained CARE Coach. INSTRUCTIONAL IMPLICATIONS OF LANGUAGE PROFICIENCY SCORES Our CARE Coaches can support your teachers and leaders to determine next steps and instructional implic…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": [
+            "WI",
+            "CO"
+          ],
+          "chunk_index": 1,
+          "total_chunks": 2,
+          "similarity": 0.6238,
+          "adjusted_score": 0.6538,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "d316eb50-bdf5-4ba0-99bb-7a66a0f96807_chunk_0",
+          "source_kb_id": "d316eb50-bdf5-4ba0-99bb-7a66a0f96807",
+          "title": "CARE COACHING INTERNATIONAL",
+          "file_name": "CARE_Coaching_International_Flyer_FINAL.pdf",
+          "document_type": "pdf",
+          "excerpt": "CARE COACHING INTERNATIONAL CARE COACHING INTERNATIONAL CARE Coaching International, offered through the Wisconsin Center for Education products and Services, is designed to ensure that international educators and leaders are supported to provide equitable educational opportunities for multilingual learners. VIEW (<https://drive.google. CARE COACHING INTERN…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": [
+            "WI",
+            "CO"
+          ],
+          "chunk_index": 0,
+          "total_chunks": 2,
+          "similarity": 0.5906,
+          "adjusted_score": 0.6206,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "63afde24-8057-4ee8-9e84-23895c400792_chunk_4",
+          "source_kb_id": "63afde24-8057-4ee8-9e84-23895c400792",
+          "title": "Colorado Statute and Guidance related to ELs (Part 1/2)",
+          "file_name": "CO statute and info with licensing info.docx",
+          "document_type": "docx",
+          "excerpt": "ofessional development and educator standards, a full audit will be conducted and the educator will be asked to submit this back up documentation. Involvement in School and/or District Performance: This is generally related to accountability and school improvement, but “Professional development in the area of culturally and linguistically diverse education”…",
+          "category": "state_content",
+          "subcategory": "co",
+          "product_name": "care_coaching",
+          "applicable_states": [
+            "CO"
+          ],
+          "chunk_index": 4,
+          "total_chunks": 5,
+          "similarity": 0.5858,
+          "adjusted_score": 0.6158,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "8029c7f2-f438-4daa-8220-5f44029047c3_chunk_2",
+          "source_kb_id": "8029c7f2-f438-4daa-8220-5f44029047c3",
+          "title": "Learning Library - Resources for Educators | Pathways for Language Learner Success",
+          "file_name": "Learning Library - Resources for Educators | Pathways for Language Learner Success.html",
+          "document_type": "website",
+          "excerpt": "ntent and language learning, can elevate student engagement and deepen academic achievement. A central strategy we focused on was using Specialist Roles to support content-rich learning environments. Read Full Post Recent Posts Video Administrators Educators Elementary Grades 6-12 CARE Coaching November 24, 2025 CARE Coaching in action: Hall County School D…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": [
+            "WI",
+            "CO"
+          ],
+          "chunk_index": 2,
+          "total_chunks": 6,
+          "similarity": 0.5792,
+          "adjusted_score": 0.6092000000000001,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "81d5e04b-b903-4b52-a3b9-85481925fd9e_chunk_0",
+          "source_kb_id": "81d5e04b-b903-4b52-a3b9-85481925fd9e",
+          "title": "CARE COACHING INTERNATIONAL",
+          "file_name": "CARE_Coaching_International_Flyer_FINAL.pdf",
+          "document_type": "pdf",
+          "excerpt": "CARE COACHING INTERNATIONAL Title: CARE COACHING INTERNATIONAL Content: CARE COACHING INTERNATIONAL CARE Coaching International, offered through the Wisconsin Center for Education products and Services, is designed to ensure that international educators and leaders are supported to provide equitable educational opportunities for multilingual learners. VIEW …",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": [
+            "WI",
+            "CO"
+          ],
+          "chunk_index": 0,
+          "total_chunks": 2,
+          "similarity": 0.5756,
+          "adjusted_score": 0.6056,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "b322e9b3-9e64-4a9d-8665-5c7e370e2c33_chunk_0",
+          "source_kb_id": "b322e9b3-9e64-4a9d-8665-5c7e370e2c33",
+          "title": "CARE Coaching Professional Learning Program Overview",
+          "file_name": "CARE_Coaching_Program_Overview_1.pdf",
+          "document_type": "pdf",
+          "excerpt": "CARE Coaching Professional Learning Program Overview CARE Coaching Professional Learning Program - Advancing Equitable Educational Opportunities CARE Coaching is a professional learning program through WCEPS designed to ensure educators provide equitable educational opportunities for multilingual learners. The CARE approach is: Collaborative, Actionable, Re…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 6,
+          "similarity": 0.6047,
+          "adjusted_score": 0.6047,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "ba629c82-4d72-486d-977d-a9ef290e48bb_chunk_0",
+          "source_kb_id": "ba629c82-4d72-486d-977d-a9ef290e48bb",
+          "title": "Colorado Statute and Guidance related to ELs (Part 2/2)",
+          "file_name": "CO statute and info with licensing info.docx",
+          "document_type": "docx",
+          "excerpt": "Colorado Statute and Guidance related to ELs (Part 2/2) and linguistically diverse education. Documentation requires: Completion of the renewal summary portion of the online application. Submission of documentation that includes a written log of meeting times and signed letter from committee chair verifying participation and number of meeting hours attended…",
+          "category": "state_content",
+          "subcategory": "co",
+          "product_name": "care_coaching",
+          "applicable_states": [
+            "CO"
+          ],
+          "chunk_index": 0,
+          "total_chunks": 3,
+          "similarity": 0.5732,
+          "adjusted_score": 0.6032000000000001,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "4a61a87e-947b-4e5d-8a93-214e554a31ac_chunk_2",
+          "source_kb_id": "4a61a87e-947b-4e5d-8a93-214e554a31ac",
+          "title": "ESEA/ESSA Federal Funding for EL Professional Development",
+          "file_name": "Title Funding for PD.docx",
+          "document_type": "docx",
+          "excerpt": "nizational personnel” (Sec. 3115(c)(2)). Any local education agency receiving Title III funds must use a portion of these funds to provide professional development to its educators working with ELs. Purchasing CARE Coaching, which is an allowable expenditure using Title II and Title III funds, is one way to meet the compliance requirements highlighted in th…",
+          "category": "state_content",
+          "subcategory": "co",
+          "product_name": "care_coaching",
+          "applicable_states": [
+            "CO"
+          ],
+          "chunk_index": 2,
+          "total_chunks": 3,
+          "similarity": 0.5689,
+          "adjusted_score": 0.5989,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "59ea5cd5-ebad-4b0a-92a0-e2faa6947dee_chunk_0",
+          "source_kb_id": "59ea5cd5-ebad-4b0a-92a0-e2faa6947dee",
+          "title": "CARE Coaching Team | Pathways",
+          "file_name": "CARE Coaching Team | Pathways.html",
+          "document_type": "website",
+          "excerpt": "CARE Coaching Team | Pathways CARE Coaching Team Meet Our CARE Coaching Team Connect with us Lead Coaches Yvonne WilliamsVice President of Educator Engagement at WCEPS, CARE Coach PreK-12 | English/Spanish | Special Education | InternationalWIDA Español-Trained WCEPS Facilitator Learning Forward Language of Coaching Graduate Read Yvonne’s Bio Yvonne William…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": [
+            "FL",
+            "WA",
+            "CO",
+            "VA"
+          ],
+          "chunk_index": 0,
+          "total_chunks": 18,
+          "similarity": 0.5617,
+          "adjusted_score": 0.5917,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "9d6599ad-9b67-4b1d-a9a6-607bfb3d9dd0",
+          "source_kb_id": "9d6599ad-9b67-4b1d-a9a6-607bfb3d9dd0",
+          "title": "Ł CARE Coaching A ,A Advancing Equitable Educational Opportunities",
+          "file_name": "Culturally Responsive InstructionLOGO.pdf",
+          "document_type": "pdf",
+          "excerpt": "Ł CARE Coaching A ,A Advancing Equitable Educational Opportunities Title: Ł CARE Coaching A ,A Advancing Equitable Educational Opportunities Tags: use for content / context in quick tip section. Content: Ł CARE Coaching A ,A Advancing Equitable Educational Opportunities Culturally Responsive Instruction Already Do Need to Enhance Already do, how? Need to en…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 1,
+          "similarity": 0.5803,
+          "adjusted_score": 0.5803,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "59ea5cd5-ebad-4b0a-92a0-e2faa6947dee_chunk_9",
+          "source_kb_id": "59ea5cd5-ebad-4b0a-92a0-e2faa6947dee",
+          "title": "CARE Coaching Team | Pathways",
+          "file_name": "CARE Coaching Team | Pathways.html",
+          "document_type": "website",
+          "excerpt": "of high school ELL and team-taught content courses to multilingual learners at the high school level. At the college level, she has taught ELL Composition and Bilingual Methods to aspiring educators. Chávez-Dávalos is a native of El Paso, Texas, who obtained a BA in English and MA in Curriculum and Instruction from New Mexico State University in Las Cruces,…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": [
+            "FL",
+            "WA",
+            "CO",
+            "VA"
+          ],
+          "chunk_index": 9,
+          "total_chunks": 18,
+          "similarity": 0.5502,
+          "adjusted_score": 0.5802,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "8029c7f2-f438-4daa-8220-5f44029047c3_chunk_3",
+          "source_kb_id": "8029c7f2-f438-4daa-8220-5f44029047c3",
+          "title": "Learning Library - Resources for Educators | Pathways for Language Learner Success",
+          "file_name": "Learning Library - Resources for Educators | Pathways for Language Learner Success.html",
+          "document_type": "website",
+          "excerpt": "isconsin Center for Education Products and Services (WCEPS), equips international educators and school leaders with strategies to foster equitable educational opportunities for multilingual learners. Read Full Post Blog Bilingual & Dual Language Educators Elementary Grades 6-12 CARE Coaching Tips and Dips Instructional strategies August 26, 2025 Unlocking N…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": [
+            "WI",
+            "CO"
+          ],
+          "chunk_index": 3,
+          "total_chunks": 6,
+          "similarity": 0.5497,
+          "adjusted_score": 0.5797,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "d520f3a6-f94c-4e17-b471-1acbcc20c256_chunk_2",
+          "source_kb_id": "d520f3a6-f94c-4e17-b471-1acbcc20c256",
+          "title": "A directory of the Proposal Submission Requirements is given below. (Part 4/7)",
+          "file_name": "Denver RFP BD2573 final.docx",
+          "document_type": "docx",
+          "excerpt": "es at each school. CARE Coaching Data Retreat An in-person workshop that reviews all input and data, selects focus areas for the 2025–2026 school year and develops improvement plans. DELIVERABLE: Detailed implementation plan, including coaching schedules and PD calendars August 11-15 Professional Learning Workshops The first workshop in a series of professi…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 2,
+          "total_chunks": 5,
+          "similarity": 0.5761,
+          "adjusted_score": 0.5761,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "cd7749c6-bdf9-4fe0-b4c6-5ad8ab9796e8_chunk_0",
+          "source_kb_id": "cd7749c6-bdf9-4fe0-b4c6-5ad8ab9796e8",
+          "title": "3-year Implementation NC Proposal.docx (Part 4/5)",
+          "file_name": "3-year Implementation NC Proposal.docx.pdf",
+          "document_type": "pdf",
+          "excerpt": "3-year Implementation NC Proposal.docx (Part 4/5) nd mainstream teachers will engage in regular collaboration and planning sessions to align instructional strategies and support ELLs' language and content learning. ● Teachers will share effective practices and resources related to ELL instruction to enhance professional growth and knowledge. Educators will …",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 5,
+          "similarity": 0.576,
+          "adjusted_score": 0.576,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "38e04928-3e3a-43b9-958f-1b3ed40f6618_chunk_1",
+          "source_kb_id": "38e04928-3e3a-43b9-958f-1b3ed40f6618",
+          "title": "CARE Coaching in action: Hall County School District Georgia - Pathways",
+          "file_name": "CARE Coaching in action: Hall County School District Georgia - Pathways.html",
+          "document_type": "website",
+          "excerpt": "ions that model real-world strategies teachers can use immediately. Every session connects directly to state language standards and includes ready-to-implement resources to make application seamless. Hall County educators received: Classroom-ready strategies modeled in real time and proven effective with multilingual learners Practical resources including P…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 1,
+          "total_chunks": 2,
+          "similarity": 0.5746,
+          "adjusted_score": 0.5746,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "0d8b78b5-2996-44d4-b9be-280b8a113941_chunk_4",
+          "source_kb_id": "0d8b78b5-2996-44d4-b9be-280b8a113941",
+          "title": "CARE Coaching Needs Assessment (CCNA) | Services | Pathways",
+          "file_name": "CARE Coaching Needs Assessment (CCNA) | Services | Pathways.html",
+          "document_type": "website",
+          "excerpt": "d strategic next steps. Multilingual Learner SupportIncludes focused items and recommendations on how to better serve multilingual learners, while also providing strategies that benefit all students. Ideal for schools with diverse language backgrounds. Request a Demo Learn More about CARE Coaching What is CARE Coaching Needs Assessment (CCNA)? Looking to le…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 4,
+          "total_chunks": 5,
+          "similarity": 0.5733,
+          "adjusted_score": 0.5733,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "8e5baf5d-d607-42fa-9fb4-244c8e8f0ec1_chunk_4",
+          "source_kb_id": "8e5baf5d-d607-42fa-9fb4-244c8e8f0ec1",
+          "title": "CARE Coaching Needs Assessment (CCNA) | Services | Pathways",
+          "file_name": "CARE Coaching Needs Assessment (CCNA) | Services | Pathways.html",
+          "document_type": "website",
+          "excerpt": "d strategic next steps. Multilingual Learner SupportIncludes focused items and recommendations on how to better serve multilingual learners, while also providing strategies that benefit all students. Ideal for schools with diverse language backgrounds. Request a Demo Learn More about CARE Coaching What is CARE Coaching Needs Assessment (CCNA)? Looking to le…",
+          "category": "product",
+          "subcategory": "care_coaching",
+          "product_name": "care_coaching",
+          "applicable_states": null,
+          "chunk_index": 4,
+          "total_chunks": 5,
+          "similarity": 0.5732,
+          "adjusted_score": 0.5732,
+          "boost": 0.0
+        }
+      ]
+    },
+    {
+      "id": "wida_model_CO_assessment",
+      "product": "WIDA MODEL Online",
+      "state": "CO",
+      "audiences": [
+        "District assessment coordinators",
+        "Title III Coordinators"
+      ],
+      "summary": {
+        "retrieved_chunks": 18,
+        "unique_sources": 12,
+        "unique_files": 12,
+        "top_files": [
+          "2025 Session slides - Selecting an effective Interim copy.pptx",
+          "ACCESS Test Practice and Sample Items.html",
+          "Administering WIDA MODEL Online for Grades 1-12.pptx",
+          "Assess.html",
+          "Login.html",
+          "MODEL Online Implementation Checklist.pdf",
+          "Preparing for ACCESS Testing.html",
+          "Resources/Recursos | WIDA.html",
+          "WIDA ACCESS.html",
+          "WIDA MODEL Online.html",
+          "WIDA MODEL | WIDA.html",
+          "WIDA.html"
+        ],
+        "chunks_per_source_top": [
+          [
+            "ee3d1eac-a085-4ff3-a460-069dbb1b83a6",
+            2
+          ],
+          [
+            "515696ab-6753-406c-b082-0026d79cc7b5",
+            2
+          ],
+          [
+            "767f43d8-ebcf-4978-9062-92e3b52f6cf9",
+            2
+          ],
+          [
+            "3a989906-74f5-40cd-ac08-736c2d0bbf3c",
+            2
+          ],
+          [
+            "b4ea91b4-4fe1-4daa-8093-aa7740460b2c",
+            2
+          ],
+          [
+            "78321a4a-ed49-4611-9c01-cafa68b9f772",
+            2
+          ],
+          [
+            "3b2b1da0-8cef-4626-b6d3-1a7aec90ad11",
+            1
+          ],
+          [
+            "6660dc5b-11f0-4eca-a8b3-30ce73504de6",
+            1
+          ],
+          [
+            "4988ea8f-aee2-4ad1-bb9b-ab0669452730",
+            1
+          ],
+          [
+            "265bfc43-9f65-4fcf-9e3d-5828b58ef36d",
+            1
+          ]
+        ]
+      },
+      "expectations": {
+        "must_have_total": 2,
+        "must_have_missing": [
+          "CO ELPA original text.pdf",
+          "Colorado State Buyer_s Guide.pdf"
+        ],
+        "avoid_present": [],
+        "must_have_recall": 0.0
+      },
+      "retrieved_chunks": [
+        {
+          "chunk_id": "ee3d1eac-a085-4ff3-a460-069dbb1b83a6_chunk_6",
+          "source_kb_id": "ee3d1eac-a085-4ff3-a460-069dbb1b83a6",
+          "title": "WIDA MODEL | WIDA",
+          "file_name": "WIDA MODEL | WIDA.html",
+          "document_type": "website",
+          "excerpt": "earner Programs and Services Director, Virginia “The WIDA MODEL Assessment has better allowed us as a district to determine how schools are performing with their English Language Development Program. We are able to, on an ongoing basis, make decisions about how language programming is delivered across grade levels and schools in real time. We are also able …",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 6,
+          "total_chunks": 7,
+          "similarity": 0.649,
+          "adjusted_score": 0.679,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "ee3d1eac-a085-4ff3-a460-069dbb1b83a6_chunk_0",
+          "source_kb_id": "ee3d1eac-a085-4ff3-a460-069dbb1b83a6",
+          "title": "WIDA MODEL | WIDA",
+          "file_name": "WIDA MODEL | WIDA.html",
+          "document_type": "website",
+          "excerpt": "WIDA MODEL | WIDA Skip to main content Resources/RecursosWIDA Store Select a State: Member/State Pages Alabama Alaska Bureau of Indian Education Colorado Delaware Department of Defense Education Activity District of Columbia Florida Georgia Hawaii Idaho Illinois Indiana Kansas Kentucky Maine Maryland Massachusetts Michigan Minnesota Missouri Montana Nevada …",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 0,
+          "total_chunks": 7,
+          "similarity": 0.6272,
+          "adjusted_score": 0.6572,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "515696ab-6753-406c-b082-0026d79cc7b5_chunk_3",
+          "source_kb_id": "515696ab-6753-406c-b082-0026d79cc7b5",
+          "title": "WIDA MODEL Online",
+          "file_name": "WIDA MODEL Online.html",
+          "document_type": "website",
+          "excerpt": "CareersWhy Work at WIDA?Dassler InternshipWIDA Summer Research InternshipContact UsMedia Resources Expert educators of multilingual learners share their tips with WIDA Founder and Director Tim Boals. Conversations with Educators NewsResources Resources/RecursosWIDA Store WIDA MODEL Online Assess WIDA MODEL WIDA MODEL Online WIDA MODEL has moved!Learn about …",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 3,
+          "total_chunks": 10,
+          "similarity": 0.6235,
+          "adjusted_score": 0.6535000000000001,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "515696ab-6753-406c-b082-0026d79cc7b5_chunk_1",
+          "source_kb_id": "515696ab-6753-406c-b082-0026d79cc7b5",
+          "title": "WIDA MODEL Online",
+          "file_name": "WIDA MODEL Online.html",
+          "document_type": "website",
+          "excerpt": "MODEL Resource Center for platform training, practice tests and other resources, including quick links to download TestNav and log in to ADAM via LaunchPad.Request a WIDA MODEL Online overview demo. Skip to main content Resources/RecursosWIDA Store Select a State: Member/State Pages Alabama Alaska Bureau of Indian Education Colorado Delaware Department of D…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 1,
+          "total_chunks": 10,
+          "similarity": 0.6164,
+          "adjusted_score": 0.6464,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "767f43d8-ebcf-4978-9062-92e3b52f6cf9_chunk_6",
+          "source_kb_id": "767f43d8-ebcf-4978-9062-92e3b52f6cf9",
+          "title": "Assess",
+          "file_name": "Assess.html",
+          "document_type": "website",
+          "excerpt": "glish language support services. Student achievement is often measured with a summative assessment that is typically given at a set point in the school year, or at the end of a period of instruction. WIDA Assessments That Deliver Results WIDA ScreenerThis suite of assessments is designed to help educators decide whether an incoming student in kindergarten t…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 6,
+          "total_chunks": 8,
+          "similarity": 0.6133,
+          "adjusted_score": 0.6433,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "3b2b1da0-8cef-4626-b6d3-1a7aec90ad11_chunk_1",
+          "source_kb_id": "3b2b1da0-8cef-4626-b6d3-1a7aec90ad11",
+          "title": "Resources/Recursos | WIDA",
+          "file_name": "Resources/Recursos | WIDA.html",
+          "document_type": "website",
+          "excerpt": "an Minnesota Missouri Montana Nevada New Hampshire New Jersey New Mexico North Carolina North Dakota Northern Mariana Islands Oklahoma Palau Pennsylvania Rhode Island South Carolina South Dakota U.S. Virgin Islands Utah Vermont Virginia Washington Wisconsin Wyoming Login WIDA Secure Portal WIDA AMS MODEL Online Unsure? Go to the Login page Menu Close Assess…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 1,
+          "total_chunks": 16,
+          "similarity": 0.6131,
+          "adjusted_score": 0.6431,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "3a989906-74f5-40cd-ac08-736c2d0bbf3c_chunk_1",
+          "source_kb_id": "3a989906-74f5-40cd-ac08-736c2d0bbf3c",
+          "title": "WIDA",
+          "file_name": "WIDA.html",
+          "document_type": "website",
+          "excerpt": "an Minnesota Missouri Montana Nevada New Hampshire New Jersey New Mexico North Carolina North Dakota Northern Mariana Islands Oklahoma Palau Pennsylvania Rhode Island South Carolina South Dakota U.S. Virgin Islands Utah Vermont Virginia Washington Wisconsin Wyoming Login WIDA Secure Portal WIDA AMS MODEL Online Unsure? Go to the Login page Menu Close Assess…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 1,
+          "total_chunks": 5,
+          "similarity": 0.6128,
+          "adjusted_score": 0.6428,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "767f43d8-ebcf-4978-9062-92e3b52f6cf9_chunk_2",
+          "source_kb_id": "767f43d8-ebcf-4978-9062-92e3b52f6cf9",
+          "title": "Assess",
+          "file_name": "Assess.html",
+          "document_type": "website",
+          "excerpt": "an Minnesota Missouri Montana Nevada New Hampshire New Jersey New Mexico North Carolina North Dakota Northern Mariana Islands Oklahoma Palau Pennsylvania Rhode Island South Carolina South Dakota U.S. Virgin Islands Utah Vermont Virginia Washington Wisconsin Wyoming Login WIDA Secure Portal WIDA AMS MODEL Online Unsure? Go to the Login page Menu Close Assess…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 2,
+          "total_chunks": 8,
+          "similarity": 0.6128,
+          "adjusted_score": 0.6428,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "6660dc5b-11f0-4eca-a8b3-30ce73504de6_chunk_1",
+          "source_kb_id": "6660dc5b-11f0-4eca-a8b3-30ce73504de6",
+          "title": "Login",
+          "file_name": "Login.html",
+          "document_type": "website",
+          "excerpt": "an Minnesota Missouri Montana Nevada New Hampshire New Jersey New Mexico North Carolina North Dakota Northern Mariana Islands Oklahoma Palau Pennsylvania Rhode Island South Carolina South Dakota U.S. Virgin Islands Utah Vermont Virginia Washington Wisconsin Wyoming Login WIDA Secure Portal WIDA AMS MODEL Online Unsure? Go to the Login page Menu Close Assess…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 1,
+          "total_chunks": 4,
+          "similarity": 0.6126,
+          "adjusted_score": 0.6426000000000001,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "4988ea8f-aee2-4ad1-bb9b-ab0669452730",
+          "source_kb_id": "4988ea8f-aee2-4ad1-bb9b-ab0669452730",
+          "title": "WIDA MODEL Online",
+          "file_name": "MODEL Online Implementation Checklist.pdf",
+          "document_type": "pdf",
+          "excerpt": "WIDA MODEL Online WIDA MODEL Online Implementation Checklist ❑ Decide when you will administer WIDA MODEL Online in your school or district. Note: You should also decide how and when you will communicate your testing plans with your test administrators (TAs). ❑ Decide who will administer WIDA MODEL and how they will be trained to administer and score the te…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "wida_model",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 1,
+          "similarity": 0.6389,
+          "adjusted_score": 0.6389,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "265bfc43-9f65-4fcf-9e3d-5828b58ef36d_chunk_2",
+          "source_kb_id": "265bfc43-9f65-4fcf-9e3d-5828b58ef36d",
+          "title": "ACCESS Test Practice and Sample Items",
+          "file_name": "ACCESS Test Practice and Sample Items.html",
+          "document_type": "website",
+          "excerpt": "L OnlineWIDA MODEL PaperWIDA MODEL for KindergartenWIDA MODEL Score CalculatorTechnologyAssessment Training Revised ACCESS gets released in the 25-26 WIDA testing year Learn About Revised ACCESS Teach CloseTeachUnderstanding Multilingual LearnersCreating a Welcoming ClassroomEngaging Families and CommunitiesUnderstanding What Students Can DoCan Do Descripto…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 2,
+          "total_chunks": 8,
+          "similarity": 0.6037,
+          "adjusted_score": 0.6337,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "ece6c083-68f9-441c-a9ca-2053725e5bbe_chunk_2",
+          "source_kb_id": "ece6c083-68f9-441c-a9ca-2053725e5bbe",
+          "title": "Preparing for ACCESS Testing",
+          "file_name": "Preparing for ACCESS Testing.html",
+          "document_type": "website",
+          "excerpt": "L OnlineWIDA MODEL PaperWIDA MODEL for KindergartenWIDA MODEL Score CalculatorTechnologyAssessment Training Revised ACCESS gets released in the 25-26 WIDA testing year Learn About Revised ACCESS Teach CloseTeachUnderstanding Multilingual LearnersCreating a Welcoming ClassroomEngaging Families and CommunitiesUnderstanding What Students Can DoCan Do Descripto…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 2,
+          "total_chunks": 6,
+          "similarity": 0.6032,
+          "adjusted_score": 0.6332,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "b4ea91b4-4fe1-4daa-8093-aa7740460b2c_chunk_2",
+          "source_kb_id": "b4ea91b4-4fe1-4daa-8093-aa7740460b2c",
+          "title": "WIDA ACCESS",
+          "file_name": "WIDA ACCESS.html",
+          "document_type": "website",
+          "excerpt": "L OnlineWIDA MODEL PaperWIDA MODEL for KindergartenWIDA MODEL Score CalculatorTechnologyAssessment Training Revised ACCESS gets released in the 25-26 WIDA testing year Learn About Revised ACCESS Teach CloseTeachUnderstanding Multilingual LearnersCreating a Welcoming ClassroomEngaging Families and CommunitiesUnderstanding What Students Can DoCan Do Descripto…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 2,
+          "total_chunks": 10,
+          "similarity": 0.603,
+          "adjusted_score": 0.633,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "b9d57b56-c7b5-491f-b9d6-38b9095f9b06_chunk_4",
+          "source_kb_id": "b9d57b56-c7b5-491f-b9d6-38b9095f9b06",
+          "title": "2025 Session slides - Selecting an effective Interim copy (Part 1/3)",
+          "file_name": "2025 Session slides - Selecting an effective Interim copy.pptx",
+          "document_type": "pptx",
+          "excerpt": "Technical quality Score reports and score interpretations Practicality and inclusivity Relationship to performance on the summative test (ACCESS for ELLs) Consequential validity Example: WIDA MODEL WIDA MODEL, Interim Assessment On-demand English language proficiency assessments for grades K-12 May be administered at any time during school year Available in…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": null,
+          "chunk_index": 4,
+          "total_chunks": 5,
+          "similarity": 0.62,
+          "adjusted_score": 0.62,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "3a989906-74f5-40cd-ac08-736c2d0bbf3c_chunk_0",
+          "source_kb_id": "3a989906-74f5-40cd-ac08-736c2d0bbf3c",
+          "title": "WIDA",
+          "file_name": "WIDA.html",
+          "document_type": "website",
+          "excerpt": "WIDA Description: WIDA develops and provides proven tools and support to help multilingual learners, and their educators, succeed. Skip to main content Resources/RecursosWIDA Store Select a State: Member/State Pages Alabama Alaska Bureau of Indian Education Colorado Delaware Department of Defense Education Activity District of Columbia Florida Georgia Hawai…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 0,
+          "total_chunks": 5,
+          "similarity": 0.5818,
+          "adjusted_score": 0.6118,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "78321a4a-ed49-4611-9c01-cafa68b9f772_chunk_0",
+          "source_kb_id": "78321a4a-ed49-4611-9c01-cafa68b9f772",
+          "title": "Administering WIDA MODEL Online: Grades 1–12 (Part 1/7)",
+          "file_name": "Administering WIDA MODEL Online for Grades 1-12.pptx",
+          "document_type": "pptx",
+          "excerpt": "Administering WIDA MODEL Online: Grades 1–12 (Part 1/7) Administering WIDA MODEL Online: Grades 1–12 The WIDA ELD Standards Standard 1 - SIL : English language learners communicate for SOCIAL AND INSTRUCTIONAL purposes within the school setting. Standard 2 – LoLA : English language learners communicate information, ideas, and concepts necessary for academic…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "wida_model",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 5,
+          "similarity": 0.6076,
+          "adjusted_score": 0.6076,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "b4ea91b4-4fe1-4daa-8093-aa7740460b2c_chunk_3",
+          "source_kb_id": "b4ea91b4-4fe1-4daa-8093-aa7740460b2c",
+          "title": "WIDA ACCESS",
+          "file_name": "WIDA ACCESS.html",
+          "document_type": "website",
+          "excerpt": "CareersWhy Work at WIDA?Dassler InternshipWIDA Summer Research InternshipContact UsMedia Resources Expert educators of multilingual learners share their tips with WIDA Founder and Director Tim Boals. Conversations with Educators NewsResources Resources/RecursosWIDA Store WIDA ACCESS Assess WIDA ACCESS A suite of secure, large-scale, summative English langua…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 3,
+          "total_chunks": 10,
+          "similarity": 0.5759,
+          "adjusted_score": 0.6059,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "78321a4a-ed49-4611-9c01-cafa68b9f772_chunk_1",
+          "source_kb_id": "78321a4a-ed49-4611-9c01-cafa68b9f772",
+          "title": "Administering WIDA MODEL Online: Grades 1–12 (Part 1/7)",
+          "file_name": "Administering WIDA MODEL Online for Grades 1-12.pptx",
+          "document_type": "pptx",
+          "excerpt": "the content area of SOCIAL STUDIES. WIDA Consortium / MetriTech English Language Proficiency Levels 6 ENTERING EMERGING DEVELOPING EXPANDING 1 2 3 4 5 BRIDGING REACHING WIDA Consortium / MetriTech Performance Definitions for the Levels of English Language Proficiency WIDA Consortium / MetriTech ENTERING EMERGING DEVELOPING EXPANDING BRIDGING 1 2 3 4 5 Liste…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "wida_model",
+          "applicable_states": null,
+          "chunk_index": 1,
+          "total_chunks": 5,
+          "similarity": 0.6056,
+          "adjusted_score": 0.6056,
+          "boost": 0.0
+        }
+      ]
+    },
+    {
+      "id": "wida_model_WI",
+      "product": "WIDA MODEL Online",
+      "state": "WI",
+      "audiences": [
+        "District assessment coordinators"
+      ],
+      "summary": {
+        "retrieved_chunks": 18,
+        "unique_sources": 13,
+        "unique_files": 11,
+        "top_files": [
+          "2025 Session slides - Selecting an effective Interim copy.pptx",
+          "ACCESS Test Practice and Sample Items.html",
+          "Assess.html",
+          "Login.html",
+          "MODEL Online Implementation Checklist.pdf",
+          "MODEL Online Training Checklist.pdf",
+          "MODEL Overview PPT 11.17.25.pptx",
+          "Resources/Recursos | WIDA.html",
+          "WIDA MODEL Online.html",
+          "WIDA MODEL | WIDA.html",
+          "WIDA.html"
+        ],
+        "chunks_per_source_top": [
+          [
+            "418d019b-985a-4ff9-bb01-904f58b2b61e",
+            2
+          ],
+          [
+            "ee3d1eac-a085-4ff3-a460-069dbb1b83a6",
+            2
+          ],
+          [
+            "515696ab-6753-406c-b082-0026d79cc7b5",
+            2
+          ],
+          [
+            "f7d7277d-192b-44b4-96e7-1fb753b7cd40",
+            2
+          ],
+          [
+            "767f43d8-ebcf-4978-9062-92e3b52f6cf9",
+            2
+          ],
+          [
+            "58ef50b6-03a1-412e-90f2-427c5f60714e",
+            1
+          ],
+          [
+            "9fda5a87-bb1f-4f62-a560-1362bce2ca73",
+            1
+          ],
+          [
+            "3b2b1da0-8cef-4626-b6d3-1a7aec90ad11",
+            1
+          ],
+          [
+            "3a989906-74f5-40cd-ac08-736c2d0bbf3c",
+            1
+          ],
+          [
+            "6660dc5b-11f0-4eca-a8b3-30ce73504de6",
+            1
+          ]
+        ]
+      },
+      "expectations": {
+        "must_have_total": 1,
+        "must_have_missing": [
+          "Wisconsin State Buyer_s Guide.pdf"
+        ],
+        "avoid_present": [],
+        "must_have_recall": 0.0
+      },
+      "retrieved_chunks": [
+        {
+          "chunk_id": "418d019b-985a-4ff9-bb01-904f58b2b61e_chunk_0",
+          "source_kb_id": "418d019b-985a-4ff9-bb01-904f58b2b61e",
+          "title": "WIDA MODEL (Part 2/2)",
+          "file_name": "MODEL Overview PPT 11.17.25.pptx",
+          "document_type": "pptx",
+          "excerpt": "WIDA MODEL (Part 2/2) ors and District Administrators to monitor student testing progress to ensure anticipated completion rates ©️2024 Board of Regents of the University of Wisconsin System WIDA MODEL Interpretive Guide MODEL Online: Training &amp; Support Training Materials: MODEL Online accounts house a library of training materials that can be used to p…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "WI"
+          ],
+          "chunk_index": 0,
+          "total_chunks": 5,
+          "similarity": 0.6476,
+          "adjusted_score": 0.6776,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "58ef50b6-03a1-412e-90f2-427c5f60714e_chunk_0",
+          "source_kb_id": "58ef50b6-03a1-412e-90f2-427c5f60714e",
+          "title": "WIDA MODEL Online (Part 1/1)",
+          "file_name": "MODEL Online Implementation Checklist.pdf",
+          "document_type": "pdf",
+          "excerpt": "WIDA MODEL Online (Part 1/1) WIDA MODEL Online Implementation Checklist ❑ Decide when you will administer WIDA MODEL Online in your school or district. Note: You should also decide how and when you will communicate your testing plans with your test administrators (TAs). ❑ Decide who will administer WIDA MODEL and how they will be trained to administer and s…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "wida_model",
+          "applicable_states": [
+            "WI"
+          ],
+          "chunk_index": 0,
+          "total_chunks": 5,
+          "similarity": 0.6471,
+          "adjusted_score": 0.6771,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "ee3d1eac-a085-4ff3-a460-069dbb1b83a6_chunk_6",
+          "source_kb_id": "ee3d1eac-a085-4ff3-a460-069dbb1b83a6",
+          "title": "WIDA MODEL | WIDA",
+          "file_name": "WIDA MODEL | WIDA.html",
+          "document_type": "website",
+          "excerpt": "earner Programs and Services Director, Virginia “The WIDA MODEL Assessment has better allowed us as a district to determine how schools are performing with their English Language Development Program. We are able to, on an ongoing basis, make decisions about how language programming is delivered across grade levels and schools in real time. We are also able …",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 6,
+          "total_chunks": 7,
+          "similarity": 0.6467,
+          "adjusted_score": 0.6767000000000001,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "9fda5a87-bb1f-4f62-a560-1362bce2ca73_chunk_0",
+          "source_kb_id": "9fda5a87-bb1f-4f62-a560-1362bce2ca73",
+          "title": "WIDA MODEL Online Training Checklist",
+          "file_name": "MODEL Online Training Checklist.pdf",
+          "document_type": "pdf",
+          "excerpt": "WIDA MODEL Online Training Checklist Title: WIDA MODEL Online Training Checklist Content: WIDA MODEL Online Training Checklist WIDA MODEL Online can be administered at any time during the year to meet your specific needs. This flexibility and control also empowers your local staff to lead important parts of the testing process, including setting up students…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "WI"
+          ],
+          "chunk_index": 0,
+          "total_chunks": 4,
+          "similarity": 0.6417,
+          "adjusted_score": 0.6717000000000001,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "ee3d1eac-a085-4ff3-a460-069dbb1b83a6_chunk_0",
+          "source_kb_id": "ee3d1eac-a085-4ff3-a460-069dbb1b83a6",
+          "title": "WIDA MODEL | WIDA",
+          "file_name": "WIDA MODEL | WIDA.html",
+          "document_type": "website",
+          "excerpt": "WIDA MODEL | WIDA Skip to main content Resources/RecursosWIDA Store Select a State: Member/State Pages Alabama Alaska Bureau of Indian Education Colorado Delaware Department of Defense Education Activity District of Columbia Florida Georgia Hawaii Idaho Illinois Indiana Kansas Kentucky Maine Maryland Massachusetts Michigan Minnesota Missouri Montana Nevada …",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 0,
+          "total_chunks": 7,
+          "similarity": 0.6385,
+          "adjusted_score": 0.6685,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "515696ab-6753-406c-b082-0026d79cc7b5_chunk_3",
+          "source_kb_id": "515696ab-6753-406c-b082-0026d79cc7b5",
+          "title": "WIDA MODEL Online",
+          "file_name": "WIDA MODEL Online.html",
+          "document_type": "website",
+          "excerpt": "CareersWhy Work at WIDA?Dassler InternshipWIDA Summer Research InternshipContact UsMedia Resources Expert educators of multilingual learners share their tips with WIDA Founder and Director Tim Boals. Conversations with Educators NewsResources Resources/RecursosWIDA Store WIDA MODEL Online Assess WIDA MODEL WIDA MODEL Online WIDA MODEL has moved!Learn about …",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 3,
+          "total_chunks": 10,
+          "similarity": 0.6377,
+          "adjusted_score": 0.6677000000000001,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "515696ab-6753-406c-b082-0026d79cc7b5_chunk_1",
+          "source_kb_id": "515696ab-6753-406c-b082-0026d79cc7b5",
+          "title": "WIDA MODEL Online",
+          "file_name": "WIDA MODEL Online.html",
+          "document_type": "website",
+          "excerpt": "MODEL Resource Center for platform training, practice tests and other resources, including quick links to download TestNav and log in to ADAM via LaunchPad.Request a WIDA MODEL Online overview demo. Skip to main content Resources/RecursosWIDA Store Select a State: Member/State Pages Alabama Alaska Bureau of Indian Education Colorado Delaware Department of D…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 1,
+          "total_chunks": 10,
+          "similarity": 0.6353,
+          "adjusted_score": 0.6653,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "f7d7277d-192b-44b4-96e7-1fb753b7cd40_chunk_0",
+          "source_kb_id": "f7d7277d-192b-44b4-96e7-1fb753b7cd40",
+          "title": "WIDA MODEL (Part 1/2)",
+          "file_name": "MODEL Overview PPT 11.17.25.pptx",
+          "document_type": "pptx",
+          "excerpt": "WIDA MODEL (Part 1/2) WIDA MODEL Online and Paper Test Modes Online Grades 1-12 All four domains needed to generate score report Larger group administration for listening, reading and writing Purchased in sets of 10; licenses can be used with any student grades 1-12 Scores are calculated by the test platform for Listening &amp; Reading Individual and group …",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "WI"
+          ],
+          "chunk_index": 0,
+          "total_chunks": 5,
+          "similarity": 0.634,
+          "adjusted_score": 0.664,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "767f43d8-ebcf-4978-9062-92e3b52f6cf9_chunk_6",
+          "source_kb_id": "767f43d8-ebcf-4978-9062-92e3b52f6cf9",
+          "title": "Assess",
+          "file_name": "Assess.html",
+          "document_type": "website",
+          "excerpt": "glish language support services. Student achievement is often measured with a summative assessment that is typically given at a set point in the school year, or at the end of a period of instruction. WIDA Assessments That Deliver Results WIDA ScreenerThis suite of assessments is designed to help educators decide whether an incoming student in kindergarten t…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 6,
+          "total_chunks": 8,
+          "similarity": 0.6264,
+          "adjusted_score": 0.6564,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "418d019b-985a-4ff9-bb01-904f58b2b61e_chunk_3",
+          "source_kb_id": "418d019b-985a-4ff9-bb01-904f58b2b61e",
+          "title": "WIDA MODEL (Part 2/2)",
+          "file_name": "MODEL Overview PPT 11.17.25.pptx",
+          "document_type": "pptx",
+          "excerpt": "Sample Listening Item Grades 1-5 Handwritten responses on Student Response Form Grades 6-12 Type responses in Secure Student Browser Writing Domain Test Format: Student-Constructed Responses 38 Format of Writing Task: Part A Part A: Consists of a writing prompt that includes a picture. It is expected that students will produce single words , phrases , or si…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "WI"
+          ],
+          "chunk_index": 3,
+          "total_chunks": 5,
+          "similarity": 0.6262,
+          "adjusted_score": 0.6562,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "767f43d8-ebcf-4978-9062-92e3b52f6cf9_chunk_0",
+          "source_kb_id": "767f43d8-ebcf-4978-9062-92e3b52f6cf9",
+          "title": "Assess",
+          "file_name": "Assess.html",
+          "document_type": "website",
+          "excerpt": "Assess Description: WIDA's comprehensive suite of assessments is built on a foundation of strong research and grounded in the WIDA English Language Development (ELD) Standards Framework. This suite of tools – WIDA ACCESS, WIDA Screener, WIDA MODEL – developed in collaboration with education thought leaders and partners such as the Center for Applied Linguis…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 0,
+          "total_chunks": 8,
+          "similarity": 0.6261,
+          "adjusted_score": 0.6561,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "f7d7277d-192b-44b4-96e7-1fb753b7cd40_chunk_3",
+          "source_kb_id": "f7d7277d-192b-44b4-96e7-1fb753b7cd40",
+          "title": "WIDA MODEL (Part 1/2)",
+          "file_name": "MODEL Overview PPT 11.17.25.pptx",
+          "document_type": "pptx",
+          "excerpt": "p; ADAM: web-based interfaces that function as the control center for your MODEL Online account. Student Testing Platform: All domain tests are delivered via TestNav, a Student Secure Browser app. MODEL Online Test Features Speaking Listening Writing Reading Computer Administered Recorded Scripting Scored Locally Task Options ╫ ╫ Grades 1-5: Handwritten Res…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "WI"
+          ],
+          "chunk_index": 3,
+          "total_chunks": 5,
+          "similarity": 0.626,
+          "adjusted_score": 0.656,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "3b2b1da0-8cef-4626-b6d3-1a7aec90ad11_chunk_1",
+          "source_kb_id": "3b2b1da0-8cef-4626-b6d3-1a7aec90ad11",
+          "title": "Resources/Recursos | WIDA",
+          "file_name": "Resources/Recursos | WIDA.html",
+          "document_type": "website",
+          "excerpt": "an Minnesota Missouri Montana Nevada New Hampshire New Jersey New Mexico North Carolina North Dakota Northern Mariana Islands Oklahoma Palau Pennsylvania Rhode Island South Carolina South Dakota U.S. Virgin Islands Utah Vermont Virginia Washington Wisconsin Wyoming Login WIDA Secure Portal WIDA AMS MODEL Online Unsure? Go to the Login page Menu Close Assess…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 1,
+          "total_chunks": 16,
+          "similarity": 0.6251,
+          "adjusted_score": 0.6551,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "3a989906-74f5-40cd-ac08-736c2d0bbf3c_chunk_1",
+          "source_kb_id": "3a989906-74f5-40cd-ac08-736c2d0bbf3c",
+          "title": "WIDA",
+          "file_name": "WIDA.html",
+          "document_type": "website",
+          "excerpt": "an Minnesota Missouri Montana Nevada New Hampshire New Jersey New Mexico North Carolina North Dakota Northern Mariana Islands Oklahoma Palau Pennsylvania Rhode Island South Carolina South Dakota U.S. Virgin Islands Utah Vermont Virginia Washington Wisconsin Wyoming Login WIDA Secure Portal WIDA AMS MODEL Online Unsure? Go to the Login page Menu Close Assess…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 1,
+          "total_chunks": 5,
+          "similarity": 0.6247,
+          "adjusted_score": 0.6547000000000001,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "6660dc5b-11f0-4eca-a8b3-30ce73504de6_chunk_1",
+          "source_kb_id": "6660dc5b-11f0-4eca-a8b3-30ce73504de6",
+          "title": "Login",
+          "file_name": "Login.html",
+          "document_type": "website",
+          "excerpt": "an Minnesota Missouri Montana Nevada New Hampshire New Jersey New Mexico North Carolina North Dakota Northern Mariana Islands Oklahoma Palau Pennsylvania Rhode Island South Carolina South Dakota U.S. Virgin Islands Utah Vermont Virginia Washington Wisconsin Wyoming Login WIDA Secure Portal WIDA AMS MODEL Online Unsure? Go to the Login page Menu Close Assess…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 1,
+          "total_chunks": 4,
+          "similarity": 0.6245,
+          "adjusted_score": 0.6545000000000001,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "4988ea8f-aee2-4ad1-bb9b-ab0669452730",
+          "source_kb_id": "4988ea8f-aee2-4ad1-bb9b-ab0669452730",
+          "title": "WIDA MODEL Online",
+          "file_name": "MODEL Online Implementation Checklist.pdf",
+          "document_type": "pdf",
+          "excerpt": "WIDA MODEL Online WIDA MODEL Online Implementation Checklist ❑ Decide when you will administer WIDA MODEL Online in your school or district. Note: You should also decide how and when you will communicate your testing plans with your test administrators (TAs). ❑ Decide who will administer WIDA MODEL and how they will be trained to administer and score the te…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "wida_model",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 1,
+          "similarity": 0.6533,
+          "adjusted_score": 0.6533,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "b9d57b56-c7b5-491f-b9d6-38b9095f9b06_chunk_4",
+          "source_kb_id": "b9d57b56-c7b5-491f-b9d6-38b9095f9b06",
+          "title": "2025 Session slides - Selecting an effective Interim copy (Part 1/3)",
+          "file_name": "2025 Session slides - Selecting an effective Interim copy.pptx",
+          "document_type": "pptx",
+          "excerpt": "Technical quality Score reports and score interpretations Practicality and inclusivity Relationship to performance on the summative test (ACCESS for ELLs) Consequential validity Example: WIDA MODEL WIDA MODEL, Interim Assessment On-demand English language proficiency assessments for grades K-12 May be administered at any time during school year Available in…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": null,
+          "chunk_index": 4,
+          "total_chunks": 5,
+          "similarity": 0.642,
+          "adjusted_score": 0.642,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "265bfc43-9f65-4fcf-9e3d-5828b58ef36d_chunk_2",
+          "source_kb_id": "265bfc43-9f65-4fcf-9e3d-5828b58ef36d",
+          "title": "ACCESS Test Practice and Sample Items",
+          "file_name": "ACCESS Test Practice and Sample Items.html",
+          "document_type": "website",
+          "excerpt": "L OnlineWIDA MODEL PaperWIDA MODEL for KindergartenWIDA MODEL Score CalculatorTechnologyAssessment Training Revised ACCESS gets released in the 25-26 WIDA testing year Learn About Revised ACCESS Teach CloseTeachUnderstanding Multilingual LearnersCreating a Welcoming ClassroomEngaging Families and CommunitiesUnderstanding What Students Can DoCan Do Descripto…",
+          "category": "product",
+          "subcategory": "wida_model",
+          "product_name": "wida_model",
+          "applicable_states": [
+            "VA",
+            "AK",
+            "CO",
+            "FL",
+            "WI",
+            "RI",
+            "WA"
+          ],
+          "chunk_index": 2,
+          "total_chunks": 8,
+          "similarity": 0.6054,
+          "adjusted_score": 0.6354000000000001,
+          "boost": 0.0
+        }
+      ]
+    },
+    {
+      "id": "webbalign_TX",
+      "product": "WebbAlign",
+      "state": "TX",
+      "audiences": [
+        "Curriculum directors",
+        "ELL/Multilingual Directors"
+      ],
+      "summary": {
+        "retrieved_chunks": 18,
+        "unique_sources": 14,
+        "unique_files": 12,
+        "top_files": [
+          "District Specific Outcomes Based Options V2.docx.pdf",
+          "Eden Prairie Debrief Dec 8 2022 Session (2).pdf",
+          "Fayetteville_GA_CTE_SY2021_2022_WebbAlign PD_for AI tool training.docx",
+          "Mock Example.docx.pdf",
+          "NSCA 2023 Content Alignment - Interim Assessment_ANNOTATED SLIDES.pptx",
+          "Proposals_Eden Prairie_MN_WebbAlign_DOK_PD_for AI tool training.docx",
+          "WebbAlign  Calendar.html",
+          "WebbAlign  Resources.html",
+          "WebbAlign  Services Industry Partners.html",
+          "WebbAlign  Services States.html",
+          "WebbAlign Case Study for site_scc.pdf",
+          "WebbAlign info.html"
+        ],
+        "chunks_per_source_top": [
+          [
+            "e2a97d3c-56b0-42a1-81c2-e2a15fbc3d0a",
+            2
+          ],
+          [
+            "ef20f46a-92d7-452d-9d18-1bd56bc1addf",
+            2
+          ],
+          [
+            "fb5e8b7f-9a62-4af0-bebf-56a1b179beb3",
+            2
+          ],
+          [
+            "cd158e50-a102-459c-b637-07cf2e048850",
+            2
+          ],
+          [
+            "25a47eae-07a8-47aa-bcc1-d963b50c58c2",
+            1
+          ],
+          [
+            "5aba5988-a779-4c1b-ad68-7bcaf33f5392",
+            1
+          ],
+          [
+            "96fd46a2-dd08-4708-ad03-17503c64cddd",
+            1
+          ],
+          [
+            "4e29c9fb-ec0d-45e8-8cb0-5983f64cdca9",
+            1
+          ],
+          [
+            "fb5f287f-f085-4ab1-a2e9-e70c0e24e83d",
+            1
+          ],
+          [
+            "66d5273a-56e9-4d3d-b80d-999244ab4fe8",
+            1
+          ]
+        ]
+      },
+      "expectations": {
+        "must_have_total": 1,
+        "must_have_missing": [
+          "Texas State Buyer_s Guide.pdf"
+        ],
+        "avoid_present": [],
+        "must_have_recall": 0.0
+      },
+      "retrieved_chunks": [
+        {
+          "chunk_id": "e2a97d3c-56b0-42a1-81c2-e2a15fbc3d0a_chunk_0",
+          "source_kb_id": "e2a97d3c-56b0-42a1-81c2-e2a15fbc3d0a",
+          "title": "WebbAlign  Services States",
+          "file_name": "WebbAlign  Services States.html",
+          "document_type": "website",
+          "excerpt": "WebbAlign Services States A WCEPS Program States Click here to read the guide: Using the Results of Content Alignment Analyses to Inform Ongoing Item-Level Improvements to an Assessment Program.Click here to read the report: A Comparative Alignment Analysis of Four Interim Assessment Programs with Oklahoma State ELA, Mathematics, and Science Academic Standa…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 3,
+          "similarity": 0.6527,
+          "adjusted_score": 0.6527,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "ef20f46a-92d7-452d-9d18-1bd56bc1addf_chunk_2",
+          "source_kb_id": "ef20f46a-92d7-452d-9d18-1bd56bc1addf",
+          "title": "WebbAlign Case Study for site_scc",
+          "file_name": "WebbAlign Case Study for site_scc.pdf",
+          "document_type": "pdf",
+          "excerpt": "administrators. ▪ Supported schools in working toward goals for improved student experience and outcomes. Impact As these offerings were implemented WebbAlign began to grow and increase impact. Since its inception, WebbAlign has supported: eight productive DOK Partnerships dozens of successful alignment studies, providing critical validity evidence and cons…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 2,
+          "total_chunks": 3,
+          "similarity": 0.6279,
+          "adjusted_score": 0.6279,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "25a47eae-07a8-47aa-bcc1-d963b50c58c2",
+          "source_kb_id": "25a47eae-07a8-47aa-bcc1-d963b50c58c2",
+          "title": "WebbAlign  Calendar",
+          "file_name": "WebbAlign  Calendar.html",
+          "document_type": "website",
+          "excerpt": "WebbAlign Calendar A WCEPS Program Calendar Nov 15 East Hampton USD Professional Learning (East Hampton, NY) An interactive PD session for Middle School ELA and Social Studies teachers focused on DOK and lesson planning considerations Nov 08 Alignment Study (East Coast) State alignment study spanning a two-day period Sep 26 Oak Lawn Community High School Pr…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 1,
+          "similarity": 0.6023,
+          "adjusted_score": 0.6023,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "5aba5988-a779-4c1b-ad68-7bcaf33f5392_chunk_0",
+          "source_kb_id": "5aba5988-a779-4c1b-ad68-7bcaf33f5392",
+          "title": "WebbAlign info",
+          "file_name": "WebbAlign info.html",
+          "document_type": "website",
+          "excerpt": "WebbAlign info A WCEPS Program Straight from the source. In collaboration with Dr. Norman Webb, the developer of Depth of Knowledge (DOK), we promote effective and accurate use of this innovative language system. Our team helps you use the lens of DOK to evaluate standards, learning objectives, assessments, curricula, and instructional materials to work tow…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 2,
+          "similarity": 0.5948,
+          "adjusted_score": 0.5948,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "96fd46a2-dd08-4708-ad03-17503c64cddd",
+          "source_kb_id": "96fd46a2-dd08-4708-ad03-17503c64cddd",
+          "title": "WebbAlign  Resources",
+          "file_name": "WebbAlign  Resources.html",
+          "document_type": "website",
+          "excerpt": "WebbAlign Resources A WCEPS Program Resources See below for resources about WebbAlign and Webb's DOK! Definitions and Information Detailed information concerning definitions and content related to Webb's Depth of Knowledge. Bibliography See a list of publications related to the Depth of Knowledge Framework, Alignment Methodology, and Technical Reports. A WC…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 1,
+          "similarity": 0.5942,
+          "adjusted_score": 0.5942,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "ef20f46a-92d7-452d-9d18-1bd56bc1addf_chunk_0",
+          "source_kb_id": "ef20f46a-92d7-452d-9d18-1bd56bc1addf",
+          "title": "WebbAlign Case Study for site_scc",
+          "file_name": "WebbAlign Case Study for site_scc.pdf",
+          "document_type": "pdf",
+          "excerpt": "WebbAlign Case Study for site_scc Title: WebbAlign Case Study for site_scc Content: WCEPS uses diverse expertise to continue thought leadership in the field on topics of content alignment and Depth of Knowledge (DOK). (OR) WCEPS uses diverse expertise to continue to evaluate and promote alignment in educational materials. History Dr. Title: WebbAlign Case S…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 3,
+          "similarity": 0.5917,
+          "adjusted_score": 0.5917,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "fb5e8b7f-9a62-4af0-bebf-56a1b179beb3_chunk_5",
+          "source_kb_id": "fb5e8b7f-9a62-4af0-bebf-56a1b179beb3",
+          "title": "Mock Example.docx (Part 1/2)",
+          "file_name": "Mock Example.docx.pdf",
+          "document_type": "pdf",
+          "excerpt": "grate WIDA frameworks Blended / Online Authentic student work AIW PLCs, school teams Improve rigor through collaboration Cohort model Coaching & collaboration Coaching for Impact Coaches, mentors Build sustainable coaching systems Series / Coaching model Leadership for learning CALL School & district leaders Assess and improve leadership capacity Diagnostic…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 5,
+          "total_chunks": 6,
+          "similarity": 0.5787,
+          "adjusted_score": 0.5787,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "cd158e50-a102-459c-b637-07cf2e048850_chunk_1",
+          "source_kb_id": "cd158e50-a102-459c-b637-07cf2e048850",
+          "title": "WebbAlign  Services Industry Partners",
+          "file_name": "WebbAlign  Services Industry Partners.html",
+          "document_type": "website",
+          "excerpt": "ign teamAfter committing to the cycle of continuous improvements, new partners have the right to use the WebbAlign DOK Partner Certification Badge on promotional materials for all certified products. Following completion of initial partnership requirements, we will work together to identify the types of support and evaluation that will help you as you devel…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 1,
+          "total_chunks": 4,
+          "similarity": 0.5746,
+          "adjusted_score": 0.5746,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "4e29c9fb-ec0d-45e8-8cb0-5983f64cdca9",
+          "source_kb_id": "4e29c9fb-ec0d-45e8-8cb0-5983f64cdca9",
+          "title": "Proposal: WebbAlign Professional Learning for",
+          "file_name": "Proposals_Eden Prairie_MN_WebbAlign_DOK_PD_for AI tool training.docx",
+          "document_type": "docx",
+          "excerpt": "Proposal: WebbAlign Professional Learning for Proposal: WebbAlign Professional Learning for Eden Prairie Schools Eden Prairie Schools Main Contacts: Robb Virgin, Executive Director of Personalized Learning and Lisa Birno, Director of Curriculum and Learning (Lisa_Birno@edenpr.k12.mn.us) WebbAlign Main Contact: Sara Christopherson, Director of WebbAlign (sar…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 1,
+          "similarity": 0.5732,
+          "adjusted_score": 0.5732,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "fb5e8b7f-9a62-4af0-bebf-56a1b179beb3_chunk_4",
+          "source_kb_id": "fb5e8b7f-9a62-4af0-bebf-56a1b179beb3",
+          "title": "Mock Example.docx (Part 1/2)",
+          "file_name": "Mock Example.docx.pdf",
+          "document_type": "pdf",
+          "excerpt": "ional teams, PLCs, and school leaders Coaching and Professional Collaboration Looking for: Frameworks and strategies to build effective coaching systems and sustain professional learning communities. Ask Yourself: ● How can I create trust-based, reflective coaching conversations? ● How can our team sustain growth beyond a single PD session? Recommended Reso…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 4,
+          "total_chunks": 6,
+          "similarity": 0.5555,
+          "adjusted_score": 0.5555,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "fb5f287f-f085-4ab1-a2e9-e70c0e24e83d_chunk_2",
+          "source_kb_id": "fb5f287f-f085-4ab1-a2e9-e70c0e24e83d",
+          "title": "District Specific Outcomes Based Options V2.docx (Part 1/2)",
+          "file_name": "District Specific Outcomes Based Options V2.docx.pdf",
+          "document_type": "pdf",
+          "excerpt": "area. (If admin participates) ● Admin may use a shared Qualtrics learning walk tool to capture concepts from the session. For school districts, teachers will have a common understanding of the topic. Add-ons: Curriculum, State Standard, and Assessment Alignments (DOK, MLL) Add-ons: Needs Assessments Tool Add-ons: WCEPS Badges* Add-ons: Coaching, 1 to 3-year…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 2,
+          "total_chunks": 5,
+          "similarity": 0.553,
+          "adjusted_score": 0.553,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "e2a97d3c-56b0-42a1-81c2-e2a15fbc3d0a_chunk_1",
+          "source_kb_id": "e2a97d3c-56b0-42a1-81c2-e2a15fbc3d0a",
+          "title": "WebbAlign  Services States",
+          "file_name": "WebbAlign  Services States.html",
+          "document_type": "website",
+          "excerpt": "hological Testing call out evidence of content alignment between standards and assessments as a core aspect of a validity argument for the interpretation and use of test scores (AERA/APA/NCME, 2014). What are Alignment Studies?A content alignment analysis of standards with assessments evaluates the relationship between the two artifacts, based on agreed upo…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 1,
+          "total_chunks": 3,
+          "similarity": 0.5498,
+          "adjusted_score": 0.5498,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "cd158e50-a102-459c-b637-07cf2e048850_chunk_0",
+          "source_kb_id": "cd158e50-a102-459c-b637-07cf2e048850",
+          "title": "WebbAlign  Services Industry Partners",
+          "file_name": "WebbAlign  Services Industry Partners.html",
+          "document_type": "website",
+          "excerpt": "WebbAlign Services Industry Partners A WCEPS Program Industry Partners Quality – the real competitive advantageOur partner program supports your commitment to produce high quality, aligned instructional material and assessments. As a Depth of Knowledge (DOK) Partner, you’ll gain a competitive edge through an ongoing cycle of professional learning and item e…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 4,
+          "similarity": 0.5444,
+          "adjusted_score": 0.5444,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "66d5273a-56e9-4d3d-b80d-999244ab4fe8_chunk_0",
+          "source_kb_id": "66d5273a-56e9-4d3d-b80d-999244ab4fe8",
+          "title": "Proposal: WebbAlign Professional Learning for (Part 2/3)",
+          "file_name": "Proposals_Eden Prairie_MN_WebbAlign_DOK_PD_for AI tool training.docx",
+          "document_type": "docx",
+          "excerpt": "Proposal: WebbAlign Professional Learning for (Part 2/3) Future PL will be planned in collaboration with Eden Prairie leadership with a goal of incorporating DOK into existing systems and processes – e.g. curriculum review cycles, lesson planning / PLC work, teacher evaluation conversations (that may include consideration of planned vs enacted lessons), ass…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 4,
+          "similarity": 0.544,
+          "adjusted_score": 0.544,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "22034ede-dd90-4cf7-acef-d5d27527dc8b_chunk_0",
+          "source_kb_id": "22034ede-dd90-4cf7-acef-d5d27527dc8b",
+          "title": "Debrief: Eden Prairie WebbAlign DOK PD December 8, 2022 (Part 1/1)",
+          "file_name": "Eden Prairie Debrief Dec 8 2022 Session (2).pdf",
+          "document_type": "pdf",
+          "excerpt": "Debrief: Eden Prairie WebbAlign DOK PD December 8, 2022 (Part 1/1) Debrief: Eden Prairie WebbAlign DOK PD December 8, 2022 On December 8, 2022, instructional coaches from Eden Prairie Schools participated in a 6-hr professional learning session facilitated by Sara Christopherson, Director of WebbAlign. The WebbAlign program is the home and steward of the DO…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 6,
+          "similarity": 0.5408,
+          "adjusted_score": 0.5408,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "d49cfc8f-5eac-408a-9f50-f6ec3d0d2761_chunk_3",
+          "source_kb_id": "d49cfc8f-5eac-408a-9f50-f6ec3d0d2761",
+          "title": "Proposal: WebbAlign DOK Professional Learning for (Part 1/2)",
+          "file_name": "Fayetteville_GA_CTE_SY2021_2022_WebbAlign PD_for AI tool training.docx",
+          "document_type": "docx",
+          "excerpt": "ce documents, and any existing unit assessment materials. In-person sessions on September 7, 2021 and March 15, 2022 will be held at: Center of Innovation 440 Hood Avenue Fayetteville, GA, 30214 Screen/projector and audio required for in-person sessions with IT support available if needed. Ideally, teachers would be seated at tables in 4-5 person groups to …",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 3,
+          "total_chunks": 5,
+          "similarity": 0.5392,
+          "adjusted_score": 0.5392,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "4c3abf7b-fbcb-412c-a0fa-65358c628158",
+          "source_kb_id": "4c3abf7b-fbcb-412c-a0fa-65358c628158",
+          "title": "Debrief: Eden Prairie WebbAlign DOK PD December 8, 2022",
+          "file_name": "Eden Prairie Debrief Dec 8 2022 Session (2).pdf",
+          "document_type": "pdf",
+          "excerpt": "Debrief: Eden Prairie WebbAlign DOK PD December 8, 2022 Debrief: Eden Prairie WebbAlign DOK PD December 8, 2022 On December 8, 2022, instructional coaches from Eden Prairie Schools participated in a 6-hr professional learning session facilitated by Sara Christopherson, Director of WebbAlign. The WebbAlign program is the home and steward of the DOK language …",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 1,
+          "similarity": 0.5366,
+          "adjusted_score": 0.5366,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "aa40985e-a9ae-4edf-91e5-b4c01055ce96_chunk_0",
+          "source_kb_id": "aa40985e-a9ae-4edf-91e5-b4c01055ce96",
+          "title": "NSCA 2023 Content Alignment - Interim Assessment_ANNOTATED SLIDES (Part 2/4)",
+          "file_name": "NSCA 2023 Content Alignment - Interim Assessment_ANNOTATED SLIDES.pptx",
+          "document_type": "pptx",
+          "excerpt": "NSCA 2023 Content Alignment - Interim Assessment_ANNOTATED SLIDES (Part 2/4) Systemic Alignment (Webb, 1997) Content Focus Categorical Concurrence Depth of Knowledge (DOK) Consistency Range of Knowledge Structure of Knowledge Comparability Balance of Representation Dispositional Consonance Articulation across grades and ages Cognitive soundness determined b…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 5,
+          "similarity": 0.5349,
+          "adjusted_score": 0.5349,
+          "boost": 0.0
+        }
+      ]
+    },
+    {
+      "id": "webbalign_IL",
+      "product": "WebbAlign",
+      "state": "IL",
+      "audiences": [
+        "Curriculum directors"
+      ],
+      "summary": {
+        "retrieved_chunks": 18,
+        "unique_sources": 13,
+        "unique_files": 12,
+        "top_files": [
+          "District Specific Outcomes Based Options V2.docx.pdf",
+          "Eden Prairie Debrief Dec 8 2022 Session (2).pdf",
+          "Fayetteville_GA_CTE_SY2021_2022_WebbAlign PD_for AI tool training.docx",
+          "Mock Example.docx.pdf",
+          "NSCA 2023 Content Alignment - Interim Assessment_ANNOTATED SLIDES.pptx",
+          "Proposals_Eden Prairie_MN_WebbAlign_DOK_PD_for AI tool training.docx",
+          "WebbAlign  Calendar.html",
+          "WebbAlign  Resources.html",
+          "WebbAlign  Services Industry Partners.html",
+          "WebbAlign  Services States.html",
+          "WebbAlign Case Study for site_scc.pdf",
+          "WebbAlign info.html"
+        ],
+        "chunks_per_source_top": [
+          [
+            "e2a97d3c-56b0-42a1-81c2-e2a15fbc3d0a",
+            2
+          ],
+          [
+            "ef20f46a-92d7-452d-9d18-1bd56bc1addf",
+            2
+          ],
+          [
+            "cd158e50-a102-459c-b637-07cf2e048850",
+            2
+          ],
+          [
+            "fb5e8b7f-9a62-4af0-bebf-56a1b179beb3",
+            2
+          ],
+          [
+            "d49cfc8f-5eac-408a-9f50-f6ec3d0d2761",
+            2
+          ],
+          [
+            "25a47eae-07a8-47aa-bcc1-d963b50c58c2",
+            1
+          ],
+          [
+            "96fd46a2-dd08-4708-ad03-17503c64cddd",
+            1
+          ],
+          [
+            "5aba5988-a779-4c1b-ad68-7bcaf33f5392",
+            1
+          ],
+          [
+            "4e29c9fb-ec0d-45e8-8cb0-5983f64cdca9",
+            1
+          ],
+          [
+            "fb5f287f-f085-4ab1-a2e9-e70c0e24e83d",
+            1
+          ]
+        ]
+      },
+      "expectations": {
+        "must_have_total": 1,
+        "must_have_missing": [
+          "Illinois State Buyer_s Guide.pdf"
+        ],
+        "avoid_present": [],
+        "must_have_recall": 0.0
+      },
+      "retrieved_chunks": [
+        {
+          "chunk_id": "e2a97d3c-56b0-42a1-81c2-e2a15fbc3d0a_chunk_0",
+          "source_kb_id": "e2a97d3c-56b0-42a1-81c2-e2a15fbc3d0a",
+          "title": "WebbAlign  Services States",
+          "file_name": "WebbAlign  Services States.html",
+          "document_type": "website",
+          "excerpt": "WebbAlign Services States A WCEPS Program States Click here to read the guide: Using the Results of Content Alignment Analyses to Inform Ongoing Item-Level Improvements to an Assessment Program.Click here to read the report: A Comparative Alignment Analysis of Four Interim Assessment Programs with Oklahoma State ELA, Mathematics, and Science Academic Standa…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 3,
+          "similarity": 0.6631,
+          "adjusted_score": 0.6631,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "ef20f46a-92d7-452d-9d18-1bd56bc1addf_chunk_2",
+          "source_kb_id": "ef20f46a-92d7-452d-9d18-1bd56bc1addf",
+          "title": "WebbAlign Case Study for site_scc",
+          "file_name": "WebbAlign Case Study for site_scc.pdf",
+          "document_type": "pdf",
+          "excerpt": "administrators. ▪ Supported schools in working toward goals for improved student experience and outcomes. Impact As these offerings were implemented WebbAlign began to grow and increase impact. Since its inception, WebbAlign has supported: eight productive DOK Partnerships dozens of successful alignment studies, providing critical validity evidence and cons…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 2,
+          "total_chunks": 3,
+          "similarity": 0.6328,
+          "adjusted_score": 0.6328,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "25a47eae-07a8-47aa-bcc1-d963b50c58c2",
+          "source_kb_id": "25a47eae-07a8-47aa-bcc1-d963b50c58c2",
+          "title": "WebbAlign  Calendar",
+          "file_name": "WebbAlign  Calendar.html",
+          "document_type": "website",
+          "excerpt": "WebbAlign Calendar A WCEPS Program Calendar Nov 15 East Hampton USD Professional Learning (East Hampton, NY) An interactive PD session for Middle School ELA and Social Studies teachers focused on DOK and lesson planning considerations Nov 08 Alignment Study (East Coast) State alignment study spanning a two-day period Sep 26 Oak Lawn Community High School Pr…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 1,
+          "similarity": 0.6087,
+          "adjusted_score": 0.6087,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "96fd46a2-dd08-4708-ad03-17503c64cddd",
+          "source_kb_id": "96fd46a2-dd08-4708-ad03-17503c64cddd",
+          "title": "WebbAlign  Resources",
+          "file_name": "WebbAlign  Resources.html",
+          "document_type": "website",
+          "excerpt": "WebbAlign Resources A WCEPS Program Resources See below for resources about WebbAlign and Webb's DOK! Definitions and Information Detailed information concerning definitions and content related to Webb's Depth of Knowledge. Bibliography See a list of publications related to the Depth of Knowledge Framework, Alignment Methodology, and Technical Reports. A WC…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 1,
+          "similarity": 0.6,
+          "adjusted_score": 0.6,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "5aba5988-a779-4c1b-ad68-7bcaf33f5392_chunk_0",
+          "source_kb_id": "5aba5988-a779-4c1b-ad68-7bcaf33f5392",
+          "title": "WebbAlign info",
+          "file_name": "WebbAlign info.html",
+          "document_type": "website",
+          "excerpt": "WebbAlign info A WCEPS Program Straight from the source. In collaboration with Dr. Norman Webb, the developer of Depth of Knowledge (DOK), we promote effective and accurate use of this innovative language system. Our team helps you use the lens of DOK to evaluate standards, learning objectives, assessments, curricula, and instructional materials to work tow…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 2,
+          "similarity": 0.5984,
+          "adjusted_score": 0.5984,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "ef20f46a-92d7-452d-9d18-1bd56bc1addf_chunk_0",
+          "source_kb_id": "ef20f46a-92d7-452d-9d18-1bd56bc1addf",
+          "title": "WebbAlign Case Study for site_scc",
+          "file_name": "WebbAlign Case Study for site_scc.pdf",
+          "document_type": "pdf",
+          "excerpt": "WebbAlign Case Study for site_scc Title: WebbAlign Case Study for site_scc Content: WCEPS uses diverse expertise to continue thought leadership in the field on topics of content alignment and Depth of Knowledge (DOK). (OR) WCEPS uses diverse expertise to continue to evaluate and promote alignment in educational materials. History Dr. Title: WebbAlign Case S…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 3,
+          "similarity": 0.5951,
+          "adjusted_score": 0.5951,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "cd158e50-a102-459c-b637-07cf2e048850_chunk_1",
+          "source_kb_id": "cd158e50-a102-459c-b637-07cf2e048850",
+          "title": "WebbAlign  Services Industry Partners",
+          "file_name": "WebbAlign  Services Industry Partners.html",
+          "document_type": "website",
+          "excerpt": "ign teamAfter committing to the cycle of continuous improvements, new partners have the right to use the WebbAlign DOK Partner Certification Badge on promotional materials for all certified products. Following completion of initial partnership requirements, we will work together to identify the types of support and evaluation that will help you as you devel…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 1,
+          "total_chunks": 4,
+          "similarity": 0.5787,
+          "adjusted_score": 0.5787,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "4e29c9fb-ec0d-45e8-8cb0-5983f64cdca9",
+          "source_kb_id": "4e29c9fb-ec0d-45e8-8cb0-5983f64cdca9",
+          "title": "Proposal: WebbAlign Professional Learning for",
+          "file_name": "Proposals_Eden Prairie_MN_WebbAlign_DOK_PD_for AI tool training.docx",
+          "document_type": "docx",
+          "excerpt": "Proposal: WebbAlign Professional Learning for Proposal: WebbAlign Professional Learning for Eden Prairie Schools Eden Prairie Schools Main Contacts: Robb Virgin, Executive Director of Personalized Learning and Lisa Birno, Director of Curriculum and Learning (Lisa_Birno@edenpr.k12.mn.us) WebbAlign Main Contact: Sara Christopherson, Director of WebbAlign (sar…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 1,
+          "similarity": 0.5748,
+          "adjusted_score": 0.5748,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "fb5e8b7f-9a62-4af0-bebf-56a1b179beb3_chunk_5",
+          "source_kb_id": "fb5e8b7f-9a62-4af0-bebf-56a1b179beb3",
+          "title": "Mock Example.docx (Part 1/2)",
+          "file_name": "Mock Example.docx.pdf",
+          "document_type": "pdf",
+          "excerpt": "grate WIDA frameworks Blended / Online Authentic student work AIW PLCs, school teams Improve rigor through collaboration Cohort model Coaching & collaboration Coaching for Impact Coaches, mentors Build sustainable coaching systems Series / Coaching model Leadership for learning CALL School & district leaders Assess and improve leadership capacity Diagnostic…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 5,
+          "total_chunks": 6,
+          "similarity": 0.5705,
+          "adjusted_score": 0.5705,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "cd158e50-a102-459c-b637-07cf2e048850_chunk_0",
+          "source_kb_id": "cd158e50-a102-459c-b637-07cf2e048850",
+          "title": "WebbAlign  Services Industry Partners",
+          "file_name": "WebbAlign  Services Industry Partners.html",
+          "document_type": "website",
+          "excerpt": "WebbAlign Services Industry Partners A WCEPS Program Industry Partners Quality – the real competitive advantageOur partner program supports your commitment to produce high quality, aligned instructional material and assessments. As a Depth of Knowledge (DOK) Partner, you’ll gain a competitive edge through an ongoing cycle of professional learning and item e…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 4,
+          "similarity": 0.5581,
+          "adjusted_score": 0.5581,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "fb5f287f-f085-4ab1-a2e9-e70c0e24e83d_chunk_2",
+          "source_kb_id": "fb5f287f-f085-4ab1-a2e9-e70c0e24e83d",
+          "title": "District Specific Outcomes Based Options V2.docx (Part 1/2)",
+          "file_name": "District Specific Outcomes Based Options V2.docx.pdf",
+          "document_type": "pdf",
+          "excerpt": "area. (If admin participates) ● Admin may use a shared Qualtrics learning walk tool to capture concepts from the session. For school districts, teachers will have a common understanding of the topic. Add-ons: Curriculum, State Standard, and Assessment Alignments (DOK, MLL) Add-ons: Needs Assessments Tool Add-ons: WCEPS Badges* Add-ons: Coaching, 1 to 3-year…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 2,
+          "total_chunks": 5,
+          "similarity": 0.557,
+          "adjusted_score": 0.557,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "aa40985e-a9ae-4edf-91e5-b4c01055ce96_chunk_0",
+          "source_kb_id": "aa40985e-a9ae-4edf-91e5-b4c01055ce96",
+          "title": "NSCA 2023 Content Alignment - Interim Assessment_ANNOTATED SLIDES (Part 2/4)",
+          "file_name": "NSCA 2023 Content Alignment - Interim Assessment_ANNOTATED SLIDES.pptx",
+          "document_type": "pptx",
+          "excerpt": "NSCA 2023 Content Alignment - Interim Assessment_ANNOTATED SLIDES (Part 2/4) Systemic Alignment (Webb, 1997) Content Focus Categorical Concurrence Depth of Knowledge (DOK) Consistency Range of Knowledge Structure of Knowledge Comparability Balance of Representation Dispositional Consonance Articulation across grades and ages Cognitive soundness determined b…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 5,
+          "similarity": 0.5564,
+          "adjusted_score": 0.5564,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "e2a97d3c-56b0-42a1-81c2-e2a15fbc3d0a_chunk_1",
+          "source_kb_id": "e2a97d3c-56b0-42a1-81c2-e2a15fbc3d0a",
+          "title": "WebbAlign  Services States",
+          "file_name": "WebbAlign  Services States.html",
+          "document_type": "website",
+          "excerpt": "hological Testing call out evidence of content alignment between standards and assessments as a core aspect of a validity argument for the interpretation and use of test scores (AERA/APA/NCME, 2014). What are Alignment Studies?A content alignment analysis of standards with assessments evaluates the relationship between the two artifacts, based on agreed upo…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 1,
+          "total_chunks": 3,
+          "similarity": 0.5556,
+          "adjusted_score": 0.5556,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "d49cfc8f-5eac-408a-9f50-f6ec3d0d2761_chunk_3",
+          "source_kb_id": "d49cfc8f-5eac-408a-9f50-f6ec3d0d2761",
+          "title": "Proposal: WebbAlign DOK Professional Learning for (Part 1/2)",
+          "file_name": "Fayetteville_GA_CTE_SY2021_2022_WebbAlign PD_for AI tool training.docx",
+          "document_type": "docx",
+          "excerpt": "ce documents, and any existing unit assessment materials. In-person sessions on September 7, 2021 and March 15, 2022 will be held at: Center of Innovation 440 Hood Avenue Fayetteville, GA, 30214 Screen/projector and audio required for in-person sessions with IT support available if needed. Ideally, teachers would be seated at tables in 4-5 person groups to …",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 3,
+          "total_chunks": 5,
+          "similarity": 0.5548,
+          "adjusted_score": 0.5548,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "d49cfc8f-5eac-408a-9f50-f6ec3d0d2761_chunk_4",
+          "source_kb_id": "d49cfc8f-5eac-408a-9f50-f6ec3d0d2761",
+          "title": "Proposal: WebbAlign DOK Professional Learning for (Part 1/2)",
+          "file_name": "Fayetteville_GA_CTE_SY2021_2022_WebbAlign PD_for AI tool training.docx",
+          "document_type": "docx",
+          "excerpt": "ssential questions, activities, rubrics, etc within their scope and sequence documents, revising as needed. Work may occur online and/or in person. Proposal: WebbAlign DOK Professional Learning for Fayette County Public Schools Career &amp; Technical Education Teachers March 20, 2023 Fayette County Public Schools Contact: James Stanford, Coordinator, Career…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 4,
+          "total_chunks": 5,
+          "similarity": 0.5513,
+          "adjusted_score": 0.5513,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "66d5273a-56e9-4d3d-b80d-999244ab4fe8_chunk_0",
+          "source_kb_id": "66d5273a-56e9-4d3d-b80d-999244ab4fe8",
+          "title": "Proposal: WebbAlign Professional Learning for (Part 2/3)",
+          "file_name": "Proposals_Eden Prairie_MN_WebbAlign_DOK_PD_for AI tool training.docx",
+          "document_type": "docx",
+          "excerpt": "Proposal: WebbAlign Professional Learning for (Part 2/3) Future PL will be planned in collaboration with Eden Prairie leadership with a goal of incorporating DOK into existing systems and processes – e.g. curriculum review cycles, lesson planning / PLC work, teacher evaluation conversations (that may include consideration of planned vs enacted lessons), ass…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 4,
+          "similarity": 0.5461,
+          "adjusted_score": 0.5461,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "22034ede-dd90-4cf7-acef-d5d27527dc8b_chunk_0",
+          "source_kb_id": "22034ede-dd90-4cf7-acef-d5d27527dc8b",
+          "title": "Debrief: Eden Prairie WebbAlign DOK PD December 8, 2022 (Part 1/1)",
+          "file_name": "Eden Prairie Debrief Dec 8 2022 Session (2).pdf",
+          "document_type": "pdf",
+          "excerpt": "Debrief: Eden Prairie WebbAlign DOK PD December 8, 2022 (Part 1/1) Debrief: Eden Prairie WebbAlign DOK PD December 8, 2022 On December 8, 2022, instructional coaches from Eden Prairie Schools participated in a 6-hr professional learning session facilitated by Sara Christopherson, Director of WebbAlign. The WebbAlign program is the home and steward of the DO…",
+          "category": "case_study",
+          "subcategory": null,
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 0,
+          "total_chunks": 6,
+          "similarity": 0.546,
+          "adjusted_score": 0.546,
+          "boost": 0.0
+        },
+        {
+          "chunk_id": "fb5e8b7f-9a62-4af0-bebf-56a1b179beb3_chunk_4",
+          "source_kb_id": "fb5e8b7f-9a62-4af0-bebf-56a1b179beb3",
+          "title": "Mock Example.docx (Part 1/2)",
+          "file_name": "Mock Example.docx.pdf",
+          "document_type": "pdf",
+          "excerpt": "ional teams, PLCs, and school leaders Coaching and Professional Collaboration Looking for: Frameworks and strategies to build effective coaching systems and sustain professional learning communities. Ask Yourself: ● How can I create trust-based, reflective coaching conversations? ● How can our team sustain growth beyond a single PD session? Recommended Reso…",
+          "category": "product",
+          "subcategory": "webbalign",
+          "product_name": "webbalign",
+          "applicable_states": null,
+          "chunk_index": 4,
+          "total_chunks": 6,
+          "similarity": 0.5446,
+          "adjusted_score": 0.5446,
+          "boost": 0.0
+        }
+      ]
+    },
+    {
+      "id": "wida_pl_FL",
+      "product": "WIDA Professional Learning",
+      "state": "FL",
+      "audiences": [
+        "Title III Coordinators",
+        "ELL/Multilingual Directors"
+      ],
+      "error": "503: No KB chunks returned for product_key='wida_professional_learning'. This usually means KB items are not tagged with the expected product_name key, or embeddings were built from a different KB snapshot. Verify /api/kb/stats, then re-run POST /api/kb/embed after indexing."
+    },
+    {
+      "id": "wida_pl_MN",
+      "product": "WIDA Professional Learning",
+      "state": "MN",
+      "audiences": [
+        "Title III Coordinators"
+      ],
+      "error": "503: No KB chunks returned for product_key='wida_professional_learning'. This usually means KB items are not tagged with the expected product_name key, or embeddings were built from a different KB snapshot. Verify /api/kb/stats, then re-run POST /api/kb/embed after indexing."
+    }
+  ]
+}

@@ -1,0 +1,294 @@
+diff --git a/backend/product_overrides/care_coaching.yaml b/backend/product_overrides/care_coaching.yaml
+index fe89074..6a37c36 100644
+--- a/backend/product_overrides/care_coaching.yaml
++++ b/backend/product_overrides/care_coaching.yaml
+@@ -5,6 +5,8 @@ offerings:
+   - "Facilitated PLC structures and coaching routines"
+   - "Implementation planning support for district/school improvement plans"
+   - "Artifacts and documentation support to evidence PD completion"
++  - "CARE Coaching Needs Assessment (CCNA)"
++  - "Empowering Newcomers for Academic Success"
+ 
+ who_its_for:
+   - "District leadership"
+diff --git a/backend/scripts/kb_eval.py b/backend/scripts/kb_eval.py
+index 96233f5..12ff03b 100644
+--- a/backend/scripts/kb_eval.py
++++ b/backend/scripts/kb_eval.py
+@@ -107,6 +107,8 @@ async def _run_eval(db: AsyncSession, scenarios: List[Dict[str, Any]]) -> Dict[s
+         product = str(sc.get("product") or "").strip()
+         state = str(sc.get("state") or "").strip().upper()
+         audiences = [str(x).strip() for x in _safe_list(sc.get("audiences")) if str(x).strip()]
++        # NEW: Support purpose_prompt for purpose-aware retrieval testing
++        purpose_prompt = str(sc.get("purpose_prompt") or "").strip() or None
+ 
+         expected = sc.get("expected") if isinstance(sc.get("expected"), dict) else {}
+         must_have_files = [str(x).strip() for x in _safe_list(expected.get("must_have_files")) if str(x).strip()]
+@@ -127,6 +129,7 @@ async def _run_eval(db: AsyncSession, scenarios: List[Dict[str, Any]]) -> Dict[s
+                 product_display_name=product,
+                 state_code=state,
+                 audiences=audiences or [],
++                purpose_prompt=purpose_prompt,
+             )
+             pack_dict = pack.model_dump()
+             chunks = pack_dict.get("retrieved_chunks") or []
+@@ -148,6 +151,7 @@ async def _run_eval(db: AsyncSession, scenarios: List[Dict[str, Any]]) -> Dict[s
+                     "product": product,
+                     "state": state,
+                     "audiences": audiences,
++                    "purpose_prompt": purpose_prompt,  # NEW: Track purpose for analysis
+                     "summary": summary,
+                     "expectations": exp,
+                     # Keep the full evidence chunk objects for debugging/tuning.
+diff --git a/backend/scripts/kb_eval_scenarios.yaml b/backend/scripts/kb_eval_scenarios.yaml
+index deed955..e10a119 100644
+--- a/backend/scripts/kb_eval_scenarios.yaml
++++ b/backend/scripts/kb_eval_scenarios.yaml
+@@ -8,7 +8,59 @@ scenarios:
+   # See EVAL_101.md for detailed guidance on writing and interpreting scenarios.
+ 
+   # ============================================================================
+-  # CARE Coaching scenarios
++  # PURPOSE-AWARE RETRIEVAL TESTS
++  # ============================================================================
++  # These scenarios test that purpose_prompt correctly filters KB content
++  
++  - id: care_coaching_AL_newcomer
++    product: "CARE Coaching"
++    state: "AL"
++    audiences:
++      - "Decision Makers"
++    purpose_prompt: "newcomer offering"
++    expected:
++      # Should retrieve newcomer-specific docs, NOT generic CCNA
++      must_have_files:
++        - "Empowering Newcomers for Academic Success.pptx"
++        - "CARE Coaching Newcomer Learning Walk Tool.pdf"
++      avoid_files:
++        - "CARE Coaching Needs Assessment (CCNA)"  # Generic, not newcomer-specific
++
++  - id: care_coaching_FL_ccna_focus
++    product: "CARE Coaching"
++    state: "FL"
++    audiences:
++      - "Decision Makers"
++    purpose_prompt: "needs assessment data"
++    expected:
++      # Should retrieve CCNA-specific docs when purpose mentions assessment
++      must_have_files:
++        - "CARE Coaching Needs Assessment (CCNA)"
++
++  - id: care_coaching_TX_family_engagement
++    product: "CARE Coaching"
++    state: "TX"
++    audiences:
++      - "Decision Makers"
++    purpose_prompt: "family engagement strategies"
++    expected:
++      # Should retrieve family engagement docs
++      must_have_files: []  # Will be populated after first run
++      avoid_files: []
++
++  - id: webbalign_IL_dok
++    product: "WebbAlign"
++    state: "IL"
++    audiences:
++      - "Curriculum Directors"
++    purpose_prompt: "depth of knowledge alignment"
++    expected:
++      # Should retrieve DOK-specific docs
++      must_have_files: []  # Will be populated after first run
++      avoid_files: []
++
++  # ============================================================================
++  # CARE Coaching scenarios (generic - no purpose)
+   # ============================================================================
+   - id: care_coaching_FL_titleiii
+     product: "CARE Coaching"
+@@ -17,8 +69,7 @@ scenarios:
+       - "Title III Coordinators"
+       - "ELL/Multilingual Directors"
+     expected:
+-      must_have_files:
+-        - "Florida State Buyer_s Guide.pdf"
++      must_have_files: []
+       avoid_files: []
+ 
+   - id: care_coaching_CO
+diff --git a/backend/src/pipeline/runner.py b/backend/src/pipeline/runner.py
+index f9338c1..fd58a8e 100644
+--- a/backend/src/pipeline/runner.py
++++ b/backend/src/pipeline/runner.py
+@@ -91,6 +91,53 @@ def _choose_best_attempt(attempts: List[Tuple]):
+     return attempts_sorted[0] if attempts_sorted else None
+ 
+ 
++def _select_required_offering(
++    evidence_pack,
++    selected_hook,
++) -> Optional[str]:
++    """Pick a required offering phrase based on hook signals (CARE Coaching only)."""
++    product_key = (getattr(evidence_pack, "product_key", "") or "").strip().lower()
++    if product_key != "care_coaching":
++        return None
++
++    brief = evidence_pack.supplemental_brief if isinstance(evidence_pack.supplemental_brief, dict) else None
++    offerings = brief.get("offerings") if isinstance(brief, dict) else None
++    if not isinstance(offerings, list):
++        return None
++    cleaned = [str(o).strip() for o in offerings if isinstance(o, str) and o.strip()]
++    if not cleaned:
++        return None
++
++    hook = selected_hook.hook
++    text = " ".join(
++        [
++            hook.quote or "",
++            hook.trigger_excerpt or "",
++            hook.eligibility_excerpt or "",
++            hook.why_relevant or "",
++        ]
++    ).lower()
++
++    newcomer_terms = [
++        "newcomer",
++        "newcomers",
++        "refugee",
++        "refugees",
++        "orr",
++        "resettlement",
++        "immigrant",
++        "slife",
++    ]
++    if any(term in text for term in newcomer_terms):
++        for phrase in cleaned:
++            if phrase.lower() == "empowering newcomers for academic success":
++                return phrase
++        for phrase in cleaned:
++            if "newcomer" in phrase.lower():
++                return phrase
++    return None
++
++
+ async def _run_variant(
+     *,
+     product: str,
+@@ -118,6 +165,7 @@ async def _run_variant(
+     variant_trace = AudienceVariantTrace(audience=audience, attempts=[], stage_ms={})
+ 
+     attempts: List[Tuple] = []
++    required_offering = _select_required_offering(evidence_pack, selected_hook)
+ 
+     # Attempt 0 (initial)
+     t0 = time.perf_counter()
+@@ -133,6 +181,7 @@ async def _run_variant(
+         district_url=district_url,
+         purpose_prompt=purpose_prompt,
+         supporting_context=supporting_context,
++        required_offering=required_offering,
+         repair_instructions=None,
+         prior_email_body=None,
+         on_progress=on_progress,
+@@ -149,6 +198,7 @@ async def _run_variant(
+         claims_map=claims,
+         evidence_pack=evidence_pack,
+         treasure_hooks=treasure_hooks,
++        required_offering=required_offering,
+     )
+     variant_trace.attempts.append(IterationTrace(iteration=0, validation=v0))
+     attempts.append((draft, claims, v0, variant_trace))
+@@ -176,6 +226,7 @@ async def _run_variant(
+             district_url=district_url,
+             purpose_prompt=purpose_prompt,
+             supporting_context=supporting_context,
++            required_offering=required_offering,
+             repair_instructions=instructions,
+             prior_email_body=prev_email,
+             on_progress=on_progress,
+@@ -192,6 +243,7 @@ async def _run_variant(
+             claims_map=claims_i,
+             evidence_pack=evidence_pack,
+             treasure_hooks=treasure_hooks,
++            required_offering=required_offering,
+         )
+ 
+         stop, reason = should_stop_repair(prev_validation, v_i)
+@@ -511,4 +563,3 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
+         trace=trace,
+         warnings=warnings,
+     )
+-
+diff --git a/backend/src/pipeline/stages/email_writer.py b/backend/src/pipeline/stages/email_writer.py
+index 2956e05..0a481bd 100644
+--- a/backend/src/pipeline/stages/email_writer.py
++++ b/backend/src/pipeline/stages/email_writer.py
+@@ -1431,6 +1431,7 @@ async def write_email_variant(
+     district_url: Optional[str],
+     purpose_prompt: Optional[str] = None,
+     supporting_context: Optional[List[str]] = None,
++    required_offering: Optional[str] = None,
+     repair_instructions: Optional[List[str]] = None,
+     prior_email_body: Optional[str] = None,
+     on_progress: Optional[Callable[[str, float], None]] = None,
+@@ -1490,6 +1491,9 @@ async def write_email_variant(
+                 "- Do not paste any URLs. Paraphrase in natural language.\n"
+                 f"{lines}\n"
+             )
++    required_offering_block = ""
++    if required_offering:
++        required_offering_block = f"- You MUST include this offering verbatim: {required_offering}\n"
+ 
+     mode_text = "district" if (district_name or district_url) else "state_only"
+     district_block = ""
+@@ -1516,7 +1520,7 @@ Here are examples of the quality, tone, and style we want:
+ 
+ Now write an email for THIS specific situation. Follow the constraints below.
+ 
+-Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain text only.\n- Do NOT include any URLs in the email body EXCEPT the Calendly link: {CALENDLY_URL_RAW}.\n- 2-3 bullets, each ≤ 10 words. Use 2 if that's all that adds value - don't pad with fluff.\n- Bullets must be specific DELIVERABLES or OUTCOMES (e.g., implementation plan, coaching schedules, progress monitoring).\n- NEVER use the product name itself as a bullet (e.g., "CARE Coaching Professional Learning Program" is WRONG - it's redundant).\n- Each bullet should reuse 1–3 distinctive words from the cited KB excerpt (to keep it grounded).\n- Include at least ONE Product offering phrase verbatim (see list below). Use it in body text, NOT as a bullet.\n- CTA must offer VALUE, not just a generic meeting. Frame it around solving their specific problem.\n- Good CTAs tie the meeting to the grant/compliance need:\n  - \"Would you have 15 minutes to walk through implementation options for [specific grant/requirement]?\"\n  - \"15 minutes to explore how this fits your [CSI plan / Title III goals]?\"\n  - \"I'd love to share how other districts have approached [specific challenge].\"\n- AVOID generic asks like \"15 minutes to discuss\" or \"a quick call to chat\" - be specific about the value.\n- Do NOT offer to \"send\" documents, templates, checklists, or resources.\n- Always include Calendly link: {CALENDLY_URL_RAW}\n- If a secondary hook is provided, you MUST use it later in the email.\n\nSubject line constraints (critical):\n- Ideally mention the product name (e.g., \"CARE Coaching\") - makes it clear what we offer.\n- Ideally mention the specific funding/compliance opportunity (e.g., \"CLSD Grant\", \"CSI Schools\") - shows relevance.\n- Aim for a DIRECT connection between product and opportunity when possible.\n- Avoid generic subjects (\"Quick question\", \"Following up\", \"Checking in\", \"Touching base\").\n- Do NOT use specific past years (2024, 2025) in subject - use \"Current\" or \"FY26\" if referencing time.\n- Best: \"CARE Coaching Fits with CLSD Grant\" (product + specific opportunity)\n- Good: \"CARE Coaching for Alaska CSI Schools\" (product + compliance situation)\n- Good: \"Support for Alaska Literacy Initiative\" (specific opportunity, clear value)\n- Avoid: \"Alaska Districts: Eligible for 2024 Funding Guidance\" (vague, stale year)\n\nDistrict mention rules (critical):\n- If Mode is "state_only": Do NOT mention specific district names (e.g., "Caldwell", "Jerome", "Springfield").\n  Write generically: "your district", "districts in [State]", "schools in your region".\n- Only mention specific districts BY NAME if Mode is "district" AND district_name is provided.\n- This applies to ALL parts of the email including the opener hook.\n\nOpener constraints (critical):\n- The FIRST paragraph must include a specific trigger token that appears in the trigger excerpt from the selected hook source.\n  Suggested trigger token: {trigger_token or '(choose one from trigger excerpt)'}\n- If timing_summary or signal_summary is provided, include that timing/signal in the opener or subject line.\n- For monitoring hooks, explicitly include the monitoring trigger (e.g., "monitoring", "CAP", "Consent Decree") in the opener.\n- If a CUSTOM PURPOSE is provided, BLEND it with the hook: purpose sets the strategic framing/angle, hook provides the specific trigger evidence.\n  Example blend: 'With [purpose framing], we noticed [hook trigger token]...'\n- Paraphrase the hook in natural language. Do NOT quote the source verbatim. Do NOT paste URLs.\n- Address the email to a PERSON, not a title. Use \"Dear [Name],\" as a placeholder.\n- Do NOT address by title alone (e.g., \"Dear Title III Coordinator\" is WRONG).\n- The recipient's position/role should inform the CONTENT, not the greeting.\n- The greeting (e.g., "Dear [Name],") should be its own short paragraph, followed by the opener paragraph.\n\nProduct-to-Grant Connection (CRITICAL - spell it out!):\n- EXPLICITLY connect product capabilities to grant/compliance requirements. Do NOT assume the reader will make the connection.\n- If grant is for literacy/reading → mention how the product supports literacy instruction (e.g., \"CARE Coaching helps teachers develop effective literacy instruction for multilingual learners\")\n- If grant requires PD hours → mention \"coaching cycles count toward professional development requirements\"\n- If compliance is for EL monitoring → mention specific monitoring support the product provides\n- If grant mentions specific outcomes (e.g., \"reading outcomes\", \"academic achievement\") → connect product to those outcomes\n- Bad: \"Our CARE Coaching program offers job-embedded coaching cycles\" (too generic, no connection to grant)\n- Good: \"CARE Coaching helps teachers develop literacy instruction skills - directly aligned with CLSD's focus on reading outcomes for EL students\" (explicit connection)\n- Good: \"Our coaching cycles support the literacy improvement goals required by this grant\" (explicit connection)\n\nSocial proof rules:\n- If SUCCESS STORIES are provided in product context, you MAY incorporate ONE naturally when relevant.\n- Use phrases like "We've helped districts like yours..." or "Other [state] districts have seen..."\n- Do NOT name specific districts in case studies - keep them generic.\n- Do NOT force case studies in if they don't fit naturally. Quality over quantity.\n\nEnding constraints (critical):\n- The LAST paragraph must be the CTA.\n- Do NOT add a separate sign-off paragraph after the CTA.\n- If you include a sign-off, include it within the CTA paragraph (same paragraph).\n\nHook context (do not paste any URLs):\n- hook_type: {hook.hook_type}\n- trigger_excerpt: {hook.trigger_excerpt}\n- eligibility_excerpt: {hook.eligibility_excerpt or 'null'}\n- timing_summary: {hook.timing_summary or 'null'}\n- signal_summary: {hook.signal_summary or 'null'}\n{secondary_block}{purpose_block}{supporting_block}\n\nAudience: {audience}\nProduct: {product}\nState: {state_full} ({state_code})\nMode: {mode_text}\n{district_block}\n\nEvidence (KB chunks you may cite by id):\n{_format_evidence_chunks(evidence_pack)}\n\nProduct context (use this to make EXPLICIT connections to the grant/compliance requirement):\n{_format_full_product_context(evidence_pack)}\n\n{_format_case_studies(evidence_pack)}\n\nClaims-map rules:\n- claims_map must cover:\n  - the opener hook claim (paraphrase)\n  - each deliverable bullet (2-3 entries, one per bullet)\n  - any funding/compliance/outcome claims you make\n  - if a secondary hook is provided, a SECOND hook claim\n- For hook claim(s): claim_text should match the relevant paragraph (paraphrase is OK). The server will attach the correct hook URL.\n  IMPORTANT: Do NOT output placeholder strings like \"hook.link\" in urls.\n- For each bullet claim: claim_text should match the bullet text (no bullet marker), and include kb_chunk_ids from EvidencePack (choose the most relevant chunk id). Use urls=[].\n- Connector/polite text can be omitted from claims_map.\n\nAvoid:\n- Generic bullets like \"Personalized coaching\" or \"Improve outcomes\" (not deliverables).\n- Placeholder signatures like \"[Your Name]\".\n\n{repair_block}\n{prior_block}\n\n{EMAIL_JSON_SPEC}\n\nReturn JSON now."""
++Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain text only.\n- Do NOT include any URLs in the email body EXCEPT the Calendly link: {CALENDLY_URL_RAW}.\n- 2-3 bullets, each ≤ 10 words. Use 2 if that's all that adds value - don't pad with fluff.\n- Bullets must be specific DELIVERABLES or OUTCOMES (e.g., implementation plan, coaching schedules, progress monitoring).\n- NEVER use the product name itself as a bullet (e.g., "CARE Coaching Professional Learning Program" is WRONG - it's redundant).\n- Each bullet should reuse 1–3 distinctive words from the cited KB excerpt (to keep it grounded).\n- Include at least ONE Product offering phrase verbatim (see list below). Use it in body text, NOT as a bullet.\n{required_offering_block}- CTA must offer VALUE, not just a generic meeting. Frame it around solving their specific problem.\n- Good CTAs tie the meeting to the grant/compliance need:\n  - \"Would you have 15 minutes to walk through implementation options for [specific grant/requirement]?\"\n  - \"15 minutes to explore how this fits your [CSI plan / Title III goals]?\"\n  - \"I'd love to share how other districts have approached [specific challenge].\"\n- AVOID generic asks like \"15 minutes to discuss\" or \"a quick call to chat\" - be specific about the value.\n- Do NOT offer to \"send\" documents, templates, checklists, or resources.\n- Always include Calendly link: {CALENDLY_URL_RAW}\n- If a secondary hook is provided, you MUST use it later in the email.\n\nSubject line constraints (critical):\n- Ideally mention the product name (e.g., \"CARE Coaching\") - makes it clear what we offer.\n- Ideally mention the specific funding/compliance opportunity (e.g., \"CLSD Grant\", \"CSI Schools\") - shows relevance.\n- Aim for a DIRECT connection between product and opportunity when possible.\n- Avoid generic subjects (\"Quick question\", \"Following up\", \"Checking in\", \"Touching base\").\n- Do NOT use specific past years (2024, 2025) in subject - use \"Current\" or \"FY26\" if referencing time.\n- Best: \"CARE Coaching Fits with CLSD Grant\" (product + specific opportunity)\n- Good: \"CARE Coaching for Alaska CSI Schools\" (product + compliance situation)\n- Good: \"Support for Alaska Literacy Initiative\" (specific opportunity, clear value)\n- Avoid: \"Alaska Districts: Eligible for 2024 Funding Guidance\" (vague, stale year)\n\nDistrict mention rules (critical):\n- If Mode is "state_only": Do NOT mention specific district names (e.g., "Caldwell", "Jerome", "Springfield").\n  Write generically: "your district", "districts in [State]", "schools in your region".\n- Only mention specific districts BY NAME if Mode is "district" AND district_name is provided.\n- This applies to ALL parts of the email including the opener hook.\n\nOpener constraints (critical):\n- The FIRST paragraph must include a specific trigger token that appears in the trigger excerpt from the selected hook source.\n  Suggested trigger token: {trigger_token or '(choose one from trigger excerpt)'}\n- If timing_summary or signal_summary is provided, include that timing/signal in the opener or subject line.\n- For monitoring hooks, explicitly include the monitoring trigger (e.g., "monitoring", "CAP", "Consent Decree") in the opener.\n- If a CUSTOM PURPOSE is provided, BLEND it with the hook: purpose sets the strategic framing/angle, hook provides the specific trigger evidence.\n  Example blend: 'With [purpose framing], we noticed [hook trigger token]...'\n- Paraphrase the hook in natural language. Do NOT quote the source verbatim. Do NOT paste URLs.\n- Address the email to a PERSON, not a title. Use \"Dear [Name],\" as a placeholder.\n- Do NOT address by title alone (e.g., \"Dear Title III Coordinator\" is WRONG).\n- The recipient's position/role should inform the CONTENT, not the greeting.\n- The greeting (e.g., "Dear [Name],") should be its own short paragraph, followed by the opener paragraph.\n\nProduct-to-Grant Connection (CRITICAL - spell it out!):\n- EXPLICITLY connect product capabilities to grant/compliance requirements. Do NOT assume the reader will make the connection.\n- If grant is for literacy/reading → mention how the product supports literacy instruction (e.g., \"CARE Coaching helps teachers develop effective literacy instruction for multilingual learners\")\n- If grant requires PD hours → mention \"coaching cycles count toward professional development requirements\"\n- If compliance is for EL monitoring → mention specific monitoring support the product provides\n- If grant mentions specific outcomes (e.g., \"reading outcomes\", \"academic achievement\") → connect product to those outcomes\n- Bad: \"Our CARE Coaching program offers job-embedded coaching cycles\" (too generic, no connection to grant)\n- Good: \"CARE Coaching helps teachers develop literacy instruction skills - directly aligned with CLSD's focus on reading outcomes for EL students\" (explicit connection)\n- Good: \"Our coaching cycles support the literacy improvement goals required by this grant\" (explicit connection)\n\nSocial proof rules:\n- If SUCCESS STORIES are provided in product context, you MAY incorporate ONE naturally when relevant.\n- Use phrases like "We've helped districts like yours..." or "Other [state] districts have seen..."\n- Do NOT name specific districts in case studies - keep them generic.\n- Do NOT force case studies in if they don't fit naturally. Quality over quantity.\n\nEnding constraints (critical):\n- The LAST paragraph must be the CTA.\n- Do NOT add a separate sign-off paragraph after the CTA.\n- If you include a sign-off, include it within the CTA paragraph (same paragraph).\n\nHook context (do not paste any URLs):\n- hook_type: {hook.hook_type}\n- trigger_excerpt: {hook.trigger_excerpt}\n- eligibility_excerpt: {hook.eligibility_excerpt or 'null'}\n- timing_summary: {hook.timing_summary or 'null'}\n- signal_summary: {hook.signal_summary or 'null'}\n{secondary_block}{purpose_block}{supporting_block}\n\nAudience: {audience}\nProduct: {product}\nState: {state_full} ({state_code})\nMode: {mode_text}\n{district_block}\n\nEvidence (KB chunks you may cite by id):\n{_format_evidence_chunks(evidence_pack)}\n\nProduct context (use this to make EXPLICIT connections to the grant/compliance requirement):\n{_format_full_product_context(evidence_pack)}\n\n{_format_case_studies(evidence_pack)}\n\nClaims-map rules:\n- claims_map must cover:\n  - the opener hook claim (paraphrase)\n  - each deliverable bullet (2-3 entries, one per bullet)\n  - any funding/compliance/outcome claims you make\n  - if a secondary hook is provided, a SECOND hook claim\n- For hook claim(s): claim_text should match the relevant paragraph (paraphrase is OK). The server will attach the correct hook URL.\n  IMPORTANT: Do NOT output placeholder strings like \"hook.link\" in urls.\n- For each bullet claim: claim_text should match the bullet text (no bullet marker), and include kb_chunk_ids from EvidencePack (choose the most relevant chunk id). Use urls=[].\n- Connector/polite text can be omitted from claims_map.\n\nAvoid:\n- Generic bullets like \"Personalized coaching\" or \"Improve outcomes\" (not deliverables).\n- Placeholder signatures like \"[Your Name]\".\n\n{repair_block}\n{prior_block}\n\n{EMAIL_JSON_SPEC}\n\nReturn JSON now."""
+ 
+     client = AsyncOpenAI(api_key=settings.openai_api_key)
+     
+diff --git a/backend/src/pipeline/stages/repair.py b/backend/src/pipeline/stages/repair.py
+index 6c5ffca..20286f0 100644
+--- a/backend/src/pipeline/stages/repair.py
++++ b/backend/src/pipeline/stages/repair.py
+@@ -78,6 +78,8 @@ def failures_to_instructions(failures: Sequence[ValidationFailure]) -> List[str]
+         instructions.append("Remove any non-Calendly URLs from the email body (only the Calendly scheduling link is allowed).")
+     if "missing_product_offering_phrase" in code_set:
+         instructions.append("Include at least ONE ProductBrief offering phrase verbatim (prefer using it as a bullet deliverable).")
++    if "missing_required_offering" in code_set:
++        instructions.append("Include the required offering phrase verbatim (copy it exactly as given).")
+     if "missing_greeting" in code_set:
+         instructions.append("Start the email with the greeting line: 'Dear [Name],' (capital D), on its own line, followed by a blank line.")
+     if "missing_or_unsourced_trigger" in code_set:
+diff --git a/backend/src/pipeline/stages/validator.py b/backend/src/pipeline/stages/validator.py
+index 7eb485f..7e29d78 100644
+--- a/backend/src/pipeline/stages/validator.py
++++ b/backend/src/pipeline/stages/validator.py
+@@ -449,6 +449,7 @@ def validate_email_draft(
+     claims_map: Sequence[ClaimsMapEntry],
+     evidence_pack: EvidencePack,
+     treasure_hooks: Sequence[WebHook],
++    required_offering: Optional[str] = None,
+ ) -> ValidationResult:
+     failures: List[ValidationFailure] = []
+ 
+@@ -533,6 +534,17 @@ def validate_email_draft(
+                 details={"offerings": _product_offerings(evidence_pack)[:8]},
+             )
+         )
++    if required_offering:
++        hay = normalize_ws(email_body).lower()
++        target = normalize_ws(required_offering).lower()
++        if target and target not in hay:
++            failures.append(
++                ValidationFailure(
++                    code="missing_required_offering",
++                    message="Email must include the required offering phrase verbatim.",
++                    details={"required_offering": required_offering},
++                )
++            )
+ 
+     # Greeting: must start with "Dear [Name]," on its own line.
+     first_non_empty = ""

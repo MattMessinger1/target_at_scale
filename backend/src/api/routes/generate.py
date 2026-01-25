@@ -636,6 +636,45 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     forced_links = [str(x).strip() for x in (request.selected_hook_links or []) if str(x).strip()]
                     forced_links = list(dict.fromkeys(forced_links))
                     
+                    # Precompute cached hooks for district overrides (if provided)
+                    cached_webhooks: List[WebHook] = []
+                    has_cached_hooks = bool(request.selected_cached_hooks and len(request.selected_cached_hooks) > 0)
+                    if has_cached_hooks:
+                        for cached in request.selected_cached_hooks:
+                            hook_data = cached.get("hook") if isinstance(cached, dict) else getattr(cached, "hook", None)
+                            if hook_data:
+                                if isinstance(hook_data, dict):
+                                    cached_webhooks.append(WebHook(**hook_data))
+                                elif isinstance(hook_data, WebHook):
+                                    cached_webhooks.append(hook_data)
+                                else:
+                                    try:
+                                        cached_webhooks.append(WebHook(
+                                            hook_id=getattr(hook_data, "hook_id", None),
+                                            hook_type=getattr(hook_data, "hook_type", "cached"),
+                                            quote=getattr(hook_data, "quote", ""),
+                                            link=getattr(hook_data, "link", ""),
+                                            trigger_excerpt=getattr(hook_data, "trigger_excerpt", None),
+                                            eligibility_excerpt=getattr(hook_data, "eligibility_excerpt", None),
+                                            why_relevant=getattr(hook_data, "why_relevant", None),
+                                            confidence=getattr(hook_data, "confidence", "medium"),
+                                            district_name=getattr(hook_data, "district_name", None),
+                                            source_level=getattr(hook_data, "source_level", None),
+                                        ))
+                                    except Exception as e:
+                                        logger.warning(f"Failed to convert cached hook to WebHook: {e}")
+
+                    # If cached district hooks exist and no explicit forced hooks were provided,
+                    # force selection to the district hook(s) to prevent state-level fallback.
+                    if not forced_ids and not forced_links and cached_webhooks:
+                        district_cached = [
+                            h for h in cached_webhooks
+                            if (getattr(h, "source_level", None) == "district") or (getattr(h, "district_name", None))
+                        ]
+                        if district_cached:
+                            forced_ids = [h.hook_id for h in district_cached if h.hook_id]
+                            forced_links = [h.link for h in district_cached if h.link]
+                    
                     use_hook_ids = len(forced_ids) > 0
                     use_forced = use_hook_ids or len(forced_links) > 0
                     
@@ -649,7 +688,6 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     # - Neither → error
                     
                     has_purpose = bool(request.purpose_prompt and request.purpose_prompt.strip())
-                    has_cached_hooks = bool(request.selected_cached_hooks and len(request.selected_cached_hooks) > 0)
 
                     # "Selected hooks" here means *opener-driving requirement selection* (funding/compliance hooks),
                     # i.e., explicit hook_ids/links from the Research stage. Cached hooks on the Purpose step are
@@ -1149,30 +1187,13 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         # User selected cached hooks (from "State-level hooks" section) but not regular hooks
                         logger.info(f"Email task {task_id}: Using CACHED HOOKS mode ({len(request.selected_cached_hooks)} hooks)")
                         
-                        cached_webhooks: List[WebHook] = []
-                        for cached in request.selected_cached_hooks:
-                            hook_data = cached.get("hook") if isinstance(cached, dict) else getattr(cached, "hook", None)
-                            if hook_data:
-                                # Convert dict to WebHook if needed
-                                if isinstance(hook_data, dict):
-                                    cached_webhooks.append(WebHook(**hook_data))
-                                elif isinstance(hook_data, WebHook):
-                                    cached_webhooks.append(hook_data)
-                                else:
-                                    # Try to construct from object attributes
-                                    try:
-                                        cached_webhooks.append(WebHook(
-                                            hook_id=getattr(hook_data, "hook_id", None),
-                                            hook_type=getattr(hook_data, "hook_type", "cached"),
-                                            quote=getattr(hook_data, "quote", ""),
-                                            link=getattr(hook_data, "link", ""),
-                                            trigger_excerpt=getattr(hook_data, "trigger_excerpt", None),
-                                            eligibility_excerpt=getattr(hook_data, "eligibility_excerpt", None),
-                                            why_relevant=getattr(hook_data, "why_relevant", None),
-                                            confidence=getattr(hook_data, "confidence", "medium"),
-                                        ))
-                                    except Exception as e:
-                                        logger.warning(f"Failed to convert cached hook to WebHook: {e}")
+                        # Prefer district cached hooks if present.
+                        district_cached = [
+                            h for h in cached_webhooks
+                            if (getattr(h, "source_level", None) == "district") or (getattr(h, "district_name", None))
+                        ]
+                        if district_cached:
+                            cached_webhooks = district_cached
                         
                         if cached_webhooks:
                             # Use first cached hook as primary

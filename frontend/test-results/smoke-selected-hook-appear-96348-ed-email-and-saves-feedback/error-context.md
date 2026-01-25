@@ -1,0 +1,85 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]:
+          - link "Home" [ref=e8] [cursor=pointer]:
+            - /url: /
+            - img [ref=e9]
+            - generic [ref=e11]: Home
+          - heading "Email Generator" [level=1] [ref=e12]
+        - generic [ref=e13]: Find funding/compliance requirements and generate targeted emails.
+      - generic [ref=e14]:
+        - generic [ref=e17]: 1 email generating
+        - link "Saved Research" [ref=e18] [cursor=pointer]:
+          - /url: /saved-runs
+          - img [ref=e19]
+          - text: Saved Research
+        - link "Training Data" [ref=e21] [cursor=pointer]:
+          - /url: /training
+          - img [ref=e22]
+          - text: Training Data
+        - button "Switch to light mode" [ref=e24] [cursor=pointer]:
+          - img [ref=e25]
+    - generic [ref=e31]:
+      - generic [ref=e32]:
+        - button [ref=e34] [cursor=pointer]:
+          - img [ref=e35]
+        - button [ref=e39] [cursor=pointer]:
+          - img [ref=e40]
+        - button [ref=e44] [cursor=pointer]:
+          - img [ref=e45]
+        - button "4" [disabled] [ref=e49]
+        - button "5" [disabled] [ref=e52]
+      - generic [ref=e53]:
+        - generic [ref=e55]: Choose Product & Audience
+        - generic [ref=e57]: Research
+        - generic [ref=e59]: Select
+        - generic [ref=e61]: Generate Email
+        - generic [ref=e63]: Review and Improve Email
+    - generic [ref=e64]:
+      - heading "Generating Email..." [level=2] [ref=e65]
+      - generic [ref=e67]:
+        - generic [ref=e68]: Email generation complete (92s)
+        - generic [ref=e69]: 95%
+      - generic [ref=e74]: Email generation complete (92s)
+      - paragraph [ref=e75]: This typically takes 2-4 minutes. The page will automatically update when complete.
+      - generic [ref=e76]:
+        - generic [ref=e77]: Activity Log
+        - generic [ref=e78]:
+          - generic [ref=e79]:
+            - generic [ref=e80]: •
+            - generic [ref=e81]: Email generation complete (92s)
+          - generic [ref=e82]:
+            - generic [ref=e83]: •
+            - generic [ref=e84]: Email generation complete (92s)
+          - generic [ref=e85]:
+            - generic [ref=e86]: •
+            - generic [ref=e87]: Email generation complete (92s)
+          - generic [ref=e88]:
+            - generic [ref=e89]: •
+            - generic [ref=e90]: Email generation complete (92s)
+          - generic [ref=e91]:
+            - generic [ref=e92]: •
+            - generic [ref=e93]: Email generation complete (92s)
+          - generic [ref=e94]:
+            - generic [ref=e95]: •
+            - generic [ref=e96]: Email generation complete (92s)
+          - generic [ref=e97]:
+            - generic [ref=e98]: •
+            - generic [ref=e99]: Email generation complete (92s)
+          - generic [ref=e100]:
+            - generic [ref=e101]: •
+            - generic [ref=e102]: Email generation complete (92s)
+          - generic [ref=e103]:
+            - generic [ref=e104]: •
+            - generic [ref=e105]: Email generation complete (92s)
+          - generic [ref=e106]:
+            - generic [ref=e107]: •
+            - generic [ref=e108]: Email generation complete (92s)
+  - region "Notifications (F8)":
+    - list
+```

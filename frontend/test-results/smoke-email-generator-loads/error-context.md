@@ -1,0 +1,262 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]:
+          - link "Home" [ref=e8] [cursor=pointer]:
+            - /url: /
+            - img [ref=e9]
+            - generic [ref=e11]: Home
+          - heading "Email Generator" [level=1] [ref=e12]
+        - generic [ref=e13]: Find funding/compliance requirements and generate targeted emails.
+      - generic [ref=e14]:
+        - link "Saved Research" [ref=e15] [cursor=pointer]:
+          - /url: /saved-runs
+          - img [ref=e16]
+          - text: Saved Research
+        - link "Training Data" [ref=e18] [cursor=pointer]:
+          - /url: /training
+          - img [ref=e19]
+          - text: Training Data
+        - button "Switch to light mode" [ref=e21] [cursor=pointer]:
+          - img [ref=e22]
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - button "1" [disabled] [ref=e31]
+        - button "2" [disabled] [ref=e34]
+        - button "3" [disabled] [ref=e37]
+        - button "4" [disabled] [ref=e40]
+        - button "5" [disabled] [ref=e43]
+      - generic [ref=e44]:
+        - generic [ref=e46]: Choose Product & Audience
+        - generic [ref=e48]: Research
+        - generic [ref=e50]: Select
+        - generic [ref=e52]: Generate Email
+        - generic [ref=e54]: Review and Improve Email
+    - generic [ref=e55]:
+      - heading "Choose Product & Audience" [level=2] [ref=e56]
+      - generic [ref=e57]:
+        - generic [ref=e58]:
+          - generic [ref=e59]: Your Name (so you can find your info later)
+          - textbox "e.g., Sarah Martinez" [ref=e60]
+        - generic [ref=e61]:
+          - generic [ref=e63]: Select Product
+          - generic [ref=e64]:
+            - button "🎯 CARE Coaching Job-embedded professional development through coaching" [ref=e65] [cursor=pointer]:
+              - generic [ref=e66]:
+                - generic [ref=e67]: 🎯
+                - generic [ref=e68]:
+                  - generic [ref=e69]: CARE Coaching
+                  - generic [ref=e70]: Job-embedded professional development through coaching
+            - button "📚 WIDA Professional Learning Educator PD for EL instructional strategies" [ref=e72] [cursor=pointer]:
+              - generic [ref=e73]:
+                - generic [ref=e74]: 📚
+                - generic [ref=e75]:
+                  - generic [ref=e76]: WIDA Professional Learning
+                  - generic [ref=e77]: Educator PD for EL instructional strategies
+            - button "📊 WebbAlign Depth of Knowledge alignment and assessment tools" [ref=e79] [cursor=pointer]:
+              - generic [ref=e80]:
+                - generic [ref=e81]: 📊
+                - generic [ref=e82]:
+                  - generic [ref=e83]: WebbAlign
+                  - generic [ref=e84]: Depth of Knowledge alignment and assessment tools
+            - button "📋 CALL School-wide leadership assessment for distributed leadership practices" [ref=e86] [cursor=pointer]:
+              - generic [ref=e87]:
+                - generic [ref=e88]: 📋
+                - generic [ref=e89]:
+                  - generic [ref=e90]: CALL
+                  - generic [ref=e91]: School-wide leadership assessment for distributed leadership practices
+            - button "🗣️ The Discussion Project Academic discourse and discussion-based learning" [ref=e93] [cursor=pointer]:
+              - generic [ref=e94]:
+                - generic [ref=e95]: 🗣️
+                - generic [ref=e96]:
+                  - generic [ref=e97]: The Discussion Project
+                  - generic [ref=e98]: Academic discourse and discussion-based learning
+            - button "📝 WIDA MODEL Online Interim English language proficiency assessment" [ref=e100] [cursor=pointer]:
+              - generic [ref=e101]:
+                - generic [ref=e102]: 📝
+                - generic [ref=e103]:
+                  - generic [ref=e104]: WIDA MODEL Online
+                  - generic [ref=e105]: Interim English language proficiency assessment
+            - button "💻 WIDA SIS Student information system for EL program management" [ref=e107] [cursor=pointer]:
+              - generic [ref=e108]:
+                - generic [ref=e109]: 💻
+                - generic [ref=e110]:
+                  - generic [ref=e111]: WIDA SIS
+                  - generic [ref=e112]: Student information system for EL program management
+            - button "📦 AIW Institute" [ref=e114] [cursor=pointer]:
+              - generic [ref=e115]:
+                - generic [ref=e116]: 📦
+                - generic [ref=e118]: AIW Institute
+        - generic [ref=e120]:
+          - generic [ref=e122]: Target State
+          - generic [ref=e123]:
+            - button "Show WIDA Only" [ref=e124] [cursor=pointer]
+            - button "Select All WIDA" [ref=e125] [cursor=pointer]
+            - generic [ref=e126]: 38 WIDA states
+          - textbox "Search states..." [ref=e127]
+          - generic [ref=e129]:
+            - button "Alabama W" [ref=e130] [cursor=pointer]:
+              - generic [ref=e131]: Alabama
+              - generic [ref=e132]: W
+            - button "Alaska W" [ref=e133] [cursor=pointer]:
+              - generic [ref=e134]: Alaska
+              - generic [ref=e135]: W
+            - button "Arizona" [ref=e136] [cursor=pointer]:
+              - generic [ref=e137]: Arizona
+            - button "Arkansas" [ref=e138] [cursor=pointer]:
+              - generic [ref=e139]: Arkansas
+            - button "California" [ref=e140] [cursor=pointer]:
+              - generic [ref=e141]: California
+            - button "Colorado W" [ref=e142] [cursor=pointer]:
+              - generic [ref=e143]: Colorado
+              - generic [ref=e144]: W
+            - button "Connecticut" [ref=e145] [cursor=pointer]:
+              - generic [ref=e146]: Connecticut
+            - button "Delaware W" [ref=e147] [cursor=pointer]:
+              - generic [ref=e148]: Delaware
+              - generic [ref=e149]: W
+            - button "District of Columbia W" [ref=e150] [cursor=pointer]:
+              - generic [ref=e151]: District of Columbia
+              - generic [ref=e152]: W
+            - button "Florida W" [ref=e153] [cursor=pointer]:
+              - generic [ref=e154]: Florida
+              - generic [ref=e155]: W
+            - button "Georgia W" [ref=e156] [cursor=pointer]:
+              - generic [ref=e157]: Georgia
+              - generic [ref=e158]: W
+            - button "Hawaii W" [ref=e159] [cursor=pointer]:
+              - generic [ref=e160]: Hawaii
+              - generic [ref=e161]: W
+            - button "Idaho W" [ref=e162] [cursor=pointer]:
+              - generic [ref=e163]: Idaho
+              - generic [ref=e164]: W
+            - button "Illinois W" [ref=e165] [cursor=pointer]:
+              - generic [ref=e166]: Illinois
+              - generic [ref=e167]: W
+            - button "Indiana W" [ref=e168] [cursor=pointer]:
+              - generic [ref=e169]: Indiana
+              - generic [ref=e170]: W
+            - button "Iowa" [ref=e171] [cursor=pointer]:
+              - generic [ref=e172]: Iowa
+            - button "Kansas" [ref=e173] [cursor=pointer]:
+              - generic [ref=e174]: Kansas
+            - button "Kentucky W" [ref=e175] [cursor=pointer]:
+              - generic [ref=e176]: Kentucky
+              - generic [ref=e177]: W
+            - button "Louisiana" [ref=e178] [cursor=pointer]:
+              - generic [ref=e179]: Louisiana
+            - button "Maine W" [ref=e180] [cursor=pointer]:
+              - generic [ref=e181]: Maine
+              - generic [ref=e182]: W
+            - button "Maryland W" [ref=e183] [cursor=pointer]:
+              - generic [ref=e184]: Maryland
+              - generic [ref=e185]: W
+            - button "Massachusetts W" [ref=e186] [cursor=pointer]:
+              - generic [ref=e187]: Massachusetts
+              - generic [ref=e188]: W
+            - button "Michigan W" [ref=e189] [cursor=pointer]:
+              - generic [ref=e190]: Michigan
+              - generic [ref=e191]: W
+            - button "Minnesota W" [ref=e192] [cursor=pointer]:
+              - generic [ref=e193]: Minnesota
+              - generic [ref=e194]: W
+            - button "Mississippi" [ref=e195] [cursor=pointer]:
+              - generic [ref=e196]: Mississippi
+            - button "Missouri W" [ref=e197] [cursor=pointer]:
+              - generic [ref=e198]: Missouri
+              - generic [ref=e199]: W
+            - button "Montana W" [ref=e200] [cursor=pointer]:
+              - generic [ref=e201]: Montana
+              - generic [ref=e202]: W
+            - button "Nebraska" [ref=e203] [cursor=pointer]:
+              - generic [ref=e204]: Nebraska
+            - button "Nevada W" [ref=e205] [cursor=pointer]:
+              - generic [ref=e206]: Nevada
+              - generic [ref=e207]: W
+            - button "New Hampshire W" [ref=e208] [cursor=pointer]:
+              - generic [ref=e209]: New Hampshire
+              - generic [ref=e210]: W
+            - button "New Jersey W" [ref=e211] [cursor=pointer]:
+              - generic [ref=e212]: New Jersey
+              - generic [ref=e213]: W
+            - button "New Mexico W" [ref=e214] [cursor=pointer]:
+              - generic [ref=e215]: New Mexico
+              - generic [ref=e216]: W
+            - button "New York W" [ref=e217] [cursor=pointer]:
+              - generic [ref=e218]: New York
+              - generic [ref=e219]: W
+            - button "North Carolina W" [ref=e220] [cursor=pointer]:
+              - generic [ref=e221]: North Carolina
+              - generic [ref=e222]: W
+            - button "North Dakota W" [ref=e223] [cursor=pointer]:
+              - generic [ref=e224]: North Dakota
+              - generic [ref=e225]: W
+            - button "Ohio" [ref=e226] [cursor=pointer]:
+              - generic [ref=e227]: Ohio
+            - button "Oklahoma W" [ref=e228] [cursor=pointer]:
+              - generic [ref=e229]: Oklahoma
+              - generic [ref=e230]: W
+            - button "Oregon" [ref=e231] [cursor=pointer]:
+              - generic [ref=e232]: Oregon
+            - button "Pennsylvania W" [ref=e233] [cursor=pointer]:
+              - generic [ref=e234]: Pennsylvania
+              - generic [ref=e235]: W
+            - button "Rhode Island W" [ref=e236] [cursor=pointer]:
+              - generic [ref=e237]: Rhode Island
+              - generic [ref=e238]: W
+            - button "South Carolina W" [ref=e239] [cursor=pointer]:
+              - generic [ref=e240]: South Carolina
+              - generic [ref=e241]: W
+            - button "South Dakota W" [ref=e242] [cursor=pointer]:
+              - generic [ref=e243]: South Dakota
+              - generic [ref=e244]: W
+            - button "Tennessee W" [ref=e245] [cursor=pointer]:
+              - generic [ref=e246]: Tennessee
+              - generic [ref=e247]: W
+            - button "Texas" [ref=e248] [cursor=pointer]:
+              - generic [ref=e249]: Texas
+            - button "Utah W" [ref=e250] [cursor=pointer]:
+              - generic [ref=e251]: Utah
+              - generic [ref=e252]: W
+            - button "Vermont W" [ref=e253] [cursor=pointer]:
+              - generic [ref=e254]: Vermont
+              - generic [ref=e255]: W
+            - button "Virginia W" [ref=e256] [cursor=pointer]:
+              - generic [ref=e257]: Virginia
+              - generic [ref=e258]: W
+            - button "Washington W" [ref=e259] [cursor=pointer]:
+              - generic [ref=e260]: Washington
+              - generic [ref=e261]: W
+            - button "West Virginia" [ref=e262] [cursor=pointer]:
+              - generic [ref=e263]: West Virginia
+            - button "Wisconsin W" [ref=e264] [cursor=pointer]:
+              - generic [ref=e265]: Wisconsin
+              - generic [ref=e266]: W
+            - button "Wyoming W" [ref=e267] [cursor=pointer]:
+              - generic [ref=e268]: Wyoming
+              - generic [ref=e269]: W
+        - generic [ref=e271]:
+          - generic [ref=e272]: Target Audience
+          - generic [ref=e273]:
+            - button "💼 Decision Makers Superintendents, ESOL Directors, Curriculum Leaders, Title III Coordinators" [ref=e274] [cursor=pointer]:
+              - generic [ref=e275]:
+                - generic [ref=e276]: 💼
+                - generic [ref=e277]:
+                  - generic [ref=e278]: Decision Makers
+                  - generic [ref=e279]: Superintendents, ESOL Directors, Curriculum Leaders, Title III Coordinators
+            - button "👩‍🏫 Users Teachers, Instructional Coaches (for training invites)" [ref=e282] [cursor=pointer]:
+              - generic [ref=e283]:
+                - generic [ref=e284]: 👩‍🏫
+                - generic [ref=e285]:
+                  - generic [ref=e286]: Users
+                  - generic [ref=e287]: Teachers, Instructional Coaches (for training invites)
+        - generic [ref=e289]:
+          - button "🚀 Batch Research" [disabled] [ref=e290]
+          - button "Continue →" [disabled] [ref=e292]
+  - region "Notifications (F8)":
+    - list
+```

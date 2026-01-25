@@ -1,0 +1,302 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - link "Home" [ref=e6] [cursor=pointer]:
+          - /url: /
+          - img [ref=e7]
+          - generic [ref=e9]: Home
+        - generic [ref=e10]:
+          - heading "Saved Research" [level=1] [ref=e11]
+          - paragraph [ref=e12]: View and manage your saved research and email runs (30-day retention)
+      - generic [ref=e13]:
+        - link "New Research" [ref=e14] [cursor=pointer]:
+          - /url: /research
+          - button "New Research" [ref=e15]:
+            - img [ref=e16]
+            - text: New Research
+        - link "New Email" [ref=e19] [cursor=pointer]:
+          - /url: /email?reset=1
+          - button "New Email" [ref=e20]:
+            - img [ref=e21]
+            - text: New Email
+    - generic [ref=e24]:
+      - generic [ref=e25]:
+        - button "By Product" [ref=e26] [cursor=pointer]
+        - button "All Runs" [ref=e27] [cursor=pointer]
+        - button "Batch Jobs" [ref=e28] [cursor=pointer]
+      - generic [ref=e29]:
+        - button "All" [ref=e30] [cursor=pointer]
+        - button "Research" [ref=e31] [cursor=pointer]:
+          - img [ref=e32]
+          - text: Research
+        - button "Emails" [ref=e35] [cursor=pointer]:
+          - img [ref=e36]
+          - text: Emails
+    - generic [ref=e39]:
+      - generic [ref=e40]:
+        - button "CARE Coaching 131 runs 39 states" [ref=e41] [cursor=pointer]:
+          - generic [ref=e42]:
+            - img [ref=e43]
+            - generic [ref=e45]: CARE Coaching
+            - generic [ref=e46]: 131 runs
+          - generic [ref=e47]: 39 states
+        - generic [ref=e48]:
+          - button "Alaska (AK) 9 runs" [ref=e50] [cursor=pointer]:
+            - generic [ref=e51]:
+              - img [ref=e52]
+              - generic [ref=e54]: Alaska
+              - generic [ref=e55]: (AK)
+            - generic [ref=e56]: 9 runs
+          - button "Alabama (AL) 15 runs" [ref=e58] [cursor=pointer]:
+            - generic [ref=e59]:
+              - img [ref=e60]
+              - generic [ref=e62]: Alabama
+              - generic [ref=e63]: (AL)
+            - generic [ref=e64]: 15 runs
+          - button "Colorado (CO) 3 runs" [ref=e66] [cursor=pointer]:
+            - generic [ref=e67]:
+              - img [ref=e68]
+              - generic [ref=e70]: Colorado
+              - generic [ref=e71]: (CO)
+            - generic [ref=e72]: 3 runs
+          - button "District of Columbia (DC) 3 runs" [ref=e74] [cursor=pointer]:
+            - generic [ref=e75]:
+              - img [ref=e76]
+              - generic [ref=e78]: District of Columbia
+              - generic [ref=e79]: (DC)
+            - generic [ref=e80]: 3 runs
+          - button "Delaware (DE) 1 runs" [ref=e82] [cursor=pointer]:
+            - generic [ref=e83]:
+              - img [ref=e84]
+              - generic [ref=e86]: Delaware
+              - generic [ref=e87]: (DE)
+            - generic [ref=e88]: 1 runs
+          - button "Florida (FL) 24 runs" [ref=e90] [cursor=pointer]:
+            - generic [ref=e91]:
+              - img [ref=e92]
+              - generic [ref=e94]: Florida
+              - generic [ref=e95]: (FL)
+            - generic [ref=e96]: 24 runs
+          - button "GA (GA) 10 runs" [ref=e98] [cursor=pointer]:
+            - generic [ref=e99]:
+              - img [ref=e100]
+              - generic [ref=e102]: GA
+              - generic [ref=e103]: (GA)
+            - generic [ref=e104]: 10 runs
+          - button "Hawaii (HI) 4 runs" [ref=e106] [cursor=pointer]:
+            - generic [ref=e107]:
+              - img [ref=e108]
+              - generic [ref=e110]: Hawaii
+              - generic [ref=e111]: (HI)
+            - generic [ref=e112]: 4 runs
+          - button "Idaho (ID) 5 runs" [ref=e114] [cursor=pointer]:
+            - generic [ref=e115]:
+              - img [ref=e116]
+              - generic [ref=e118]: Idaho
+              - generic [ref=e119]: (ID)
+            - generic [ref=e120]: 5 runs
+          - button "Illinois (IL) 1 runs" [ref=e122] [cursor=pointer]:
+            - generic [ref=e123]:
+              - img [ref=e124]
+              - generic [ref=e126]: Illinois
+              - generic [ref=e127]: (IL)
+            - generic [ref=e128]: 1 runs
+          - button "Indiana (IN) 2 runs" [ref=e130] [cursor=pointer]:
+            - generic [ref=e131]:
+              - img [ref=e132]
+              - generic [ref=e134]: Indiana
+              - generic [ref=e135]: (IN)
+            - generic [ref=e136]: 2 runs
+          - button "Kentucky (KY) 2 runs" [ref=e138] [cursor=pointer]:
+            - generic [ref=e139]:
+              - img [ref=e140]
+              - generic [ref=e142]: Kentucky
+              - generic [ref=e143]: (KY)
+            - generic [ref=e144]: 2 runs
+          - button "Massachusetts (MA) 1 runs" [ref=e146] [cursor=pointer]:
+            - generic [ref=e147]:
+              - img [ref=e148]
+              - generic [ref=e150]: Massachusetts
+              - generic [ref=e151]: (MA)
+            - generic [ref=e152]: 1 runs
+          - button "Maryland (MD) 2 runs" [ref=e154] [cursor=pointer]:
+            - generic [ref=e155]:
+              - img [ref=e156]
+              - generic [ref=e158]: Maryland
+              - generic [ref=e159]: (MD)
+            - generic [ref=e160]: 2 runs
+          - button "Maine (ME) 1 runs" [ref=e162] [cursor=pointer]:
+            - generic [ref=e163]:
+              - img [ref=e164]
+              - generic [ref=e166]: Maine
+              - generic [ref=e167]: (ME)
+            - generic [ref=e168]: 1 runs
+          - button "Michigan (MI) 1 runs" [ref=e170] [cursor=pointer]:
+            - generic [ref=e171]:
+              - img [ref=e172]
+              - generic [ref=e174]: Michigan
+              - generic [ref=e175]: (MI)
+            - generic [ref=e176]: 1 runs
+          - button "Minnesota (MN) 2 runs" [ref=e178] [cursor=pointer]:
+            - generic [ref=e179]:
+              - img [ref=e180]
+              - generic [ref=e182]: Minnesota
+              - generic [ref=e183]: (MN)
+            - generic [ref=e184]: 2 runs
+          - button "Missouri (MO) 1 runs" [ref=e186] [cursor=pointer]:
+            - generic [ref=e187]:
+              - img [ref=e188]
+              - generic [ref=e190]: Missouri
+              - generic [ref=e191]: (MO)
+            - generic [ref=e192]: 1 runs
+          - button "Montana (MT) 2 runs" [ref=e194] [cursor=pointer]:
+            - generic [ref=e195]:
+              - img [ref=e196]
+              - generic [ref=e198]: Montana
+              - generic [ref=e199]: (MT)
+            - generic [ref=e200]: 2 runs
+          - button "North Carolina (NC) 2 runs" [ref=e202] [cursor=pointer]:
+            - generic [ref=e203]:
+              - img [ref=e204]
+              - generic [ref=e206]: North Carolina
+              - generic [ref=e207]: (NC)
+            - generic [ref=e208]: 2 runs
+          - button "North Dakota (ND) 1 runs" [ref=e210] [cursor=pointer]:
+            - generic [ref=e211]:
+              - img [ref=e212]
+              - generic [ref=e214]: North Dakota
+              - generic [ref=e215]: (ND)
+            - generic [ref=e216]: 1 runs
+          - button "New Hampshire (NH) 2 runs" [ref=e218] [cursor=pointer]:
+            - generic [ref=e219]:
+              - img [ref=e220]
+              - generic [ref=e222]: New Hampshire
+              - generic [ref=e223]: (NH)
+            - generic [ref=e224]: 2 runs
+          - button "New Jersey (NJ) 2 runs" [ref=e226] [cursor=pointer]:
+            - generic [ref=e227]:
+              - img [ref=e228]
+              - generic [ref=e230]: New Jersey
+              - generic [ref=e231]: (NJ)
+            - generic [ref=e232]: 2 runs
+          - button "New Mexico (NM) 2 runs" [ref=e234] [cursor=pointer]:
+            - generic [ref=e235]:
+              - img [ref=e236]
+              - generic [ref=e238]: New Mexico
+              - generic [ref=e239]: (NM)
+            - generic [ref=e240]: 2 runs
+          - button "Nevada (NV) 2 runs" [ref=e242] [cursor=pointer]:
+            - generic [ref=e243]:
+              - img [ref=e244]
+              - generic [ref=e246]: Nevada
+              - generic [ref=e247]: (NV)
+            - generic [ref=e248]: 2 runs
+          - button "Ohio (OH) 2 runs" [ref=e250] [cursor=pointer]:
+            - generic [ref=e251]:
+              - img [ref=e252]
+              - generic [ref=e254]: Ohio
+              - generic [ref=e255]: (OH)
+            - generic [ref=e256]: 2 runs
+          - button "Oklahoma (OK) 2 runs" [ref=e258] [cursor=pointer]:
+            - generic [ref=e259]:
+              - img [ref=e260]
+              - generic [ref=e262]: Oklahoma
+              - generic [ref=e263]: (OK)
+            - generic [ref=e264]: 2 runs
+          - button "Pennsylvania (PA) 2 runs" [ref=e266] [cursor=pointer]:
+            - generic [ref=e267]:
+              - img [ref=e268]
+              - generic [ref=e270]: Pennsylvania
+              - generic [ref=e271]: (PA)
+            - generic [ref=e272]: 2 runs
+          - button "Rhode Island (RI) 1 runs" [ref=e274] [cursor=pointer]:
+            - generic [ref=e275]:
+              - img [ref=e276]
+              - generic [ref=e278]: Rhode Island
+              - generic [ref=e279]: (RI)
+            - generic [ref=e280]: 1 runs
+          - button "South Carolina (SC) 2 runs" [ref=e282] [cursor=pointer]:
+            - generic [ref=e283]:
+              - img [ref=e284]
+              - generic [ref=e286]: South Carolina
+              - generic [ref=e287]: (SC)
+            - generic [ref=e288]: 2 runs
+          - button "South Dakota (SD) 1 runs" [ref=e290] [cursor=pointer]:
+            - generic [ref=e291]:
+              - img [ref=e292]
+              - generic [ref=e294]: South Dakota
+              - generic [ref=e295]: (SD)
+            - generic [ref=e296]: 1 runs
+          - button "Tennessee (TN) 1 runs" [ref=e298] [cursor=pointer]:
+            - generic [ref=e299]:
+              - img [ref=e300]
+              - generic [ref=e302]: Tennessee
+              - generic [ref=e303]: (TN)
+            - generic [ref=e304]: 1 runs
+          - button "Utah (UT) 2 runs" [ref=e306] [cursor=pointer]:
+            - generic [ref=e307]:
+              - img [ref=e308]
+              - generic [ref=e310]: Utah
+              - generic [ref=e311]: (UT)
+            - generic [ref=e312]: 2 runs
+          - button "Virginia (VA) 1 runs" [ref=e314] [cursor=pointer]:
+            - generic [ref=e315]:
+              - img [ref=e316]
+              - generic [ref=e318]: Virginia
+              - generic [ref=e319]: (VA)
+            - generic [ref=e320]: 1 runs
+          - button "US Virgin Islands (VI) 2 runs" [ref=e322] [cursor=pointer]:
+            - generic [ref=e323]:
+              - img [ref=e324]
+              - generic [ref=e326]: US Virgin Islands
+              - generic [ref=e327]: (VI)
+            - generic [ref=e328]: 2 runs
+          - button "Vermont (VT) 2 runs" [ref=e330] [cursor=pointer]:
+            - generic [ref=e331]:
+              - img [ref=e332]
+              - generic [ref=e334]: Vermont
+              - generic [ref=e335]: (VT)
+            - generic [ref=e336]: 2 runs
+          - button "Washington (WA) 1 runs" [ref=e338] [cursor=pointer]:
+            - generic [ref=e339]:
+              - img [ref=e340]
+              - generic [ref=e342]: Washington
+              - generic [ref=e343]: (WA)
+            - generic [ref=e344]: 1 runs
+          - button "Wisconsin (WI) 5 runs" [ref=e346] [cursor=pointer]:
+            - generic [ref=e347]:
+              - img [ref=e348]
+              - generic [ref=e350]: Wisconsin
+              - generic [ref=e351]: (WI)
+            - generic [ref=e352]: 5 runs
+          - button "Wyoming (WY) 7 runs" [ref=e354] [cursor=pointer]:
+            - generic [ref=e355]:
+              - img [ref=e356]
+              - generic [ref=e358]: Wyoming
+              - generic [ref=e359]: (WY)
+            - generic [ref=e360]: 7 runs
+      - button "WebbAlign 18 runs 6 states" [ref=e362] [cursor=pointer]:
+        - generic [ref=e363]:
+          - img [ref=e364]
+          - generic [ref=e366]: WebbAlign
+          - generic [ref=e367]: 18 runs
+        - generic [ref=e368]: 6 states
+      - button "WIDA MODEL Online 85 runs 39 states" [ref=e370] [cursor=pointer]:
+        - generic [ref=e371]:
+          - img [ref=e372]
+          - generic [ref=e374]: WIDA MODEL Online
+          - generic [ref=e375]: 85 runs
+        - generic [ref=e376]: 39 states
+      - button "WIDA Professional Learning 4 runs 3 states" [ref=e378] [cursor=pointer]:
+        - generic [ref=e379]:
+          - img [ref=e380]
+          - generic [ref=e382]: WIDA Professional Learning
+          - generic [ref=e383]: 4 runs
+        - generic [ref=e384]: 3 states
+  - region "Notifications (F8)":
+    - list
+```
