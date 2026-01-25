@@ -63,7 +63,7 @@ def failures_to_instructions(failures: Sequence[ValidationFailure]) -> List[str]
         )
     if "bullet_count_invalid" in code_set or "bullet_too_long" in code_set:
         instructions.append(
-            "Include 2-3 bullets; each bullet must be ≤ 10 words. Use 2 if that's all that adds value. "
+            "Use 0-3 bullets; if you use bullets, each must be ≤ 10 words. "
             "Formatting: each bullet must be on its own line and start with '- '. "
             "Do NOT combine multiple bullets into a single line using ' - ' separators. "
             "NEVER use the product name itself as a bullet - that's redundant."
@@ -80,6 +80,12 @@ def failures_to_instructions(failures: Sequence[ValidationFailure]) -> List[str]
         instructions.append("Include at least ONE ProductBrief offering phrase verbatim (prefer using it as a bullet deliverable).")
     if "missing_required_offering" in code_set:
         instructions.append("Include the required offering phrase verbatim (copy it exactly as given).")
+    if "required_offering_not_in_first_sentence" in code_set:
+        instructions.append("Put the required offering phrase in the FIRST sentence after the greeting.")
+    if "timing_in_first_sentence" in code_set:
+        instructions.append("Remove deadline/date references from the first sentence; move timing to a later paragraph or the CTA.")
+    if "missing_district_name" in code_set:
+        instructions.append("Include the district name at least once in the email (preferably in the opener).")
     if "missing_greeting" in code_set:
         instructions.append("Start the email with the greeting line: 'Dear [Name],' (capital D), on its own line, followed by a blank line.")
     if "missing_or_unsourced_trigger" in code_set:

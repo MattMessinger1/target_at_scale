@@ -564,6 +564,7 @@ def validate_email_draft(
     # Opener (no URLs printed): must include a sourced trigger token (see trigger gate below).
     opener = first_paragraph(email_body)
     hook_link = selected_hook.hook.link
+    district_name = (selected_hook.hook.district_name or "").strip()
     if required_offering:
         opener_norm = normalize_ws(opener).lower()
         req_norm = normalize_ws(required_offering).lower()
@@ -604,6 +605,17 @@ def validate_email_draft(
                     code="timing_in_first_sentence",
                     message="Do not lead with deadlines or dates in the first sentence after the greeting.",
                     details={"first_sentence": first_sentence},
+                )
+            )
+    if district_name:
+        body_norm = normalize_ws(email_body).lower()
+        district_norm = normalize_ws(district_name).lower()
+        if district_norm and district_norm not in body_norm:
+            failures.append(
+                ValidationFailure(
+                    code="missing_district_name",
+                    message="District emails must include the district name at least once.",
+                    details={"district_name": district_name},
                 )
             )
 
