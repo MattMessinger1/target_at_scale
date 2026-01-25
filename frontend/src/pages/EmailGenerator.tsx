@@ -2506,6 +2506,17 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
         if (prepLike.district_research) req.district_research = prepLike.district_research
         if (prepLike.conferences) req.conferences = prepLike.conferences
       }
+      if (cachedHooksOverride && cachedHooksOverride.length > 0) {
+        const districtHook = cachedHooksOverride.find((item) => item.category === 'district')?.hook
+        if (districtHook && req.treasure_hooks) {
+          const existing = req.treasure_hooks.some((h) => getHookKey(h) === getHookKey(districtHook as WebHook))
+          if (!existing) {
+            req.treasure_hooks = [...req.treasure_hooks, districtHook as WebHook]
+          }
+        } else if (districtHook && !req.treasure_hooks) {
+          req.treasure_hooks = [districtHook as WebHook]
+        }
+      }
       if (!cachedHooksOverride && prep && selectedHookLinks.length > 0) {
         // Send hook IDs (preferred) for reliable selection
         req.selected_hook_ids = selectedHookLinks  // selectedHookLinks now contains hook_id or link
