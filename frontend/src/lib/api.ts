@@ -1731,5 +1731,13 @@ export const api = {
       fetchApi<BatchJobDetail>('/batch', { method: 'POST', body: JSON.stringify(data) }),
     cancel: (jobId: number) =>
       fetchApi<{ ok: boolean; job_id: number; status: string }>(`/batch/${jobId}/cancel`, { method: 'POST' }),
+    restartDistrictResearch: (jobId: number, stateCode: string) =>
+      fetchApi<{
+        ok: boolean
+        job_id: number
+        state_code: string
+        saved_run_id: number
+        district_research: unknown
+      }>(`/batch/${jobId}/district-research/${stateCode}/restart`, { method: 'POST' }),
   },
 }
