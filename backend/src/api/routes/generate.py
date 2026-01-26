@@ -314,6 +314,10 @@ except Exception:
     PipelineRunResponse = None  # type: ignore
     EvidencePack = None  # type: ignore
     WebHook = None  # type: ignore
+    EmailDraft = None  # type: ignore
+    ClaimsMapEntry = None  # type: ignore
+    ValidationResult = None  # type: ignore
+    SelectedHook = None  # type: ignore
     SelectedCachedHookRequest = None  # type: ignore
     FilteredRequirement = None  # type: ignore
     FilteredDistrictHook = None  # type: ignore

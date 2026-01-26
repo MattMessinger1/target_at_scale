@@ -561,6 +561,32 @@ export interface PipelineRunResponse {
   warnings: string[]
 }
 
+export interface EmailRevisionRequest {
+  product: string
+  state: string
+  state_full?: string | null
+  audience: string
+  evidence_pack: EvidencePack
+  treasure_hooks: WebHook[]
+  selected_hook: SelectedHook
+  secondary_hook?: SelectedHook | null
+  district_name?: string | null
+  district_url?: string | null
+  purpose_prompt?: string | null
+  supporting_context?: string[] | null
+  prior_subject_line: string
+  prior_email_body: string
+  edit_instruction: string
+  previous_response_id?: string | null
+}
+
+export interface EmailRevisionResponse {
+  email_draft: EmailDraft
+  claims_map: ClaimsMapEntry[]
+  validation: ValidationResult
+  openai_response_id?: string | null
+}
+
 // ----------------------------------------------------------------------------
 // Feedback (training loop)
 // ----------------------------------------------------------------------------
@@ -1383,7 +1409,12 @@ export const api = {
         saved_run_id?: number
         result?: PipelineRunResponse
         error?: string
-      }>(`/generate/pipeline/run/status?task_id=${encodeURIComponent(taskId)}`),
+        }>(`/generate/pipeline/run/status?task_id=${encodeURIComponent(taskId)}`),
+    pipelineRevise: (data: EmailRevisionRequest) =>
+      fetchApi<EmailRevisionResponse>('/generate/pipeline/revise', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
     // Polling wrapper that handles the full flow
     pipelineRunPolling: async (
       data: PipelineRunStreamRequest,

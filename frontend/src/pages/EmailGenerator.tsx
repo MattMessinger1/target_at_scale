@@ -30,6 +30,7 @@ import {
   PipelineRunResponse,
   PipelineStreamEvent,
   HookDecision,
+  EmailRevisionRequest,
   EmailReviewRequest,
   SavedRunSummary,
   SavedRunFull
@@ -1526,6 +1527,8 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
   const [hookReasonTags, setHookReasonTags] = useState<Record<string, string[]>>({})
   const [hookReasonNotes, setHookReasonNotes] = useState<Record<string, string>>({})
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, ReviewDraft>>({})
+  const [revisionInstructions, setRevisionInstructions] = useState<Record<string, string>>({})
+  const [revisionResponseIds, setRevisionResponseIds] = useState<Record<string, string>>({})
   const [showFilteredSection, setShowFilteredSection] = useState(false)
   
   // Helper: get unique key for a hook (prefer hook_id, fallback to link)
@@ -1645,6 +1648,8 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
     setHookReasonTags({})
     setHookReasonNotes({})
     setReviewDrafts({})
+    setRevisionInstructions({})
+    setRevisionResponseIds({})
     setShowFilteredSection(false)
     setIncludeDistrictResearch(false)
     setIncludeConferenceResearch(false)
@@ -2406,6 +2411,8 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
       setPrimaryHookLink(null)
       setResult(null)
       setReviewDrafts({})
+      setRevisionInstructions({})
+      setRevisionResponseIds({})
       setActiveAudience(null)
       // Auto-expand filtered section if nothing passed but requirements were found
       if ((data.treasure_hooks?.length || 0) === 0 && (data.filtered_requirements?.length || 0) > 0) {
@@ -2573,6 +2580,8 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
       }
       setCurrentEmailTaskId(null)
       setReviewDrafts({})
+      setRevisionInstructions({})
+      setRevisionResponseIds({})
       setResult(data)
       const first = data.variants?.[0]?.audience
       setActiveAudience(first || null)
@@ -2684,6 +2693,49 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
     },
   })
 
+  const reviseMutation = useMutation({
+    mutationFn: (payload: EmailRevisionRequest) => api.generate.pipelineRevise(payload),
+    onSuccess: (data, variables) => {
+      const aud = variables.audience
+      setResult((prev) => {
+        if (!prev) return prev
+        const nextVariants = prev.variants.map((v) =>
+          v.audience === aud
+            ? { ...v, email_draft: data.email_draft, claims_map: data.claims_map, validation: data.validation }
+            : v
+        )
+        return { ...prev, variants: nextVariants }
+      })
+      setReviewDrafts((prev) => {
+        const existing = prev[aud]
+        if (!existing) return prev
+        return {
+          ...prev,
+          [aud]: {
+            ...existing,
+            edited_subject_line: data.email_draft.subject_line,
+            edited_email_body: data.email_draft.email_body,
+          },
+        }
+      })
+      if (data.openai_response_id) {
+        setRevisionResponseIds((prev) => ({ ...prev, [aud]: data.openai_response_id as string }))
+      }
+      setRevisionInstructions((prev) => ({ ...prev, [aud]: '' }))
+      toast({
+        title: 'Revision ready',
+        description: 'Applied your instruction to the draft.',
+      })
+    },
+    onError: (error) => {
+      toast({
+        title: 'Revision failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      })
+    },
+  })
+
   const handlePrep = async () => {
     if (!canPrep) return
     
@@ -2697,6 +2749,8 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
     setHookReasonTags({})
     setHookReasonNotes({})
     setReviewDrafts({})
+    setRevisionInstructions({})
+    setRevisionResponseIds({})
     setResult(null)
     setActiveAudience(null)
     
@@ -2723,6 +2777,8 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
     setHookReasonTags({})
     setHookReasonNotes({})
     setReviewDrafts({})
+    setRevisionInstructions({})
+    setRevisionResponseIds({})
     setResult(null)
     setActiveAudience(null)
     setCacheStatus(null)
@@ -2827,6 +2883,8 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
     setEmailProgress(null)
     setHookReasonNotes({})
     setReviewDrafts({})
+    setRevisionInstructions({})
+    setRevisionResponseIds({})
     setActiveAudience(null)
     setCopied(false)
     setTraceEvents([])
@@ -2951,6 +3009,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
     const aud = activeVariant.audience
     const draft = reviewDrafts[aud]
     if (!draft) return null
+    const revisionInstruction = revisionInstructions[aud] || ''
 
     const sections: Array<{ key: ReviewSectionKey; label: string }> = [
       { key: 'subject_line', label: 'Subject line' },
@@ -3000,6 +3059,82 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
               }
               className="mt-2 w-full min-h-[160px] px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
+          </div>
+        </div>
+
+        <div className="mt-4 p-3 rounded border border-slate-700 bg-slate-900/30">
+          <div className="text-sm font-medium text-slate-200">Revise with AI</div>
+          <div className="text-xs text-slate-400 mt-1">Use the edited draft above as the source of truth.</div>
+          <textarea
+            value={revisionInstruction}
+            onChange={(e) =>
+              setRevisionInstructions((prev) => ({ ...prev, [aud]: e.target.value }))
+            }
+            placeholder="e.g., Make this 20% shorter and emphasize the newcomer offering."
+            className="mt-2 w-full min-h-[80px] px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const instruction = revisionInstruction.trim()
+                if (!instruction) {
+                  toast({
+                    title: 'Add a revision instruction',
+                    description: 'Tell the model what to change in this draft.',
+                    variant: 'destructive',
+                  })
+                  return
+                }
+                if (!result || !activeVariant) {
+                  toast({
+                    title: 'Missing draft',
+                    description: 'Generate an email first.',
+                    variant: 'destructive',
+                  })
+                  return
+                }
+                const treasureHooks = (result.treasure_hooks && result.treasure_hooks.length > 0)
+                  ? result.treasure_hooks
+                  : (result.hooks || [])
+                if (!treasureHooks.length) {
+                  toast({
+                    title: 'Missing hooks',
+                    description: 'No hooks available for revision.',
+                    variant: 'destructive',
+                  })
+                  return
+                }
+                const priorSubject = draft.edited_subject_line.trim() || activeVariant.email_draft.subject_line
+                const priorBody = draft.edited_email_body.trim() || activeVariant.email_draft.email_body
+                const payload: EmailRevisionRequest = {
+                  product: selectedProduct || result.request.product || '',
+                  state: selectedStates[0]?.code || result.request.state || '',
+                  state_full: selectedStates[0]?.name || result.request.state_full || null,
+                  audience: aud,
+                  evidence_pack: result.evidence_pack,
+                  treasure_hooks: treasureHooks,
+                  selected_hook: activeVariant.selected_hook,
+                  secondary_hook: activeVariant.secondary_hook || null,
+                  district_name: result.request.district_name || activeVariant.selected_hook?.hook?.district_name || null,
+                  district_url: result.request.district_url || null,
+                  purpose_prompt: result.request.purpose_prompt || null,
+                  supporting_context: null,
+                  prior_subject_line: priorSubject,
+                  prior_email_body: priorBody,
+                  edit_instruction: instruction,
+                  previous_response_id: revisionResponseIds[aud] || null,
+                }
+                reviseMutation.mutate(payload)
+              }}
+              disabled={reviseMutation.isPending}
+              className="px-3 py-1.5 text-sm bg-emerald-600 hover:bg-emerald-500 text-white rounded transition-colors disabled:opacity-60"
+            >
+              {reviseMutation.isPending ? 'Revising...' : 'Revise with AI'}
+            </button>
+            <span className="text-xs text-slate-500">
+              Uses the latest draft and keeps iteration state.
+            </span>
           </div>
         </div>
 
