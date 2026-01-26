@@ -2739,9 +2739,15 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
 
         if cached and cached.full_prep_json:
             cache_age = datetime.utcnow() - cached.created_at
+            result_payload = cached.full_prep_json
+            if isinstance(result_payload, dict) and isinstance(saved, SavedEmailRun):
+                saved_pr = saved.pipeline_response or {}
+                if isinstance(saved_pr, dict) and saved_pr.get("district_research") and not result_payload.get("district_research"):
+                    result_payload = dict(result_payload)
+                    result_payload["district_research"] = saved_pr.get("district_research")
             return {
                 "cached": True,
-                "result": cached.full_prep_json,
+                "result": result_payload,
                 "cache_age_days": cache_age.days,
                 "cached_at": cached.created_at.isoformat(),
             }
