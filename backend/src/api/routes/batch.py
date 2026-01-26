@@ -95,6 +95,24 @@ def _dump_model(obj: Any) -> Any:
         return {k: _dump_model(v) for k, v in vars(obj).items()}
     return obj
 
+
+def _hook_to_state_dict(h: Any) -> Dict[str, Any]:
+    if isinstance(h, dict):
+        return {
+            "hook_type": h.get("hook_type"),
+            "quote": h.get("quote"),
+            "link": h.get("link"),
+            "trigger_excerpt": h.get("trigger_excerpt"),
+            "title": (h.get("quote") or "")[:100],
+        }
+    return {
+        "hook_type": getattr(h, "hook_type", None),
+        "quote": getattr(h, "quote", None),
+        "link": getattr(h, "link", None),
+        "trigger_excerpt": getattr(h, "trigger_excerpt", None),
+        "title": (getattr(h, "quote", "") or "")[:100],
+    }
+
 router = APIRouter(prefix="/batch", tags=["batch"])
 
 
@@ -396,6 +414,75 @@ async def cancel_batch_job(
     return {"ok": True, "job_id": job_id, "status": "cancelled"}
 
 
+@router.post("/{job_id}/district-research/{state_code}/restart", dependencies=[Depends(require_budget)])
+async def restart_district_research(
+    job_id: int,
+    state_code: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Restart district-only research for a single state using saved state research."""
+    job_stmt = select(BatchJob).where(BatchJob.id == job_id)
+    job_result = await db.execute(job_stmt)
+    job = job_result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Batch job not found")
+
+    run_stmt = (
+        select(SavedEmailRun)
+        .where(SavedEmailRun.batch_job_id == job_id)
+        .where(SavedEmailRun.state_code == state_code)
+        .where(SavedEmailRun.run_type == "research")
+        .order_by(desc(SavedEmailRun.created_at))
+    )
+    run_result = await db.execute(run_stmt)
+    state_run = run_result.scalars().first()
+    if not state_run:
+        raise HTTPException(status_code=404, detail="Saved state research not found")
+
+    pr = state_run.pipeline_response or {}
+    if not pr.get("hooks"):
+        raise HTTPException(
+            status_code=400,
+            detail="Saved state research missing hooks; rerun state research first",
+        )
+
+    from ...research.district_research import run_district_deep_research
+    from ...research.product_briefs import get_product_brief, normalize_product_key
+    import json
+
+    product_key = normalize_product_key(job.product)
+    product_brief = await get_product_brief(db, job.product, state_code=state_code)
+    product_context = json.dumps(product_brief, default=str)[:3000]
+    state_hooks_dict = [_hook_to_state_dict(h) for h in pr.get("hooks", [])]
+
+    state_name = state_run.state_full or next(
+        (s["name"] for s in job.states if s.get("code") == state_code),
+        state_code,
+    )
+
+    district_result = await run_district_deep_research(
+        db=db,
+        state_code=state_code,
+        state_full=state_name,
+        product_key=product_key,
+        product_context=product_context,
+        state_hooks=state_hooks_dict,
+    )
+
+    pr["district_research"] = _dump_model(district_result)
+    state_run.pipeline_response = pr
+    state_run.include_district_research = True
+    await db.commit()
+
+    return {
+        "ok": True,
+        "job_id": job_id,
+        "state_code": state_code,
+        "saved_run_id": state_run.id,
+        "district_research": pr["district_research"],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Background task for batch processing
 # ---------------------------------------------------------------------------
@@ -463,7 +550,18 @@ async def process_batch_job(
             
             product_key = normalize_product_key(product)
             semaphore = asyncio.Semaphore(MAX_CONCURRENT)
-            
+
+            async def _get_latest_state_run(state_db: AsyncSession, state_code: str) -> Optional[SavedEmailRun]:
+                stmt = (
+                    select(SavedEmailRun)
+                    .where(SavedEmailRun.batch_job_id == job_id)
+                    .where(SavedEmailRun.state_code == state_code)
+                    .where(SavedEmailRun.run_type == "research")
+                    .order_by(desc(SavedEmailRun.created_at))
+                )
+                result = await state_db.execute(stmt)
+                return result.scalars().first()
+
             async def process_state(state: Dict[str, str]):
                 """Process a single state using full pipeline.
                 
@@ -483,43 +581,113 @@ async def process_batch_job(
                             if current_job and current_job.status == "cancelled":
                                 return
                             
-                            logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 1: Evidence Pack")
-                            
-                            # =====================================================
-                            # Stage 1: Build Evidence Pack (KB chunks + product briefs)
-                            # =====================================================
-                            evidence_pack = await build_product_evidence_pack(
-                                db=state_db,
-                                product_display_name=product,
-                                state_code=state_code,
-                                audiences=audiences or ["Decision Makers"],
-                            )
-                            
-                            logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 2: Treasure Hunter")
-                            
-                            # =====================================================
-                            # Stage 2: Treasure Hunter (Deep Research)
-                            # =====================================================
-                            treasure_hooks = await run_treasure_hunter(
-                                db=state_db,
-                                product=product,
-                                state_code=state_code,
-                                state_full=state_name,
-                                district_name=None,
-                                district_url=None,
-                            )
-                        
-                            logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 3: Hook Gate (found {len(treasure_hooks or [])} hooks)")
-                            
-                            # =====================================================
-                            # Stage 3: Hook Gate (Filter & Consolidate)
-                            # =====================================================
-                            gated_hooks, filtered_reqs, report = gate_treasure_hooks(
-                                treasure_hooks, 
-                                evidence_pack=evidence_pack
-                            )
-                            
-                            logger.info(f"Batch job {job_id}: Processing {state_code} - Hook gate kept {len(gated_hooks)}/{len(treasure_hooks or [])} hooks")
+                            state_run: Optional[SavedEmailRun] = None
+                            resume_state = False
+
+                            if is_resume and include_district_research:
+                                state_run = await _get_latest_state_run(state_db, state_code)
+                                if state_run and state_run.pipeline_response:
+                                    pr = state_run.pipeline_response
+                                    if pr.get("evidence_pack") and pr.get("hooks"):
+                                        evidence_pack = pr.get("evidence_pack")
+                                        gated_hooks = pr.get("hooks")
+                                        filtered_reqs = pr.get("filtered_requirements") or []
+                                        resume_state = True
+                                        logger.info(
+                                            f"Batch job {job_id}: Resuming {state_code} from saved state research (skipping stages 1-3)"
+                                        )
+
+                            if resume_state:
+                                logger.info(
+                                    f"Batch job {job_id}: Using saved state research for {state_code} (evidence pack + hooks)"
+                                )
+                            else:
+                                logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 1: Evidence Pack")
+
+                                # =====================================================
+                                # Stage 1: Build Evidence Pack (KB chunks + product briefs)
+                                # =====================================================
+                                evidence_pack = await build_product_evidence_pack(
+                                    db=state_db,
+                                    product_display_name=product,
+                                    state_code=state_code,
+                                    audiences=audiences or ["Decision Makers"],
+                                )
+
+                                logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 2: Treasure Hunter")
+
+                                # =====================================================
+                                # Stage 2: Treasure Hunter (Deep Research)
+                                # =====================================================
+                                treasure_hooks = await run_treasure_hunter(
+                                    db=state_db,
+                                    product=product,
+                                    state_code=state_code,
+                                    state_full=state_name,
+                                    district_name=None,
+                                    district_url=None,
+                                )
+
+                                logger.info(
+                                    f"Batch job {job_id}: Processing {state_code} - Stage 3: Hook Gate (found {len(treasure_hooks or [])} hooks)"
+                                )
+
+                                # =====================================================
+                                # Stage 3: Hook Gate (Filter & Consolidate)
+                                # =====================================================
+                                gated_hooks, filtered_reqs, report = gate_treasure_hooks(
+                                    treasure_hooks,
+                                    evidence_pack=evidence_pack,
+                                )
+
+                                logger.info(
+                                    f"Batch job {job_id}: Processing {state_code} - Hook gate kept {len(gated_hooks)}/{len(treasure_hooks or [])} hooks"
+                                )
+
+                                # Save state-only research before district research starts
+                                state_run = await _get_latest_state_run(state_db, state_code)
+                                if not state_run:
+                                    state_run = SavedEmailRun(
+                                        run_type="research",
+                                        name=f"{product} - {state_name} (state-only)",
+                                        product=product,
+                                        state_code=state_code,
+                                        state_full=state_name,
+                                        audiences=audiences,
+                                        district_name=None,
+                                        include_district_research=include_district_research,
+                                        include_conference_research=include_conference_research,
+                                        pipeline_response={
+                                            "evidence_pack": _dump_model(evidence_pack),
+                                            "hooks": [_dump_model(h) for h in gated_hooks],
+                                            "filtered_requirements": [_dump_model(fr) for fr in filtered_reqs],
+                                            "district_research": None,
+                                            "conferences": [],
+                                        },
+                                        selected_hook_links=[],
+                                        primary_hook_link=None,
+                                        hook_reason_tags={},
+                                        hook_reason_notes={},
+                                        batch_job_id=job_id,
+                                    )
+                                    state_db.add(state_run)
+                                    await state_db.commit()
+                                    await state_db.refresh(state_run)
+                                else:
+                                    pr = state_run.pipeline_response or {}
+                                    pr.update(
+                                        {
+                                            "evidence_pack": _dump_model(evidence_pack),
+                                            "hooks": [_dump_model(h) for h in gated_hooks],
+                                            "filtered_requirements": [_dump_model(fr) for fr in filtered_reqs],
+                                            "district_research": pr.get("district_research"),
+                                            "conferences": pr.get("conferences", []),
+                                        }
+                                    )
+                                    state_run.pipeline_response = pr
+                                    state_run.include_district_research = include_district_research
+                                    state_run.include_conference_research = include_conference_research
+                                    await state_db.commit()
                             
                             # =====================================================
                             # Stage 4: District Research (Optional)
@@ -536,16 +704,7 @@ async def process_batch_job(
                                     product_context = json.dumps(product_brief, default=str)[:3000]
                                     
                                     # Convert gated hooks to dict format for de-duplication
-                                    state_hooks_dict = [
-                                        {
-                                            "hook_type": h.hook_type,
-                                            "quote": h.quote,
-                                            "link": h.link,
-                                            "trigger_excerpt": h.trigger_excerpt,
-                                            "title": h.quote[:100] if h.quote else "",
-                                        }
-                                        for h in gated_hooks
-                                    ]
+                                    state_hooks_dict = [_hook_to_state_dict(h) for h in gated_hooks]
                                     
                                     district_result = await run_district_deep_research(
                                         db=state_db,
@@ -599,28 +758,41 @@ async def process_batch_job(
                             # =====================================================
                             # Save results (same format as single-state)
                             # =====================================================
-                            run = SavedEmailRun(
-                                run_type="research",
-                                name=f"{product} - {state_name}",
-                                product=product,
-                                state_code=state_code,
-                                state_full=state_name,
-                                audiences=audiences,
-                                district_name=None,
-                                pipeline_response={
-                                    "evidence_pack": _dump_model(evidence_pack),
-                                    "hooks": [_dump_model(h) for h in gated_hooks],
-                                    "filtered_requirements": [_dump_model(fr) for fr in filtered_reqs],
-                                    "district_research": _dump_model(district_result) if district_result else None,
-                                    "conferences": conferences,
-                                },
-                                selected_hook_links=[],
-                                primary_hook_link=None,
-                                hook_reason_tags={},
-                                hook_reason_notes={},
-                                batch_job_id=job_id,
-                            )
-                            state_db.add(run)
+                            if state_run:
+                                pr = state_run.pipeline_response or {}
+                                pr["evidence_pack"] = _dump_model(evidence_pack)
+                                pr["hooks"] = [_dump_model(h) for h in gated_hooks]
+                                pr["filtered_requirements"] = [_dump_model(fr) for fr in filtered_reqs]
+                                pr["district_research"] = _dump_model(district_result) if district_result else None
+                                pr["conferences"] = conferences
+                                state_run.pipeline_response = pr
+                                state_run.include_district_research = include_district_research
+                                state_run.include_conference_research = include_conference_research
+                            else:
+                                state_run = SavedEmailRun(
+                                    run_type="research",
+                                    name=f"{product} - {state_name}",
+                                    product=product,
+                                    state_code=state_code,
+                                    state_full=state_name,
+                                    audiences=audiences,
+                                    district_name=None,
+                                    include_district_research=include_district_research,
+                                    include_conference_research=include_conference_research,
+                                    pipeline_response={
+                                        "evidence_pack": _dump_model(evidence_pack),
+                                        "hooks": [_dump_model(h) for h in gated_hooks],
+                                        "filtered_requirements": [_dump_model(fr) for fr in filtered_reqs],
+                                        "district_research": _dump_model(district_result) if district_result else None,
+                                        "conferences": conferences,
+                                    },
+                                    selected_hook_links=[],
+                                    primary_hook_link=None,
+                                    hook_reason_tags={},
+                                    hook_reason_notes={},
+                                    batch_job_id=job_id,
+                                )
+                                state_db.add(state_run)
                             
                             # Update job progress
                             update_stmt = select(BatchJob).where(BatchJob.id == job_id)
