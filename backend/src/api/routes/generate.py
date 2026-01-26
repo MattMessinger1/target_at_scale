@@ -300,9 +300,13 @@ try:
         FilteredRequirement,
         FilteredDistrictHook,
         DistrictResearchResult,
+        EmailDraft,
+        ClaimsMapEntry,
+        ValidationResult,
         PipelineRequest,
         PipelineRunResponse,
         WebHook,
+        SelectedHook,
         SelectedCachedHookRequest,
     )
 except Exception:
@@ -532,6 +536,37 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
 
         # Optional: cached hooks/conference items selected by user
         selected_cached_hooks: Optional[List[SelectedCachedHookRequest]] = None
+
+    class EmailRevisionRequest(BaseModel):
+        """Request to revise a draft using Responses API with previous_response_id."""
+
+        model_config = ConfigDict(extra="forbid")
+
+        product: str
+        state: str
+        state_full: Optional[str] = None
+        audience: str
+
+        evidence_pack: EvidencePack
+        treasure_hooks: List[WebHook]
+        selected_hook: SelectedHook
+        secondary_hook: Optional[SelectedHook] = None
+
+        district_name: Optional[str] = None
+        district_url: Optional[str] = None
+        purpose_prompt: Optional[str] = None
+        supporting_context: Optional[List[str]] = None
+
+        prior_subject_line: str
+        prior_email_body: str
+        edit_instruction: str
+        previous_response_id: Optional[str] = None
+
+    class EmailRevisionResponse(BaseModel):
+        email_draft: EmailDraft
+        claims_map: List[ClaimsMapEntry]
+        validation: ValidationResult
+        openai_response_id: Optional[str] = None
 
     # ---------------------------------------------------------------------------
     # Polling-based email generation (avoids long-running HTTP connections)
@@ -1693,6 +1728,94 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             "status": "queued",
             "message": "Email generation started",
         }
+
+    @router.post("/pipeline/revise", response_model=EmailRevisionResponse)
+    async def revise_email_pipeline(
+        request: EmailRevisionRequest,
+        db: AsyncSession = Depends(get_db),
+    ):
+        """Revise a draft using Responses API with previous_response_id for short sessions."""
+        from ...pipeline.runner import _select_required_offering
+        from ...pipeline.stages.email_writer import write_email_variant
+        from ...pipeline.stages.validator import validate_email_draft
+
+        product = (request.product or "").strip()
+        state_code = (request.state or "").strip().upper()
+        audience = (request.audience or "").strip()
+        if not product or not state_code or not audience:
+            raise HTTPException(status_code=422, detail="product, state, and audience are required.")
+
+        if not request.edit_instruction or not request.edit_instruction.strip():
+            raise HTTPException(status_code=422, detail="edit_instruction is required.")
+
+        # Best-effort: derive state_full if omitted
+        if not request.state_full:
+            try:
+                from .research import STATE_NAMES  # local constant map
+
+                if state_code in STATE_NAMES:
+                    request.state_full = STATE_NAMES[state_code]
+            except Exception:
+                pass
+
+        # Ensure district_name propagates to the hook for validation rules.
+        if not request.district_name and request.selected_hook and request.selected_hook.hook:
+            request.district_name = getattr(request.selected_hook.hook, "district_name", None)
+        if request.district_name and request.selected_hook and request.selected_hook.hook:
+            if not getattr(request.selected_hook.hook, "district_name", None):
+                request.selected_hook.hook.district_name = request.district_name
+
+        required_offering = None
+        try:
+            required_offering = _select_required_offering(
+                request.evidence_pack, request.selected_hook, request.purpose_prompt
+            )
+        except Exception:
+            required_offering = None
+
+        openai_response_id: Optional[str] = None
+
+        async def _capture_response_id(response_id: str, _audience: str):
+            nonlocal openai_response_id
+            openai_response_id = response_id
+
+        draft, claims = await write_email_variant(
+            product=product,
+            state_full=(request.state_full or state_code).strip(),
+            state_code=state_code,
+            audience=audience,
+            evidence_pack=request.evidence_pack,
+            selected_hook=request.selected_hook,
+            secondary_hook=request.secondary_hook,
+            district_name=request.district_name,
+            district_url=request.district_url,
+            purpose_prompt=request.purpose_prompt,
+            supporting_context=request.supporting_context,
+            required_offering=required_offering,
+            repair_instructions=[request.edit_instruction.strip()],
+            prior_subject_line=request.prior_subject_line,
+            prior_email_body=request.prior_email_body,
+            previous_response_id=request.previous_response_id,
+            on_openai_started=_capture_response_id,
+        )
+
+        validation = validate_email_draft(
+            subject_line=draft.subject_line,
+            email_body=draft.email_body,
+            selected_hook=request.selected_hook,
+            secondary_hook=request.secondary_hook,
+            claims_map=claims,
+            evidence_pack=request.evidence_pack,
+            treasure_hooks=request.treasure_hooks,
+            required_offering=required_offering,
+        )
+
+        return EmailRevisionResponse(
+            email_draft=draft,
+            claims_map=claims,
+            validation=validation,
+            openai_response_id=openai_response_id,
+        )
 
     @router.get("/pipeline/run/status")
     async def get_email_pipeline_status(task_id: str, db: AsyncSession = Depends(get_db)):

@@ -248,6 +248,7 @@ async def _run_variant(
 
     prev_validation = v0
     prev_email = draft.email_body
+    prev_subject = draft.subject_line
 
     # Repair attempts (1..MAX_REPAIR_ITERATIONS)
     for it in range(1, MAX_REPAIR_ITERATIONS + 1):
@@ -271,6 +272,7 @@ async def _run_variant(
             supporting_context=supporting_context,
             required_offering=required_offering,
             repair_instructions=instructions,
+            prior_subject_line=prev_subject,
             prior_email_body=prev_email,
             on_progress=on_progress,
             golden_examples_text=golden_examples_text,
@@ -307,6 +309,7 @@ async def _run_variant(
 
         prev_validation = v_i
         prev_email = draft_i.email_body
+        prev_subject = draft_i.subject_line
 
     best = _choose_best_attempt(attempts)
     if not best:

@@ -1433,7 +1433,9 @@ async def write_email_variant(
     supporting_context: Optional[List[str]] = None,
     required_offering: Optional[str] = None,
     repair_instructions: Optional[List[str]] = None,
+    prior_subject_line: Optional[str] = None,
     prior_email_body: Optional[str] = None,
+    previous_response_id: Optional[str] = None,
     on_progress: Optional[Callable[[str, float], None]] = None,
     golden_examples_text: Optional[str] = None,
     on_openai_started: Optional[Callable[[str, str], Awaitable[None]]] = None,
@@ -1506,8 +1508,13 @@ async def write_email_variant(
             f"- {x}" for x in repair_instructions if x
         )
     prior_block = ""
-    if prior_email_body:
-        prior_block = "\nPRIOR EMAIL (minimally edit):\n" + prior_email_body.strip()
+    if prior_subject_line or prior_email_body:
+        prior_parts = []
+        if prior_subject_line and prior_subject_line.strip():
+            prior_parts.append(f"Subject: {prior_subject_line.strip()}")
+        if prior_email_body and prior_email_body.strip():
+            prior_parts.append(prior_email_body.strip())
+        prior_block = "\nPRIOR EMAIL (minimally edit):\n" + "\n".join(prior_parts)
 
     # Include golden examples (approved by user's team) if available
     golden_section = golden_examples_text or ""
@@ -1542,11 +1549,14 @@ Constraints:\n- Aim for ~110–150 words, but slight variation is fine.\n- Plain
         # ---- Responses API (gpt-5.2-pro without explicit reasoning) ----
         try:
             # Start task in background mode (returns immediately with task ID)
-            resp = await client.responses.create(
-                model=settings.openai_pro_model,  # gpt-5.2-pro
-                input=full_prompt,
-                background=True,  # Non-blocking, returns task ID for polling
-            )
+            create_kwargs = {
+                "model": settings.openai_pro_model,  # gpt-5.2-pro
+                "input": full_prompt,
+                "background": True,  # Non-blocking, returns task ID for polling
+            }
+            if previous_response_id:
+                create_kwargs["previous_response_id"] = previous_response_id
+            resp = await client.responses.create(**create_kwargs)
             
             logger.info(
                 "EmailWriter: Task started id=%s, status=%s for %s/%s (audience=%s)",
