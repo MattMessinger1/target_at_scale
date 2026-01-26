@@ -351,6 +351,7 @@ export interface PipelineRequest {
   include_district_research?: boolean
   include_conference_research?: boolean
   created_by?: string | null
+  purpose_prompt?: string | null
 }
 
 export interface PipelineRunStreamRequest extends PipelineRequest {
