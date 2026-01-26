@@ -673,6 +673,9 @@ class SavedEmailRun(Base):
     primary_hook_link: Mapped[Optional[str]] = mapped_column(String(800), nullable=True)
     hook_reason_tags: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     hook_reason_notes: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    # Parent run linkage (edited versions of auto-saved runs)
+    parent_run_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("saved_email_runs.id"), nullable=True)
     
     # Batch job reference (if part of a batch)
     batch_job_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("batch_jobs.id"), nullable=True)

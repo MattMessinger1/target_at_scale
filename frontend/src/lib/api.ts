@@ -807,6 +807,7 @@ export interface SaveRunRequest {
   primary_hook_link?: string | null
   hook_reason_tags: Record<string, string[]>
   hook_reason_notes: Record<string, string>
+  parent_run_id?: number | null
 }
 
 export interface SavedRunSummary {
@@ -821,6 +822,7 @@ export interface SavedRunSummary {
   district_name?: string | null
   created_at: string
   batch_job_id?: number | null
+  parent_run_id?: number | null
   subject_preview?: string | null
   hook_count?: number | null
 }
@@ -846,6 +848,7 @@ export interface SavedRunFull {
   hook_reason_notes: Record<string, string>
   created_at: string
   batch_job_id?: number | null
+  parent_run_id?: number | null
 }
 
 export interface SaveResearchRequest {

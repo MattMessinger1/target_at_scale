@@ -9,7 +9,7 @@
  * 4. Generate email
  * 5. Copy / Export
  */
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { 
@@ -1514,6 +1514,8 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
   const [emailProgress, setEmailProgress] = useState<{ progress: number; message: string } | null>(null)
   const [currentEmailTaskId, setCurrentEmailTaskId] = useState<string | null>(null)  // Track current task for clearing
   const [backgroundEmailTasks, setBackgroundEmailTasks] = useState<PendingEmailTasksMap>({})  // Track all pending tasks
+  const lastEmailTaskIdRef = useRef<string | null>(null)
+  const lastAutoSavedRunIdRef = useRef<number | null>(null)
   const [prep, setPrep] = useState<{ evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; district_research?: DistrictResearchResult | null; conferences?: ConferenceOpportunity[]; warnings: string[] } | null>(null)
   const [blockedFilteredRequirements, setBlockedFilteredRequirements] = useState<FilteredRequirement[]>([])
   // Use hook_id for reliable selection (handles multiple hooks with same URL)
@@ -2210,6 +2212,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
         }
       }
 
+      const parentRunId = editedContent ? (currentSavedRunId || lastAutoSavedRunIdRef.current) : null
       const saved = await api.savedRuns.save({
         name: name || undefined,
         product: selectedProduct || '',
@@ -2221,6 +2224,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
         primary_hook_link: primaryHookLink || undefined,
         hook_reason_tags: hookReasonTags,
         hook_reason_notes: hookReasonNotes,
+        parent_run_id: parentRunId || undefined,
       })
       setCurrentSavedRunId(saved.id)
       toast({
@@ -2563,6 +2567,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
           }
           savePendingEmailTask(pendingTask)
           setCurrentEmailTaskId(taskId)  // Track for clearing on success/error
+          lastEmailTaskIdRef.current = taskId
           // Update background tasks state
           setBackgroundEmailTasks(prev => ({ ...prev, [taskId]: pendingTask }))
         }
@@ -2586,6 +2591,21 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
       const first = data.variants?.[0]?.audience
       setActiveAudience(first || null)
       setWizardStep(5) // Go to Review step
+
+      // Capture auto-saved run ID (if available) for edit-linking
+      const statusTaskId = lastEmailTaskIdRef.current || currentEmailTaskId
+      if (statusTaskId) {
+        api.generate.pipelineRunStatus(statusTaskId)
+          .then((status) => {
+            if (status.saved_run_id) {
+              setCurrentSavedRunId(status.saved_run_id)
+              lastAutoSavedRunIdRef.current = status.saved_run_id
+            }
+          })
+          .catch(() => {
+            // non-blocking
+          })
+      }
 
       // Training loop: log the explicit human-selected requirements (no implicit rejections).
       try {

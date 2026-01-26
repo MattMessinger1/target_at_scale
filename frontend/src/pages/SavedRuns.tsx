@@ -31,6 +31,7 @@ export default function SavedRuns() {
   const [expandedProducts, setExpandedProducts] = useState<Record<string, boolean>>({})
   const [expandedStates, setExpandedStates] = useState<Record<string, boolean>>({})
   const [batchJobFilter, setBatchJobFilter] = useState<number | null>(null)
+  const [expandedEdits, setExpandedEdits] = useState<Record<number, boolean>>({})
   
   // Fetch grouped runs
   const { data: groupedRuns, isLoading: groupedLoading } = useQuery({
@@ -163,6 +164,11 @@ export default function SavedRuns() {
               >
                 {isEmail ? '✉️ Email' : 'Research'}
               </Badge>
+              {run.parent_run_id && (
+                <Badge variant="outline" className="border-amber-500/60 text-amber-300">
+                  Edited
+                </Badge>
+              )}
             </div>
             
             {/* Email subject preview - prominent for email runs */}
@@ -209,6 +215,20 @@ export default function SavedRuns() {
   const filterRuns = (runs: SavedRunSummary[]) => {
     if (runTypeFilter === 'all') return runs
     return runs.filter(r => r.run_type === runTypeFilter)
+  }
+
+  const buildRunTree = (runs: SavedRunSummary[]) => {
+    const children: Record<number, SavedRunSummary[]> = {}
+    const roots: SavedRunSummary[] = []
+    for (const run of runs) {
+      if (run.parent_run_id) {
+        if (!children[run.parent_run_id]) children[run.parent_run_id] = []
+        children[run.parent_run_id].push(run)
+      } else {
+        roots.push(run)
+      }
+    }
+    return { roots, children }
   }
   
   const renderGroupedView = () => {
@@ -304,7 +324,31 @@ export default function SavedRuns() {
                       {/* Runs */}
                       {expandedStates[key] && (
                         <div className="px-8 py-2 space-y-2 bg-slate-900/20">
-                          {filteredRuns.map(renderRunCard)}
+                          {(() => {
+                            const { roots, children } = buildRunTree(filteredRuns)
+                            return roots.map((run) => {
+                              const edits = children[run.id] || []
+                              const isExpanded = expandedEdits[run.id] || false
+                              return (
+                                <div key={`run-${run.id}`} className="space-y-1">
+                                  {renderRunCard(run)}
+                                  {edits.length > 0 && (
+                                    <div className="pl-4 border-l border-slate-700/50 space-y-2">
+                                      <button
+                                        onClick={() =>
+                                          setExpandedEdits((prev) => ({ ...prev, [run.id]: !isExpanded }))
+                                        }
+                                        className="text-xs text-slate-400 hover:text-slate-200"
+                                      >
+                                        {isExpanded ? 'Hide edits' : `Show edits (${edits.length})`}
+                                      </button>
+                                      {isExpanded && edits.map(renderRunCard)}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })
+                          })()}
                         </div>
                       )}
                     </div>

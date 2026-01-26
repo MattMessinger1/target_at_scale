@@ -48,6 +48,7 @@ class SaveRunRequest(BaseModel):
     # Custom purpose prompt (for purpose-driven emails)
     purpose_prompt: Optional[str] = None
     selected_cached_hook_ids: Optional[List[str]] = None
+    parent_run_id: Optional[int] = None
 
 
 class SaveResearchRequest(BaseModel):
@@ -94,6 +95,7 @@ class SavedRunSummary(BaseModel):
     district_name: Optional[str]
     created_at: datetime
     batch_job_id: Optional[int] = None
+    parent_run_id: Optional[int] = None
     
     # Preview - subject line for email, hook count for research
     subject_preview: Optional[str] = None
@@ -122,6 +124,7 @@ class SavedRunFull(BaseModel):
     hook_reason_notes: Dict[str, str]
     created_at: datetime
     batch_job_id: Optional[int] = None
+    parent_run_id: Optional[int] = None
 
 
 class RenameRequest(BaseModel):
@@ -167,6 +170,7 @@ async def save_run(
         primary_hook_link=request.primary_hook_link,
         hook_reason_tags=request.hook_reason_tags,
         hook_reason_notes=request.hook_reason_notes,
+        parent_run_id=request.parent_run_id,
     )
     db.add(run)
     await db.commit()
@@ -193,6 +197,7 @@ async def save_run(
         hook_reason_notes=run.hook_reason_notes,
         created_at=run.created_at,
         batch_job_id=run.batch_job_id,
+        parent_run_id=run.parent_run_id,
     )
 
 
@@ -261,6 +266,7 @@ async def save_research_run(
         hook_reason_notes=run.hook_reason_notes,
         created_at=run.created_at,
         batch_job_id=run.batch_job_id,
+        parent_run_id=run.parent_run_id,
     )
 
 
@@ -325,6 +331,7 @@ async def list_runs(
             district_name=run.district_name,
             created_at=run.created_at,
             batch_job_id=getattr(run, 'batch_job_id', None),
+            parent_run_id=getattr(run, 'parent_run_id', None),
             subject_preview=subject_preview,
             hook_count=hook_count,
         ))
@@ -394,6 +401,7 @@ async def list_runs_grouped(
             district_name=run.district_name,
             created_at=run.created_at,
             batch_job_id=getattr(run, 'batch_job_id', None),
+            parent_run_id=getattr(run, 'parent_run_id', None),
             subject_preview=subject_preview,
             hook_count=hook_count,
         ))
@@ -463,6 +471,7 @@ async def get_run(
         hook_reason_notes=run.hook_reason_notes,
         created_at=run.created_at,
         batch_job_id=getattr(run, 'batch_job_id', None),
+        parent_run_id=getattr(run, 'parent_run_id', None),
     )
 
 
@@ -514,6 +523,7 @@ async def rename_run(
         district_name=run.district_name,
         created_at=run.created_at,
         batch_job_id=getattr(run, 'batch_job_id', None),
+        parent_run_id=getattr(run, 'parent_run_id', None),
         subject_preview=subject_preview,
         hook_count=hook_count,
     )

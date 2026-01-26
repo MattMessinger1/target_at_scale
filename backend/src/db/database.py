@@ -93,6 +93,8 @@ async def run_migrations():
         ("saved_email_runs", "purpose_prompt", "TEXT"),
         # Add selected_cached_hook_ids to saved_email_runs for persistence
         ("saved_email_runs", "selected_cached_hook_ids", "JSON"),
+        # Link edited runs to their auto-saved parent
+        ("saved_email_runs", "parent_run_id", "INTEGER"),
         # Add evidence_chunks_used to email_improvement_reviews for tracking which chunks were used
         ("email_improvement_reviews", "evidence_chunks_used", "JSON"),
         # Add hook_types_used to golden_emails for flywheel context matching
