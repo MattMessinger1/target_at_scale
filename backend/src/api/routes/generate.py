@@ -2742,9 +2742,13 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             result_payload = cached.full_prep_json
             if isinstance(result_payload, dict) and isinstance(saved, SavedEmailRun):
                 saved_pr = saved.pipeline_response or {}
-                if isinstance(saved_pr, dict) and saved_pr.get("district_research") and not result_payload.get("district_research"):
-                    result_payload = dict(result_payload)
-                    result_payload["district_research"] = saved_pr.get("district_research")
+                if isinstance(saved_pr, dict):
+                    if saved_pr.get("district_research") and not result_payload.get("district_research"):
+                        result_payload = dict(result_payload)
+                        result_payload["district_research"] = saved_pr.get("district_research")
+                    if saved_pr.get("conferences") and not result_payload.get("conferences"):
+                        result_payload = dict(result_payload)
+                        result_payload["conferences"] = saved_pr.get("conferences")
             if isinstance(result_payload, dict) and not result_payload.get("district_research"):
                 try:
                     district_result = await db.execute(
