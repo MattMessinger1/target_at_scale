@@ -2648,6 +2648,36 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         product_key = normalize_product_key(product)
         state_code = state.strip().upper()
 
+        def _compute_research_status(payload: Dict[str, Any]) -> Dict[str, Any]:
+            hooks = payload.get("treasure_hooks") or []
+            evidence_pack = payload.get("evidence_pack")
+            state_complete = isinstance(evidence_pack, dict)
+            state_status = "completed" if state_complete else "missing"
+            state_hook_count = len(hooks) if isinstance(hooks, list) else 0
+
+            dr = payload.get("district_research")
+            district_complete = False
+            district_hook_count = 0
+            if isinstance(dr, dict):
+                district_status_val = str(dr.get("status", "")).lower()
+                if district_status_val in {"completed", "complete"}:
+                    district_complete = True
+                if "passed_hooks" in dr or "districts_surveyed" in dr:
+                    district_complete = True
+                district_hook_count = len(dr.get("passed_hooks") or []) if isinstance(dr.get("passed_hooks"), list) else 0
+            district_status = "completed" if district_complete else "missing"
+
+            confs = payload.get("conferences")
+            conference_complete = isinstance(confs, list)
+            conference_count = len(confs) if isinstance(confs, list) else 0
+            conference_status = "completed" if conference_complete else "missing"
+
+            return {
+                "state": {"status": state_status, "hook_count": state_hook_count},
+                "district": {"status": district_status, "hook_count": district_hook_count},
+                "conference": {"status": conference_status, "count": conference_count},
+            }
+
         saved_result = await db.execute(
             select(SavedEmailRun)
             .where(SavedEmailRun.product == product)
@@ -2729,6 +2759,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 "conferences": pr.get("conferences") if isinstance(pr.get("conferences"), list) else [],
                 "warnings": pr.get("warnings") if isinstance(pr.get("warnings"), list) else [],
             }
+            result_payload["research_status"] = _compute_research_status(result_payload)
             cache_age = datetime.utcnow() - saved.created_at
             return {
                 "cached": True,
@@ -2769,6 +2800,9 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         result_payload["district_research"] = district_payload
                 except Exception:
                     pass
+            if isinstance(result_payload, dict):
+                result_payload = dict(result_payload)
+                result_payload["research_status"] = _compute_research_status(result_payload)
             return {
                 "cached": True,
                 "result": result_payload,
@@ -2928,6 +2962,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             "conferences": [_dump_model(c) for c in (conferences or [])],
             "warnings": [],
         }
+        result_payload["research_status"] = _compute_research_status(result_payload)
 
         # Best-effort: persist reconstructed prep for instant future loads
         try:

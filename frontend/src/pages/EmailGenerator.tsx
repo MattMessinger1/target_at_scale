@@ -191,6 +191,11 @@ type CachedPrepResult = {
   district_research?: DistrictResearchResult | null
   conferences?: ConferenceOpportunity[]
   warnings: string[]
+  research_status?: {
+    state?: { status: string; hook_count?: number }
+    district?: { status: string; hook_count?: number }
+    conference?: { status: string; count?: number }
+  }
 }
 
 type CachedHookCategory = 'state' | 'district' | 'conference'
@@ -4430,11 +4435,22 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                     {!cachedPrepLoading && selectedStates.map((st) => {
                       const cached = cachedPrepByState[st.code]
                       const hooks = cached?.district_research?.passed_hooks || []
+                      const districtStatus = cached?.research_status?.district
+                      const districtComplete = districtStatus?.status === 'completed'
+                      const districtCount = districtStatus?.hook_count ?? hooks.length
                       return (
                         <div key={`district-${st.code}`}>
                           <div className="text-xs text-slate-500 mb-1">{st.name}</div>
+                          {districtStatus && (
+                            <div className="text-xs text-slate-600 mb-2">
+                              District research {districtComplete ? 'complete' : 'not run'}
+                              {districtComplete ? ` (${districtCount} opportunities)` : ''}
+                            </div>
+                          )}
                           {hooks.length === 0 ? (
-                            <div className="text-xs text-slate-600">No cached district hooks.</div>
+                            <div className="text-xs text-slate-600">
+                              {districtComplete ? 'District research complete: 0 opportunities found.' : 'No cached district hooks.'}
+                            </div>
                           ) : (
                             <div className="space-y-3">
                               {hooks.map((h) => {
@@ -4471,11 +4487,16 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                     {!cachedPrepLoading && selectedStates.map((st) => {
                       const cached = cachedPrepByState[st.code]
                       const conferences = cached?.conferences || []
+                      const confStatus = cached?.research_status?.conference
+                      const confComplete = confStatus?.status === 'completed'
+                      const confCount = confStatus?.count ?? conferences.length
                     return (
                         <div key={`conference-${st.code}`}>
                           <div className="text-xs text-slate-500 mb-1">{st.name}</div>
                           {conferences.length === 0 ? (
-                            <div className="text-xs text-slate-600">No cached conference info.</div>
+                            <div className="text-xs text-slate-600">
+                              {confComplete ? `Conference research complete: ${confCount} opportunities found.` : 'No cached conference info.'}
+                            </div>
                           ) : (
                             <div className="space-y-2">
                               {conferences.map((c) => {
