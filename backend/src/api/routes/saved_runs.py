@@ -322,10 +322,18 @@ async def list_runs(
             except Exception:
                 hook_count = 0
         
+        district_complete = (
+            isinstance(run.pipeline_response, dict)
+            and run.pipeline_response.get("district_research") is not None
+        )
+        display_name = run.name
+        if district_complete and display_name and "(state-only)" in display_name:
+            display_name = display_name.replace(" (state-only)", "")
+
         summaries.append(SavedRunSummary(
             id=run.id,
             run_type=run_type_val,
-            name=run.name,
+            name=display_name,
             created_by=getattr(run, 'created_by', None),
             product=run.product,
             state_code=run.state_code,
@@ -333,10 +341,7 @@ async def list_runs(
             audiences=run.audiences,
             district_name=run.district_name,
             include_district_research=getattr(run, 'include_district_research', False),
-            district_research_complete=bool(
-                isinstance(run.pipeline_response, dict)
-                and run.pipeline_response.get("district_research")
-            ),
+            district_research_complete=district_complete,
             created_at=run.created_at,
             batch_job_id=getattr(run, 'batch_job_id', None),
             parent_run_id=getattr(run, 'parent_run_id', None),
@@ -397,10 +402,18 @@ async def list_runs_grouped(
             except Exception:
                 hook_count = 0
         
+        district_complete = (
+            isinstance(run.pipeline_response, dict)
+            and run.pipeline_response.get("district_research") is not None
+        )
+        display_name = run.name
+        if district_complete and display_name and "(state-only)" in display_name:
+            display_name = display_name.replace(" (state-only)", "")
+
         grouped[product][state].append(SavedRunSummary(
             id=run.id,
             run_type=run_type_val,
-            name=run.name,
+            name=display_name,
             created_by=getattr(run, 'created_by', None),
             product=run.product,
             state_code=run.state_code,
@@ -408,16 +421,22 @@ async def list_runs_grouped(
             audiences=run.audiences,
             district_name=run.district_name,
             include_district_research=getattr(run, 'include_district_research', False),
-            district_research_complete=bool(
-                isinstance(run.pipeline_response, dict)
-                and run.pipeline_response.get("district_research")
-            ),
+            district_research_complete=district_complete,
             created_at=run.created_at,
             batch_job_id=getattr(run, 'batch_job_id', None),
             parent_run_id=getattr(run, 'parent_run_id', None),
             subject_preview=subject_preview,
             hook_count=hook_count,
         ))
+
+    # Prefer runs with district data at the top within each state group
+    for product_states in grouped.values():
+        for state_code, runs in product_states.items():
+            product_states[state_code] = sorted(
+                runs,
+                key=lambda r: (r.district_research_complete, r.created_at),
+                reverse=True,
+            )
     
     # Convert to response format
     return [

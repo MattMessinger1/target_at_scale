@@ -472,6 +472,8 @@ async def restart_district_research(
     pr["district_research"] = _dump_model(district_result)
     state_run.pipeline_response = pr
     state_run.include_district_research = True
+    if state_run.name and "(state-only)" in state_run.name:
+        state_run.name = state_run.name.replace(" (state-only)", "")
     await db.commit()
 
     return {
@@ -768,6 +770,8 @@ async def process_batch_job(
                                 state_run.pipeline_response = pr
                                 state_run.include_district_research = include_district_research
                                 state_run.include_conference_research = include_conference_research
+                                if include_district_research and state_run.name and "(state-only)" in state_run.name:
+                                    state_run.name = state_run.name.replace(" (state-only)", "")
                             else:
                                 state_run = SavedEmailRun(
                                     run_type="research",

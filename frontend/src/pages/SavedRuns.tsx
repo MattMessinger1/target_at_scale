@@ -167,7 +167,7 @@ export default function SavedRuns() {
                   : 'border-blue-600 text-blue-300'
                 }
               >
-                {isEmail ? '✉️ Email' : 'Research'}
+                {isEmail ? '✉️ Email' : 'Research run'}
               </Badge>
               {!isEmail && run.include_district_research && (
                 <Badge
