@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from datetime import datetime, timedelta
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, desc
 
 from ..db import init_db, run_migrations, AsyncSessionLocal
 from ..config import get_settings
@@ -246,7 +246,7 @@ async def lifespan(app: FastAPI):
 
     # Resume interrupted district research (OpenAI response already running)
     try:
-        from ..db.models import DistrictResearchCache, SavedEmailRun
+        from ..db.models import DistrictResearchCache
         from ..research.district_research import run_district_deep_research
         from ..research.product_briefs import get_product_brief, normalize_product_key
         import json
