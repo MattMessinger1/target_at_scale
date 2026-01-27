@@ -440,7 +440,8 @@ async def restart_district_research(
         raise HTTPException(status_code=404, detail="Saved state research not found")
 
     pr = state_run.pipeline_response or {}
-    if not pr.get("hooks"):
+    hooks = pr.get("hooks") or pr.get("treasure_hooks") or []
+    if not hooks:
         raise HTTPException(
             status_code=400,
             detail="Saved state research missing hooks; rerun state research first",
@@ -453,7 +454,7 @@ async def restart_district_research(
     product_key = normalize_product_key(job.product)
     product_brief = await get_product_brief(db, job.product, state_code=state_code)
     product_context = json.dumps(product_brief, default=str)[:3000]
-    state_hooks_dict = [_hook_to_state_dict(h) for h in pr.get("hooks", [])]
+    state_hooks_dict = [_hook_to_state_dict(h) for h in hooks]
 
     state_name = state_run.state_full or next(
         (s["name"] for s in job.states if s.get("code") == state_code),

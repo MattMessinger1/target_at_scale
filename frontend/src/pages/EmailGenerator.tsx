@@ -1485,6 +1485,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
   
   // Conference research option  
   const [includeConferenceResearch, setIncludeConferenceResearch] = useState(false)
+  const [forceFreshResearch, setForceFreshResearch] = useState(false)
   
   // Polling-based research state (robust against browser sleep/network issues)
   const [researchPhase, setResearchPhase] = useState<'idle' | 'state' | 'district' | 'conferences'>('idle')
@@ -2780,6 +2781,19 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
     setActiveAudience(null)
     
     if (isResearchMode) {
+      if (forceFreshResearch) {
+        try {
+          const stateCode = selectedStates[0]?.code || ''
+          await api.generate.clearDeepResearchCache(stateCode, selectedProduct || '')
+          if (stateCode) {
+            setCachedPrepByState((prev) => ({ ...prev, [stateCode]: null }))
+          }
+          setCacheStatus(null)
+        } catch (e) {
+          // Best-effort cache clear; continue even if it fails.
+          console.error('Failed to clear deep research cache', e)
+        }
+      }
       setWizardStep(2)
       prepMutation.mutate()
       return
@@ -4189,7 +4203,50 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                 <AudienceSelector selectedProduct={selectedProduct} selectedAudience={selectedAudience} onSelect={setSelectedAudience} />
               </div>
 
-              {/* District/Conference research toggles removed from UI (keeping backend capability) */}
+              <div className="mt-2 rounded-lg border border-slate-700 bg-slate-900/30 p-4">
+                <div className="text-sm font-medium text-slate-200 mb-3">Research options</div>
+                <div className="space-y-3">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={forceFreshResearch}
+                      onChange={(e) => setForceFreshResearch(e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500/50"
+                    />
+                    <div>
+                      <span className="text-sm text-slate-200">Force fresh research</span>
+                      <span className="text-xs text-slate-500 ml-2">(clear cached results)</span>
+                    </div>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={includeDistrictResearch}
+                      onChange={(e) => setIncludeDistrictResearch(e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-amber-500 focus:ring-amber-500/50"
+                    />
+                    <div>
+                      <span className="text-sm text-slate-200">Include district research</span>
+                      <span className="text-xs text-slate-500 ml-2">(find district-specific opportunities)</span>
+                    </div>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={includeConferenceResearch}
+                      onChange={(e) => setIncludeConferenceResearch(e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-indigo-500 focus:ring-indigo-500/50"
+                    />
+                    <div>
+                      <span className="text-sm text-slate-200">Include conference research</span>
+                      <span className="text-xs text-slate-500 ml-2">(find marketing opportunities)</span>
+                    </div>
+                  </label>
+                </div>
+                <p className="mt-3 text-xs text-slate-500">
+                  These apply to single-state research runs. Use Batch Research for multiple states.
+                </p>
+              </div>
 
               {/* Cache status notification */}
               {cacheStatus && cacheStatus.status !== 'not_found' && cacheStatus.status !== 'loading' && (
