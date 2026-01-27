@@ -820,6 +820,8 @@ export interface SavedRunSummary {
   state_full?: string | null
   audiences: string[]
   district_name?: string | null
+  include_district_research?: boolean
+  district_research_complete?: boolean
   created_at: string
   batch_job_id?: number | null
   parent_run_id?: number | null
@@ -839,6 +841,7 @@ export interface SavedRunFull {
   district_name?: string | null
   include_district_research?: boolean
   include_conference_research?: boolean
+  district_research_complete?: boolean
   purpose_prompt?: string | null
   selected_cached_hook_ids?: string[] | null
   pipeline_response: PipelineRunResponse

@@ -244,6 +244,102 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Research task resume failed (startup will continue): {e}", exc_info=True)
 
+    # Resume interrupted district research (OpenAI response already running)
+    try:
+        from ..db.models import DistrictResearchCache, SavedEmailRun
+        from ..research.district_research import run_district_deep_research
+        from ..research.product_briefs import get_product_brief, normalize_product_key
+        import json
+
+        async with AsyncSessionLocal() as db:
+            district_q = (
+                select(DistrictResearchCache)
+                .where(DistrictResearchCache.status.in_(["queued", "in_progress"]))
+                .where(DistrictResearchCache.openai_response_id.is_not(None))
+                .where(DistrictResearchCache.is_archived.is_(False))
+            )
+            district_res = await db.execute(district_q)
+            district_entries = district_res.scalars().all()
+
+            for entry in district_entries:
+                # Find a matching saved run to supply product context and hooks
+                runs_stmt = (
+                    select(SavedEmailRun)
+                    .where(SavedEmailRun.state_code == entry.state_code)
+                    .where(SavedEmailRun.run_type == "research")
+                    .order_by(desc(SavedEmailRun.created_at))
+                    .limit(10)
+                )
+                runs_res = await db.execute(runs_stmt)
+                runs = runs_res.scalars().all()
+                matching_run = None
+                for run in runs:
+                    try:
+                        if normalize_product_key(run.product) == entry.product_key:
+                            matching_run = run
+                            break
+                    except Exception:
+                        continue
+
+                if not matching_run:
+                    logger.warning(
+                        f"District research resume skipped for {entry.state_code}/{entry.product_key}: "
+                        "no matching SavedEmailRun found"
+                    )
+                    continue
+
+                pr = matching_run.pipeline_response or {}
+                hooks = pr.get("hooks") or pr.get("treasure_hooks") or []
+                if not hooks:
+                    logger.warning(
+                        f"District research resume skipped for {entry.state_code}/{entry.product_key}: "
+                        "no hooks available in saved run"
+                    )
+                    continue
+
+                product_brief = await get_product_brief(db, matching_run.product, state_code=entry.state_code)
+                product_context = json.dumps(product_brief, default=str)[:3000]
+
+                state_hooks = []
+                for h in hooks:
+                    if isinstance(h, dict):
+                        state_hooks.append({
+                            "hook_type": h.get("hook_type"),
+                            "quote": h.get("quote"),
+                            "link": h.get("link"),
+                            "trigger_excerpt": h.get("trigger_excerpt"),
+                            "title": (h.get("quote") or "")[:100],
+                        })
+                    else:
+                        state_hooks.append({
+                            "hook_type": getattr(h, "hook_type", None),
+                            "quote": getattr(h, "quote", None),
+                            "link": getattr(h, "link", None),
+                            "trigger_excerpt": getattr(h, "trigger_excerpt", None),
+                            "title": (getattr(h, "quote", "") or "")[:100],
+                        })
+
+                logger.info(
+                    f"Resuming district research for {entry.state_code}/{entry.product_key} "
+                    f"(response_id={entry.openai_response_id})"
+                )
+
+                result = await run_district_deep_research(
+                    db=db,
+                    state_code=entry.state_code,
+                    state_full=matching_run.state_full or entry.state_code,
+                    product_key=entry.product_key,
+                    product_context=product_context,
+                    state_hooks=state_hooks,
+                )
+
+                if isinstance(result, dict) and result.get("passed_hooks") is not None:
+                    pr["district_research"] = result
+                    matching_run.pipeline_response = pr
+                    await db.commit()
+    except Exception as e:
+        logger.error(f"District research resume failed (startup will continue): {e}", exc_info=True)
+
     # Cleanup: prevent "phantom" in-progress deep research after deploys.
     # Only mark caches failed if there is no corresponding active ResearchTask.
     try:
@@ -274,14 +370,14 @@ async def lifespan(app: FastAPI):
 
             updated = 0
             for entry in deep_entries:
-                if (entry.state_code, entry.product_key) not in active_pairs:
+                if (entry.state_code, entry.product_key) not in active_pairs and not entry.openai_response_id:
                     entry.status = "failed"
                     entry.error_message = "Interrupted by server restart; please re-run"
                     entry.openai_response_id = None
                     updated += 1
 
             for entry in district_entries:
-                if (entry.state_code, entry.product_key) not in active_pairs:
+                if (entry.state_code, entry.product_key) not in active_pairs and not entry.openai_response_id:
                     entry.status = "failed"
                     entry.error_message = "Interrupted by server restart; please re-run"
                     entry.openai_response_id = None

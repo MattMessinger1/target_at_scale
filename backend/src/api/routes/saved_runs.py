@@ -93,6 +93,8 @@ class SavedRunSummary(BaseModel):
     state_full: Optional[str]
     audiences: List[str]
     district_name: Optional[str]
+    include_district_research: bool = False
+    district_research_complete: bool = False
     created_at: datetime
     batch_job_id: Optional[int] = None
     parent_run_id: Optional[int] = None
@@ -115,6 +117,7 @@ class SavedRunFull(BaseModel):
     district_name: Optional[str]
     include_district_research: bool = False
     include_conference_research: bool = False
+    district_research_complete: bool = False
     purpose_prompt: Optional[str] = None
     selected_cached_hook_ids: Optional[List[str]] = None
     pipeline_response: Dict[str, Any]
@@ -329,6 +332,11 @@ async def list_runs(
             state_full=run.state_full,
             audiences=run.audiences,
             district_name=run.district_name,
+            include_district_research=getattr(run, 'include_district_research', False),
+            district_research_complete=bool(
+                isinstance(run.pipeline_response, dict)
+                and run.pipeline_response.get("district_research")
+            ),
             created_at=run.created_at,
             batch_job_id=getattr(run, 'batch_job_id', None),
             parent_run_id=getattr(run, 'parent_run_id', None),
@@ -399,6 +407,11 @@ async def list_runs_grouped(
             state_full=run.state_full,
             audiences=run.audiences,
             district_name=run.district_name,
+            include_district_research=getattr(run, 'include_district_research', False),
+            district_research_complete=bool(
+                isinstance(run.pipeline_response, dict)
+                and run.pipeline_response.get("district_research")
+            ),
             created_at=run.created_at,
             batch_job_id=getattr(run, 'batch_job_id', None),
             parent_run_id=getattr(run, 'parent_run_id', None),
@@ -462,6 +475,10 @@ async def get_run(
         district_name=run.district_name,
         include_district_research=getattr(run, 'include_district_research', False),
         include_conference_research=getattr(run, 'include_conference_research', False),
+        district_research_complete=bool(
+            isinstance(run.pipeline_response, dict)
+            and run.pipeline_response.get("district_research")
+        ),
         purpose_prompt=getattr(run, 'purpose_prompt', None),
         selected_cached_hook_ids=getattr(run, 'selected_cached_hook_ids', None),
         pipeline_response=run.pipeline_response,
@@ -521,6 +538,11 @@ async def rename_run(
         state_full=run.state_full,
         audiences=run.audiences,
         district_name=run.district_name,
+        include_district_research=getattr(run, 'include_district_research', False),
+        district_research_complete=bool(
+            isinstance(run.pipeline_response, dict)
+            and run.pipeline_response.get("district_research")
+        ),
         created_at=run.created_at,
         batch_job_id=getattr(run, 'batch_job_id', None),
         parent_run_id=getattr(run, 'parent_run_id', None),

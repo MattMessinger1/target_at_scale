@@ -137,6 +137,7 @@ export default function SavedRuns() {
   
   const renderRunCard = (run: SavedRunSummary) => {
     const isEmail = run.run_type === 'email'
+    const needsDistrict = !isEmail && run.include_district_research && !run.district_research_complete
     
     return (
       <div
@@ -168,6 +169,16 @@ export default function SavedRuns() {
               >
                 {isEmail ? '✉️ Email' : 'Research'}
               </Badge>
+              {!isEmail && run.include_district_research && (
+                <Badge
+                  variant="outline"
+                  className={run.district_research_complete
+                    ? 'border-emerald-500/60 text-emerald-300'
+                    : 'border-amber-500/60 text-amber-300'}
+                >
+                  {run.district_research_complete ? 'District done' : 'District pending'}
+                </Badge>
+              )}
               {run.parent_run_id && (
                 <Badge variant="outline" className="border-amber-500/60 text-amber-300">
                   Edited
@@ -198,6 +209,31 @@ export default function SavedRuns() {
                 <span>{run.hook_count} hooks</span>
               )}
             </div>
+            {needsDistrict && run.batch_job_id && (
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation()
+                  try {
+                    await api.batch.restartDistrictResearch(run.batch_job_id as number, run.state_code)
+                    queryClient.invalidateQueries({ queryKey: ['saved-runs-grouped'] })
+                    queryClient.invalidateQueries({ queryKey: ['saved-runs-list'] })
+                    toast({
+                      title: 'District research restarted',
+                      description: `Restarted district research for ${run.state_code} in batch #${run.batch_job_id}.`,
+                    })
+                  } catch (err) {
+                    toast({
+                      title: 'Error restarting district research',
+                      description: err instanceof Error ? err.message : 'Unknown error',
+                      variant: 'destructive',
+                    })
+                  }
+                }}
+                className="mt-2 inline-flex items-center text-xs text-amber-300 hover:text-amber-200"
+              >
+                Finish district research →
+              </button>
+            )}
           </div>
           <button
             onClick={(e) => {
