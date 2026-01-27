@@ -514,22 +514,27 @@ export default function SavedRuns() {
                 onClick={async () => {
                   const input = window.prompt('State code for district restart (e.g., CO)')
                   if (!input) return
-                  const stateCode = input.trim().toUpperCase()
-                  if (stateCode.length !== 2) {
+                  const stateCodes = input
+                    .split(',')
+                    .map((code) => code.trim().toUpperCase())
+                    .filter(Boolean)
+                  if (stateCodes.length === 0 || stateCodes.some((code) => code.length !== 2)) {
                     toast({
                       title: 'Invalid state code',
-                      description: 'Please enter a 2-letter state code (e.g., CO).',
+                      description: 'Please enter 2-letter state codes separated by commas (e.g., CO or NH, WA, ID).',
                       variant: 'destructive',
                     })
                     return
                   }
                   try {
-                    await api.batch.restartDistrictResearch(job.id, stateCode)
+                    for (const stateCode of stateCodes) {
+                      await api.batch.restartDistrictResearch(job.id, stateCode)
+                    }
                     queryClient.invalidateQueries({ queryKey: ['saved-runs-grouped'] })
                     queryClient.invalidateQueries({ queryKey: ['saved-runs-list'] })
                     toast({
                       title: 'District research restarted',
-                      description: `Restarted district research for ${stateCode} in batch #${job.id}.`,
+                      description: `Restarted district research for ${stateCodes.join(', ')} in batch #${job.id}.`,
                     })
                   } catch (err) {
                     toast({
