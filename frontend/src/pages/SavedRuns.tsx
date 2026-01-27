@@ -32,6 +32,10 @@ export default function SavedRuns() {
   const [expandedStates, setExpandedStates] = useState<Record<string, boolean>>({})
   const [batchJobFilter, setBatchJobFilter] = useState<number | null>(null)
   const [expandedEdits, setExpandedEdits] = useState<Record<number, boolean>>({})
+  const [restartModalJobId, setRestartModalJobId] = useState<number | null>(null)
+  const [restartModalStates, setRestartModalStates] = useState<Array<{ code: string; name: string }>>([])
+  const [restartSelected, setRestartSelected] = useState<Record<string, boolean>>({})
+  const [restartLoading, setRestartLoading] = useState(false)
   
   // Fetch grouped runs
   const { data: groupedRuns, isLoading: groupedLoading } = useQuery({
@@ -512,36 +516,22 @@ export default function SavedRuns() {
                 variant="secondary"
                 size="sm"
                 onClick={async () => {
-                  const input = window.prompt('State code for district restart (e.g., CO)')
-                  if (!input) return
-                  const stateCodes = input
-                    .split(',')
-                    .map((code) => code.trim().toUpperCase())
-                    .filter(Boolean)
-                  if (stateCodes.length === 0 || stateCodes.some((code) => code.length !== 2)) {
-                    toast({
-                      title: 'Invalid state code',
-                      description: 'Please enter 2-letter state codes separated by commas (e.g., CO or NH, WA, ID).',
-                      variant: 'destructive',
-                    })
-                    return
-                  }
                   try {
-                    for (const stateCode of stateCodes) {
-                      await api.batch.restartDistrictResearch(job.id, stateCode)
-                    }
-                    queryClient.invalidateQueries({ queryKey: ['saved-runs-grouped'] })
-                    queryClient.invalidateQueries({ queryKey: ['saved-runs-list'] })
-                    toast({
-                      title: 'District research restarted',
-                      description: `Restarted district research for ${stateCodes.join(', ')} in batch #${job.id}.`,
-                    })
+                    setRestartLoading(true)
+                    const detail = await api.batch.get(job.id)
+                    setRestartModalJobId(job.id)
+                    setRestartModalStates(detail.states || [])
+                    const nextSelected: Record<string, boolean> = {}
+                    for (const st of detail.states || []) nextSelected[st.code] = true
+                    setRestartSelected(nextSelected)
                   } catch (err) {
                     toast({
-                      title: 'Error restarting district research',
+                      title: 'Error loading batch states',
                       description: err instanceof Error ? err.message : 'Unknown error',
                       variant: 'destructive',
                     })
+                  } finally {
+                    setRestartLoading(false)
                   }
                 }}
               >
@@ -577,6 +567,87 @@ export default function SavedRuns() {
   
   return (
     <div className="space-y-6">
+      {restartModalJobId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70">
+          <div className="w-full max-w-md rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-xl">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-slate-100">Restart District Research</h3>
+              <button
+                className="text-slate-400 hover:text-slate-200"
+                onClick={() => setRestartModalJobId(null)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="text-sm text-slate-400 mb-3">
+              Select states to re-run district-only research for batch #{restartModalJobId}.
+            </div>
+            <div className="max-h-64 overflow-y-auto space-y-2">
+              {restartModalStates.map((st) => (
+                <label key={st.code} className="flex items-center gap-2 text-sm text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(restartSelected[st.code])}
+                    onChange={() =>
+                      setRestartSelected((prev) => ({ ...prev, [st.code]: !prev[st.code] }))
+                    }
+                  />
+                  <span>{st.name} ({st.code})</span>
+                </label>
+              ))}
+            </div>
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setRestartModalJobId(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={restartLoading}
+                onClick={async () => {
+                  const stateCodes = restartModalStates
+                    .filter((st) => restartSelected[st.code])
+                    .map((st) => st.code)
+                  if (stateCodes.length === 0) {
+                    toast({
+                      title: 'No states selected',
+                      description: 'Select at least one state to restart.',
+                      variant: 'destructive',
+                    })
+                    return
+                  }
+                  try {
+                    setRestartLoading(true)
+                    for (const stateCode of stateCodes) {
+                      await api.batch.restartDistrictResearch(restartModalJobId, stateCode)
+                    }
+                    queryClient.invalidateQueries({ queryKey: ['saved-runs-grouped'] })
+                    queryClient.invalidateQueries({ queryKey: ['saved-runs-list'] })
+                    toast({
+                      title: 'District research restarted',
+                      description: `Restarted district research for ${stateCodes.join(', ')} in batch #${restartModalJobId}.`,
+                    })
+                    setRestartModalJobId(null)
+                  } catch (err) {
+                    toast({
+                      title: 'Error restarting district research',
+                      description: err instanceof Error ? err.message : 'Unknown error',
+                      variant: 'destructive',
+                    })
+                  } finally {
+                    setRestartLoading(false)
+                  }
+                }}
+              >
+                Restart
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
