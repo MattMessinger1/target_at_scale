@@ -657,9 +657,11 @@ export default function SavedRuns() {
                   }
                   try {
                     setRestartLoading(true)
-                    for (const stateCode of stateCodes) {
-                      await api.batch.restartDistrictResearch(restartModalJobId, stateCode)
-                    }
+                    await Promise.all(
+                      stateCodes.map((stateCode) =>
+                        api.batch.restartDistrictResearch(restartModalJobId, stateCode)
+                      )
+                    )
                     queryClient.invalidateQueries({ queryKey: ['saved-runs-grouped'] })
                     queryClient.invalidateQueries({ queryKey: ['saved-runs-list'] })
                     toast({
