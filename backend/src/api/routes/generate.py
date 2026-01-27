@@ -2745,6 +2745,26 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 if isinstance(saved_pr, dict) and saved_pr.get("district_research") and not result_payload.get("district_research"):
                     result_payload = dict(result_payload)
                     result_payload["district_research"] = saved_pr.get("district_research")
+            if isinstance(result_payload, dict) and not result_payload.get("district_research"):
+                try:
+                    district_result = await db.execute(
+                        select(DistrictResearchCache)
+                        .where(DistrictResearchCache.state_code == state_code)
+                        .where(DistrictResearchCache.product_key == product_key)
+                        .where(DistrictResearchCache.status == "completed")
+                        .where(DistrictResearchCache.is_archived.is_(False))
+                        .order_by(DistrictResearchCache.created_at.desc())
+                        .limit(1)
+                    )
+                    district_entry = district_result.scalar_one_or_none()
+                    if district_entry and isinstance(district_entry.results_json, dict) and district_entry.results_json:
+                        district_payload: Dict[str, Any] = dict(district_entry.results_json or {})
+                        if isinstance(district_entry.filtered_items_json, list):
+                            district_payload["filtered_hooks"] = district_entry.filtered_items_json
+                        result_payload = dict(result_payload)
+                        result_payload["district_research"] = district_payload
+                except Exception:
+                    pass
             return {
                 "cached": True,
                 "result": result_payload,
