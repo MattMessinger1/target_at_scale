@@ -657,11 +657,19 @@ export default function SavedRuns() {
                   }
                   try {
                     setRestartLoading(true)
-                    await Promise.all(
+                    // Fire-and-close: kick off requests in parallel without blocking UI
+                    Promise.all(
                       stateCodes.map((stateCode) =>
                         api.batch.restartDistrictResearch(restartModalJobId, stateCode)
                       )
                     )
+                      .then(() => {
+                        queryClient.invalidateQueries({ queryKey: ['saved-runs-grouped'] })
+                        queryClient.invalidateQueries({ queryKey: ['saved-runs-list'] })
+                      })
+                      .catch(() => {
+                        // Errors are surfaced by the status badges / finish button
+                      })
                     queryClient.invalidateQueries({ queryKey: ['saved-runs-grouped'] })
                     queryClient.invalidateQueries({ queryKey: ['saved-runs-list'] })
                     toast({
