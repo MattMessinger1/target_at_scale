@@ -760,9 +760,9 @@ def _parse_conference_date(dates_str: str) -> Optional[date]:
     return None
 
 
-def _is_high_confidence_org(org: str) -> bool:
+def _is_high_confidence_org(org: Optional[str]) -> bool:
     """Check if the organization is a known high-quality conference host."""
-    org_lower = org.lower()
+    org_lower = (org or "").lower()
     return any(known in org_lower for known in HIGH_CONFIDENCE_ORGS)
 
 
@@ -790,17 +790,17 @@ def filter_conferences(
         filter_reason = None
         
         # 1. Must have conference name
-        name = conf.get("conference_name", "").strip()
+        name = str(conf.get("conference_name") or "").strip()
         if not name:
             filter_reason = "Missing conference name"
         
         # 2. Must have website
-        website = conf.get("website", "").strip()
+        website = str(conf.get("website") or "").strip()
         if not filter_reason and not website:
             filter_reason = "Missing website URL"
         
         # 3. Must have dates
-        dates_str = conf.get("dates", "").strip()
+        dates_str = str(conf.get("dates") or "").strip()
         if not filter_reason and not dates_str:
             filter_reason = "Missing conference dates"
         
@@ -811,7 +811,7 @@ def filter_conferences(
                 filter_reason = f"Conference date is in the past ({dates_str})"
         
         # 5. Must have location (in-person)
-        location = conf.get("location", "").strip()
+        location = str(conf.get("location") or "").strip()
         if not filter_reason and not location:
             filter_reason = "Missing location (may be virtual-only)"
         
@@ -820,7 +820,7 @@ def filter_conferences(
             filtered.append({**conf, "_filter_reason": filter_reason})
         else:
             # Set confidence level based on organization
-            org = conf.get("organization", "")
+            org = str(conf.get("organization") or "")
             if _is_high_confidence_org(org):
                 conf["confidence"] = "high"
             else:
@@ -836,4 +836,3 @@ def filter_conferences(
     passed.sort(key=sort_key)
     
     return passed, filtered
-

@@ -1975,6 +1975,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     db_task.treasure_hooks_json = result_data.get("treasure_hooks")
                     db_task.filtered_requirements_json = result_data.get("filtered_requirements")
                     db_task.district_research_json = result_data.get("district_research")
+                    db_task.conferences_json = result_data.get("conferences")
                     db_task.warnings_json = result_data.get("warnings")
                     db_task.completed_at = datetime.utcnow()
                 
@@ -2015,6 +2016,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     "filtered_requirements": result_data.get("filtered_requirements"),
                     "district_research": result_data.get("district_research"),
                     "conferences": result_data.get("conferences"),
+                    "warnings": result_data.get("warnings", []),
+                    "research_status": result_data.get("research_status"),
                 },
                 selected_hook_links=[],
                 primary_hook_link=None,
@@ -2067,6 +2070,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
     async def _run_research_task(task_id: str, task_data: Dict[str, Any], db: AsyncSession) -> None:
         """Background task that runs the research pipeline."""
         from ...research.product_briefs import normalize_product_key
+        from ...research.district_research import run_district_deep_research
         from ...pipeline.hook_gate import gate_treasure_hooks
         from ...pipeline.stages.evidence_pack import build_product_evidence_pack
         from ...pipeline.stages.treasure_hunter import run_treasure_hunter
@@ -2112,16 +2116,21 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 # (Note: async DB updates would need separate handling)
             
             t1 = time.perf_counter()
-            treasure_hooks = await run_treasure_hunter(
-                db=db,
-                product=product,
-                state_code=state_code,
-                state_full=state_full,
-                district_name=district_name,
-                district_url=district_url,
-                product_context_text=None,
-                on_progress=state_progress_callback,
-            )
+            try:
+                treasure_hooks = await run_treasure_hunter(
+                    db=db,
+                    product=product,
+                    state_code=state_code,
+                    state_full=state_full,
+                    district_name=district_name,
+                    district_url=district_url,
+                    product_context_text=None,
+                    on_progress=state_progress_callback,
+                )
+            except Exception as e:
+                treasure_hooks = []
+                warnings.append(f"State research failed: {str(e)}")
+                logger.error(f"Research task {task_id}: Treasure hunter failed: {e}")
             ms1 = int((time.perf_counter() - t1) * 1000)
             logger.info(f"Research task {task_id}: Treasure hunter completed in {ms1}ms, found {len(treasure_hooks or [])} hooks")
             
@@ -2147,10 +2156,6 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             
             if not treasure_hooks:
                 warnings.append("No treasure hooks returned (Deep Research returned no results).")
-                _research_tasks[task_id]["status"] = "failed"
-                _research_tasks[task_id]["error"] = "No funding/compliance requirements found"
-                _research_tasks[task_id]["message"] = "No requirements found"
-                return
             
             # Stage 3: Hook Gate
             _research_tasks[task_id]["message"] = "Filtering requirements..."
@@ -2335,6 +2340,36 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             _research_tasks[task_id]["status"] = "completed"
             _research_tasks[task_id]["completed_at"] = _utcnow_iso()
             
+            def _compute_research_status(payload: Dict[str, Any]) -> Dict[str, Any]:
+                hooks = payload.get("treasure_hooks") or []
+                evidence_pack_val = payload.get("evidence_pack")
+                state_complete = isinstance(evidence_pack_val, dict)
+                state_status = "completed" if state_complete else "missing"
+                state_hook_count = len(hooks) if isinstance(hooks, list) else 0
+
+                dr = payload.get("district_research")
+                district_complete = False
+                district_hook_count = 0
+                if isinstance(dr, dict):
+                    district_status_val = str(dr.get("status", "")).lower()
+                    if district_status_val in {"completed", "complete"}:
+                        district_complete = True
+                    if "passed_hooks" in dr or "districts_surveyed" in dr:
+                        district_complete = True
+                    district_hook_count = len(dr.get("passed_hooks") or []) if isinstance(dr.get("passed_hooks"), list) else 0
+                district_status = "completed" if district_complete else "missing"
+
+                confs = payload.get("conferences")
+                conference_complete = isinstance(confs, list)
+                conference_count = len(confs) if isinstance(confs, list) else 0
+                conference_status = "completed" if conference_complete else "missing"
+
+                return {
+                    "state": {"status": state_status, "hook_count": state_hook_count},
+                    "district": {"status": district_status, "hook_count": district_hook_count},
+                    "conference": {"status": conference_status, "count": conference_count},
+                }
+
             result = {
                 "evidence_pack": _dump_model(evidence_pack),
                 "treasure_hooks": [_dump_model(h) for h in gated],
@@ -2343,6 +2378,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 "conferences": [_dump_model(c) for c in conferences],
                 "warnings": warnings,
             }
+            result["research_status"] = _compute_research_status(result)
             _research_tasks[task_id]["result"] = result
             
             # Store full prep in DeepResearchCache for instant future loads
@@ -2557,6 +2593,36 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             )
             db_task = result.scalar_one_or_none()
             if db_task:
+                def _compute_research_status(payload: Dict[str, Any]) -> Dict[str, Any]:
+                    hooks = payload.get("treasure_hooks") or []
+                    evidence_pack = payload.get("evidence_pack")
+                    state_complete = isinstance(evidence_pack, dict)
+                    state_status = "completed" if state_complete else "missing"
+                    state_hook_count = len(hooks) if isinstance(hooks, list) else 0
+
+                    dr = payload.get("district_research")
+                    district_complete = False
+                    district_hook_count = 0
+                    if isinstance(dr, dict):
+                        district_status_val = str(dr.get("status", "")).lower()
+                        if district_status_val in {"completed", "complete"}:
+                            district_complete = True
+                        if "passed_hooks" in dr or "districts_surveyed" in dr:
+                            district_complete = True
+                        district_hook_count = len(dr.get("passed_hooks") or []) if isinstance(dr.get("passed_hooks"), list) else 0
+                    district_status = "completed" if district_complete else "missing"
+
+                    confs = payload.get("conferences")
+                    conference_complete = isinstance(confs, list)
+                    conference_count = len(confs) if isinstance(confs, list) else 0
+                    conference_status = "completed" if conference_complete else "missing"
+
+                    return {
+                        "state": {"status": state_status, "hook_count": state_hook_count},
+                        "district": {"status": district_status, "hook_count": district_hook_count},
+                        "conference": {"status": conference_status, "count": conference_count},
+                    }
+
                 response = {
                     "task_id": task_id,
                     "status": db_task.status,
@@ -2571,13 +2637,16 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     "include_conference_research": getattr(db_task, 'include_conference_research', False),
                 }
                 if db_task.status == "completed":
-                    response["result"] = {
+                    result_payload = {
                         "evidence_pack": db_task.evidence_pack_json,
                         "treasure_hooks": db_task.treasure_hooks_json,
                         "filtered_requirements": db_task.filtered_requirements_json,
                         "district_research": db_task.district_research_json,
+                        "conferences": db_task.conferences_json,
                         "warnings": db_task.warnings_json or [],
                     }
+                    result_payload["research_status"] = _compute_research_status(result_payload)
+                    response["result"] = result_payload
                     response["completed_at"] = db_task.completed_at.isoformat() if db_task.completed_at else None
                     if db_task.saved_run_id:
                         response["saved_run_id"] = db_task.saved_run_id
@@ -3292,6 +3361,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 async def run_district_research_task():
                     """Run district research in background."""
                     try:
+                        from ...research.district_research import run_district_deep_research
                         # Get product context for district research
                         from ...research.product_briefs import get_product_brief
                         product_brief = await get_product_brief(db, product, state_code=state_code)

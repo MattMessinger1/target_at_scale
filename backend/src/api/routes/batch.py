@@ -113,6 +113,38 @@ def _hook_to_state_dict(h: Any) -> Dict[str, Any]:
         "title": (getattr(h, "quote", "") or "")[:100],
     }
 
+
+def _compute_research_status(
+    payload: Dict[str, Any],
+    include_district_research: bool,
+    include_conference_research: bool,
+) -> Dict[str, Any]:
+    hooks = payload.get("hooks") or []
+    district = payload.get("district_research")
+    conferences = payload.get("conferences") or []
+
+    state_status = "complete" if hooks else "empty"
+    if include_district_research:
+        district_status = "complete" if district else "pending"
+    else:
+        district_status = "not_requested"
+    if include_conference_research:
+        conference_status = "complete" if conferences else "pending"
+    else:
+        conference_status = "not_requested"
+
+    district_count = 0
+    if isinstance(district, dict):
+        districts = district.get("districts")
+        if isinstance(districts, list):
+            district_count = len(districts)
+
+    return {
+        "state": {"status": state_status, "count": len(hooks)},
+        "district": {"status": district_status, "count": district_count},
+        "conference": {"status": conference_status, "count": len(conferences)},
+    }
+
 router = APIRouter(prefix="/batch", tags=["batch"])
 
 
@@ -650,6 +682,19 @@ async def process_batch_job(
                                 # Save state-only research before district research starts
                                 state_run = await _get_latest_state_run(state_db, state_code)
                                 if not state_run:
+                                    state_payload = {
+                                        "evidence_pack": _dump_model(evidence_pack),
+                                        "hooks": [_dump_model(h) for h in gated_hooks],
+                                        "filtered_requirements": [_dump_model(fr) for fr in filtered_reqs],
+                                        "district_research": None,
+                                        "conferences": [],
+                                        "warnings": [],
+                                    }
+                                    state_payload["research_status"] = _compute_research_status(
+                                        state_payload,
+                                        include_district_research=include_district_research,
+                                        include_conference_research=include_conference_research,
+                                    )
                                     state_run = SavedEmailRun(
                                         run_type="research",
                                         name=f"{product} - {state_name} (state-only)",
@@ -660,13 +705,7 @@ async def process_batch_job(
                                         district_name=None,
                                         include_district_research=include_district_research,
                                         include_conference_research=include_conference_research,
-                                        pipeline_response={
-                                            "evidence_pack": _dump_model(evidence_pack),
-                                            "hooks": [_dump_model(h) for h in gated_hooks],
-                                            "filtered_requirements": [_dump_model(fr) for fr in filtered_reqs],
-                                            "district_research": None,
-                                            "conferences": [],
-                                        },
+                                        pipeline_response=state_payload,
                                         selected_hook_links=[],
                                         primary_hook_link=None,
                                         hook_reason_tags={},
@@ -685,7 +724,13 @@ async def process_batch_job(
                                             "filtered_requirements": [_dump_model(fr) for fr in filtered_reqs],
                                             "district_research": pr.get("district_research"),
                                             "conferences": pr.get("conferences", []),
+                                            "warnings": pr.get("warnings", []),
                                         }
+                                    )
+                                    pr["research_status"] = _compute_research_status(
+                                        pr,
+                                        include_district_research=include_district_research,
+                                        include_conference_research=include_conference_research,
                                     )
                                     state_run.pipeline_response = pr
                                     state_run.include_district_research = include_district_research
@@ -768,12 +813,31 @@ async def process_batch_job(
                                 pr["filtered_requirements"] = [_dump_model(fr) for fr in filtered_reqs]
                                 pr["district_research"] = _dump_model(district_result) if district_result else None
                                 pr["conferences"] = conferences
+                                pr["warnings"] = pr.get("warnings", [])
+                                pr["research_status"] = _compute_research_status(
+                                    pr,
+                                    include_district_research=include_district_research,
+                                    include_conference_research=include_conference_research,
+                                )
                                 state_run.pipeline_response = pr
                                 state_run.include_district_research = include_district_research
                                 state_run.include_conference_research = include_conference_research
                                 if include_district_research and state_run.name and "(state-only)" in state_run.name:
                                     state_run.name = state_run.name.replace(" (state-only)", "")
                             else:
+                                final_payload = {
+                                    "evidence_pack": _dump_model(evidence_pack),
+                                    "hooks": [_dump_model(h) for h in gated_hooks],
+                                    "filtered_requirements": [_dump_model(fr) for fr in filtered_reqs],
+                                    "district_research": _dump_model(district_result) if district_result else None,
+                                    "conferences": conferences,
+                                    "warnings": [],
+                                }
+                                final_payload["research_status"] = _compute_research_status(
+                                    final_payload,
+                                    include_district_research=include_district_research,
+                                    include_conference_research=include_conference_research,
+                                )
                                 state_run = SavedEmailRun(
                                     run_type="research",
                                     name=f"{product} - {state_name}",
@@ -784,13 +848,7 @@ async def process_batch_job(
                                     district_name=None,
                                     include_district_research=include_district_research,
                                     include_conference_research=include_conference_research,
-                                    pipeline_response={
-                                        "evidence_pack": _dump_model(evidence_pack),
-                                        "hooks": [_dump_model(h) for h in gated_hooks],
-                                        "filtered_requirements": [_dump_model(fr) for fr in filtered_reqs],
-                                        "district_research": _dump_model(district_result) if district_result else None,
-                                        "conferences": conferences,
-                                    },
+                                    pipeline_response=final_payload,
                                     selected_hook_links=[],
                                     primary_hook_link=None,
                                     hook_reason_tags={},
