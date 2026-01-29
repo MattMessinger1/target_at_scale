@@ -73,6 +73,7 @@ class SaveResearchRequest(BaseModel):
     filtered_requirements: List[Dict[str, Any]] = Field(default_factory=list)
     district_research: Optional[Dict[str, Any]] = None
     conferences: List[Dict[str, Any]] = Field(default_factory=list)
+    research_qa: Optional[Dict[str, Any]] = None
     
     # Optional batch job reference
     batch_job_id: Optional[int] = None
@@ -221,6 +222,7 @@ async def save_research_run(
         "filtered_requirements": request.filtered_requirements,
         "district_research": request.district_research,
         "conferences": request.conferences,
+        "research_qa": request.research_qa,
         # No variants - this is research-only
     }
     

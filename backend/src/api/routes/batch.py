@@ -480,12 +480,12 @@ async def restart_district_research(
         )
 
     from ...research.district_research import run_district_deep_research
-    from ...research.product_briefs import get_product_brief, normalize_product_key
+    from ...research.product_briefs import get_product_brief, normalize_product_key, brief_to_research_context
     import json
 
     product_key = normalize_product_key(job.product)
     product_brief = await get_product_brief(db, job.product, state_code=state_code)
-    product_context = json.dumps(product_brief, default=str)[:3000]
+    product_context = brief_to_research_context(product_brief) or json.dumps(product_brief, default=str)[:3000]
     state_hooks_dict = [_hook_to_state_dict(h) for h in hooks]
 
     state_name = state_run.state_full or next(
@@ -559,6 +559,7 @@ async def process_batch_job(
         from ...research.district_research import run_district_deep_research
         from ...research.deep_research import run_conference_research
         from ...research.quality_gate import filter_conferences
+        from ...db.models import DistrictResearchCache, DeepResearchCache
     except ImportError as e:
         logger.error(f"Pipeline modules not available for batch processing: {e}")
         return
@@ -690,6 +691,16 @@ async def process_batch_job(
                                         "conferences": [],
                                         "warnings": [],
                                     }
+                                    try:
+                                        from ...research.qa import compute_research_qa
+                                        state_payload["research_qa"] = compute_research_qa(
+                                            hooks=state_payload.get("hooks"),
+                                            district_research=None,
+                                            conferences=[],
+                                            include_district=False,
+                                        )
+                                    except Exception as qa_err:
+                                        logger.warning(f"Batch job {job_id}: Failed to compute QA summary for {state_code}: {qa_err}")
                                     state_payload["research_status"] = _compute_research_status(
                                         state_payload,
                                         include_district_research=include_district_research,
@@ -727,6 +738,16 @@ async def process_batch_job(
                                             "warnings": pr.get("warnings", []),
                                         }
                                     )
+                                    try:
+                                        from ...research.qa import compute_research_qa
+                                        pr["research_qa"] = compute_research_qa(
+                                            hooks=pr.get("hooks"),
+                                            district_research=pr.get("district_research"),
+                                            conferences=pr.get("conferences"),
+                                            include_district=bool(pr.get("district_research")),
+                                        )
+                                    except Exception as qa_err:
+                                        logger.warning(f"Batch job {job_id}: Failed to compute QA summary for {state_code}: {qa_err}")
                                     pr["research_status"] = _compute_research_status(
                                         pr,
                                         include_district_research=include_district_research,
@@ -744,12 +765,12 @@ async def process_batch_job(
                             if include_district_research:
                                 logger.info(f"Batch job {job_id}: Processing {state_code} - Stage 4: District Research")
                                 try:
-                                    from ...research.product_briefs import get_product_brief
+                                    from ...research.product_briefs import get_product_brief, brief_to_research_context
                                     import json
                                     
                                     # Get product context for district research
                                     product_brief = await get_product_brief(state_db, product, state_code=state_code)
-                                    product_context = json.dumps(product_brief, default=str)[:3000]
+                                    product_context = brief_to_research_context(product_brief) or json.dumps(product_brief, default=str)[:3000]
                                     
                                     # Convert gated hooks to dict format for de-duplication
                                     state_hooks_dict = [_hook_to_state_dict(h) for h in gated_hooks]
@@ -764,6 +785,27 @@ async def process_batch_job(
                                     )
                                 except Exception as e:
                                     logger.warning(f"Batch job {job_id}: District research failed for {state_code}: {e}")
+
+                            # Fallback: if district research missing but cache exists, use it.
+                            district_payload = _dump_model(district_result) if district_result else None
+                            if include_district_research and not district_payload:
+                                try:
+                                    cached = await state_db.execute(
+                                        select(DistrictResearchCache)
+                                        .where(DistrictResearchCache.state_code == state_code)
+                                        .where(DistrictResearchCache.product_key == product_key)
+                                        .where(DistrictResearchCache.status == "completed")
+                                        .where(DistrictResearchCache.is_archived.is_(False))
+                                        .order_by(DistrictResearchCache.created_at.desc())
+                                        .limit(1)
+                                    )
+                                    entry = cached.scalar_one_or_none()
+                                    if entry and isinstance(entry.results_json, dict) and entry.results_json:
+                                        district_payload = dict(entry.results_json)
+                                        if isinstance(entry.filtered_items_json, list):
+                                            district_payload["filtered_hooks"] = entry.filtered_items_json
+                                except Exception as e:
+                                    logger.warning(f"Batch job {job_id}: Failed to load district cache for {state_code}: {e}")
                             
                             # =====================================================
                             # Stage 5: Conference Research (Optional)
@@ -802,6 +844,38 @@ async def process_batch_job(
                                         logger.info(f"Batch job {job_id}: {state_code} - Found {len(conferences)} conference opportunities")
                                 except Exception as e:
                                     logger.warning(f"Batch job {job_id}: Conference research failed for {state_code}: {e}")
+
+                            # Fallback: if conferences missing but cache exists, use it.
+                            if include_conference_research and not conferences:
+                                try:
+                                    conf_cached = await state_db.execute(
+                                        select(DeepResearchCache)
+                                        .where(DeepResearchCache.state_code == state_code)
+                                        .where(DeepResearchCache.product_key == product_key)
+                                        .where(DeepResearchCache.research_type == "conference")
+                                        .where(DeepResearchCache.status == "completed")
+                                        .where(DeepResearchCache.is_archived.is_(False))
+                                        .order_by(DeepResearchCache.created_at.desc())
+                                        .limit(1)
+                                    )
+                                    conf_entry = conf_cached.scalar_one_or_none()
+                                    if conf_entry and isinstance(conf_entry.results_json, dict):
+                                        raw_confs = conf_entry.results_json.get("conferences", []) or []
+                                        passed_conferences, _ = filter_conferences(raw_confs, product_key)
+                                        for conf in passed_conferences[:5]:
+                                            conferences.append({
+                                                "conference_name": conf.get("conference_name", ""),
+                                                "organization": conf.get("organization", ""),
+                                                "location": conf.get("location", ""),
+                                                "dates": conf.get("dates", ""),
+                                                "relevance": conf.get("relevance", ""),
+                                                "presentation_deadline": conf.get("presentation_deadline"),
+                                                "sponsorship_info": conf.get("sponsorship_info"),
+                                                "website": conf.get("website", ""),
+                                                "confidence": conf.get("confidence", "medium"),
+                                            })
+                                except Exception as e:
+                                    logger.warning(f"Batch job {job_id}: Failed to load conference cache for {state_code}: {e}")
                             
                             # =====================================================
                             # Save results (same format as single-state)
@@ -811,9 +885,19 @@ async def process_batch_job(
                                 pr["evidence_pack"] = _dump_model(evidence_pack)
                                 pr["hooks"] = [_dump_model(h) for h in gated_hooks]
                                 pr["filtered_requirements"] = [_dump_model(fr) for fr in filtered_reqs]
-                                pr["district_research"] = _dump_model(district_result) if district_result else None
+                                pr["district_research"] = district_payload
                                 pr["conferences"] = conferences
                                 pr["warnings"] = pr.get("warnings", [])
+                                try:
+                                    from ...research.qa import compute_research_qa
+                                    pr["research_qa"] = compute_research_qa(
+                                        hooks=pr.get("hooks"),
+                                        district_research=pr.get("district_research"),
+                                        conferences=pr.get("conferences"),
+                                        include_district=include_district_research,
+                                    )
+                                except Exception as qa_err:
+                                    logger.warning(f"Batch job {job_id}: Failed to compute QA summary for {state_code}: {qa_err}")
                                 pr["research_status"] = _compute_research_status(
                                     pr,
                                     include_district_research=include_district_research,
@@ -829,10 +913,20 @@ async def process_batch_job(
                                     "evidence_pack": _dump_model(evidence_pack),
                                     "hooks": [_dump_model(h) for h in gated_hooks],
                                     "filtered_requirements": [_dump_model(fr) for fr in filtered_reqs],
-                                    "district_research": _dump_model(district_result) if district_result else None,
+                                    "district_research": district_payload,
                                     "conferences": conferences,
                                     "warnings": [],
                                 }
+                                try:
+                                    from ...research.qa import compute_research_qa
+                                    final_payload["research_qa"] = compute_research_qa(
+                                        hooks=final_payload.get("hooks"),
+                                        district_research=final_payload.get("district_research"),
+                                        conferences=final_payload.get("conferences"),
+                                        include_district=include_district_research,
+                                    )
+                                except Exception as qa_err:
+                                    logger.warning(f"Batch job {job_id}: Failed to compute QA summary for {state_code}: {qa_err}")
                                 final_payload["research_status"] = _compute_research_status(
                                     final_payload,
                                     include_district_research=include_district_research,

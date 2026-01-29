@@ -64,7 +64,6 @@ For EACH district identified, search for opportunities that are UNIQUE to that d
 - **Local bond measures** passed in past 24 months (technology bonds, facilities bonds, etc.)
 - **Local levy funds** for education (property tax levies, special levies)
 - **Regional consortium grants** where this district is a member
-- **District education foundation** grants (if from the district's own foundation)
 - **Local business partnerships** with education funding components
 - **Unspent federal relief funds** (ESSER/ARP) specific to this district
 
@@ -89,6 +88,7 @@ Do NOT include:
 - Generic "this state program is available to District X" - that's not incremental
 - Teacher certification requirements (state-wide)
 - Standard state allocations
+- Foundation/private/corporate grants (not government funding)
 
 The goal is to find TREASURE that wouldn't appear in a state-level search.
 
@@ -573,7 +573,7 @@ async def run_district_deep_research(
     # Get or create tracking entry
     cache_entry = await get_or_create_district_research_job(db, state_code, product_key)
     
-    # Set a long timeout (60 minutes)
+    # Set a request timeout; polling controls total search time.
     client = AsyncOpenAI(
         api_key=settings.openai_api_key,
         timeout=3600.0,
@@ -601,7 +601,7 @@ Remember: Return ONLY a valid JSON object, no other text."""
     
     if cache_entry.status == "in_progress" and cache_entry.openai_response_id:
         elapsed = datetime.utcnow() - (cache_entry.started_at or cache_entry.created_at)
-        if elapsed > timedelta(hours=1):
+        if elapsed > timedelta(minutes=20):
             # Task is stale, reset
             logger.info(f"Stale district research task for {state_code}/{product_key}, starting fresh")
             cache_entry.status = "pending"
@@ -628,7 +628,7 @@ Remember: Return ONLY a valid JSON object, no other text."""
         await db.commit()
         
         if on_progress:
-            on_progress("Starting district research (this may take 10-30 minutes)...", 5.0)
+            on_progress("Starting district research (up to 20 minutes)...", 5.0)
         
         logger.info(f"Starting district o3-deep-research for {state_code}/{product_key}")
         
@@ -649,7 +649,7 @@ Remember: Return ONLY a valid JSON object, no other text."""
     try:
         # Poll for completion
         poll_interval = 30
-        max_polls = 120  # 60 minutes (120 * 30s)
+        max_polls = 40  # 20 minutes (40 * 30s)
         retry_count = 0
         max_retries = 3
         
@@ -714,6 +714,56 @@ Remember: Return ONLY a valid JSON object, no other text."""
             await asyncio.sleep(poll_interval)
             response = await client.responses.retrieve(response.id)
         else:
+            # Timed out: attempt to salvage partial results if any output exists.
+            raw_content = response.output_text or ""
+            raw_results = _parse_research_response(raw_content) if raw_content.strip() else {}
+            raw_findings = raw_results.get("district_findings", []) if isinstance(raw_results, dict) else []
+            districts_surveyed = raw_results.get("districts_surveyed", []) if isinstance(raw_results, dict) else []
+            if raw_findings:
+                passed_hooks, filtered_hooks = filter_district_hooks(raw_findings, state_hooks, product_key)
+                status = "partial" if passed_hooks else "no_findings"
+                results = {
+                    "passed_hooks": passed_hooks,
+                    "districts_surveyed": districts_surveyed,
+                    "status": status,
+                    "research_summary": raw_results.get("research_summary", "") if isinstance(raw_results, dict) else "",
+                    "_meta": {
+                        "state_code": state_code,
+                        "state_full": state_full,
+                        "product_key": product_key,
+                        "researched_at": datetime.utcnow().isoformat(),
+                        "model": "o3-deep-research",
+                        "raw_findings_count": len(raw_findings),
+                        "passed_count": len(passed_hooks),
+                        "filtered_count": len(filtered_hooks),
+                        "timed_out": True,
+                    }
+                }
+                try:
+                    await db.refresh(cache_entry)
+                    cache_entry.status = "completed"
+                    cache_entry.completed_at = datetime.utcnow()
+                    cache_entry.results_json = results
+                    cache_entry.filtered_items_json = filtered_hooks
+                    cache_entry.districts_surveyed = districts_surveyed
+                    await db.commit()
+                except Exception as cache_err:
+                    logger.warning(f"Cache entry was deleted during timeout salvage: {cache_err}")
+                    await db.rollback()
+                if on_progress:
+                    on_progress(f"District research timed out at 20 minutes; saved {len(passed_hooks)} opportunities.", 100.0)
+                logger.warning(
+                    f"District research timed out after {max_polls * poll_interval}s, "
+                    f"saved partial results for {state_code}/{product_key}: {len(passed_hooks)} passed"
+                )
+                return {
+                    **results,
+                    "filtered_hooks": filtered_hooks,
+                    "_cache": {
+                        "cached": False,
+                        "cached_at": cache_entry.created_at.isoformat(),
+                    }
+                }
             raise RuntimeError(f"District research timed out after {max_polls * poll_interval}s")
         
         if on_progress:

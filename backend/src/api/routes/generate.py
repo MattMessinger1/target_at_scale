@@ -466,6 +466,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         district_research: Optional[DistrictResearchResult] = None
         conferences: List[ConferenceOpportunity] = []
         warnings: List[str] = []
+        research_qa: Optional[Dict[str, Any]] = None
 
     class PipelinePrepRequest(PipelineRequest):
         """Request for prep stream with optional district and conference research."""
@@ -2018,6 +2019,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     "conferences": result_data.get("conferences"),
                     "warnings": result_data.get("warnings", []),
                     "research_status": result_data.get("research_status"),
+                    "research_qa": result_data.get("research_qa"),
                 },
                 selected_hook_links=[],
                 primary_hook_link=None,
@@ -2194,9 +2196,9 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     _research_tasks[task_id]["progress"] = min(95, scaled)
                 
                 try:
-                    from ...research.product_briefs import get_product_brief
+                    from ...research.product_briefs import get_product_brief, brief_to_research_context
                     product_brief = await get_product_brief(db, product, state_code=state_code)
-                    product_context = json.dumps(product_brief, default=str)[:3000]
+                    product_context = brief_to_research_context(product_brief) or json.dumps(product_brief, default=str)[:3000]
                     
                     state_hooks_dict = [
                         {
@@ -2378,6 +2380,16 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 "conferences": [_dump_model(c) for c in conferences],
                 "warnings": warnings,
             }
+            try:
+                from ...research.qa import compute_research_qa
+                result["research_qa"] = compute_research_qa(
+                    hooks=result.get("treasure_hooks"),
+                    district_research=result.get("district_research"),
+                    conferences=result.get("conferences"),
+                    include_district=include_district_research,
+                )
+            except Exception as qa_err:
+                logger.warning(f"Research task {task_id}: Failed to compute QA summary: {qa_err}")
             result["research_status"] = _compute_research_status(result)
             _research_tasks[task_id]["result"] = result
             
@@ -2623,6 +2635,20 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         "conference": {"status": conference_status, "count": conference_count},
                     }
 
+                def _ensure_research_qa(payload: Dict[str, Any]) -> None:
+                    if payload.get("research_qa"):
+                        return
+                    try:
+                        from ...research.qa import compute_research_qa
+                        payload["research_qa"] = compute_research_qa(
+                            hooks=payload.get("treasure_hooks"),
+                            district_research=payload.get("district_research"),
+                            conferences=payload.get("conferences"),
+                            include_district=bool(db_task.include_district_research),
+                        )
+                    except Exception as qa_err:
+                        logger.warning(f"Prep status: Failed to compute QA summary: {qa_err}")
+
                 response = {
                     "task_id": task_id,
                     "status": db_task.status,
@@ -2646,6 +2672,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         "warnings": db_task.warnings_json or [],
                     }
                     result_payload["research_status"] = _compute_research_status(result_payload)
+                    _ensure_research_qa(result_payload)
                     response["result"] = result_payload
                     response["completed_at"] = db_task.completed_at.isoformat() if db_task.completed_at else None
                     if db_task.saved_run_id:
@@ -2747,6 +2774,20 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 "conference": {"status": conference_status, "count": conference_count},
             }
 
+        def _ensure_research_qa(payload: Dict[str, Any], include_district: bool) -> None:
+            if payload.get("research_qa"):
+                return
+            try:
+                from ...research.qa import compute_research_qa
+                payload["research_qa"] = compute_research_qa(
+                    hooks=payload.get("treasure_hooks"),
+                    district_research=payload.get("district_research"),
+                    conferences=payload.get("conferences"),
+                    include_district=include_district,
+                )
+            except Exception as qa_err:
+                logger.warning(f"Cached prep: Failed to compute QA summary: {qa_err}")
+
         saved_result = await db.execute(
             select(SavedEmailRun)
             .where(SavedEmailRun.product == product)
@@ -2829,6 +2870,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 "warnings": pr.get("warnings") if isinstance(pr.get("warnings"), list) else [],
             }
             result_payload["research_status"] = _compute_research_status(result_payload)
+            _ensure_research_qa(result_payload, include_district=bool(pr.get("district_research")))
             cache_age = datetime.utcnow() - saved.created_at
             return {
                 "cached": True,
@@ -2872,6 +2914,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             if isinstance(result_payload, dict):
                 result_payload = dict(result_payload)
                 result_payload["research_status"] = _compute_research_status(result_payload)
+                _ensure_research_qa(result_payload, include_district=bool(result_payload.get("district_research")))
             return {
                 "cached": True,
                 "result": result_payload,
@@ -3032,6 +3075,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
             "warnings": [],
         }
         result_payload["research_status"] = _compute_research_status(result_payload)
+        _ensure_research_qa(result_payload, include_district=bool(result_payload.get("district_research")))
 
         # Best-effort: persist reconstructed prep for instant future loads
         try:
@@ -3363,9 +3407,9 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     try:
                         from ...research.district_research import run_district_deep_research
                         # Get product context for district research
-                        from ...research.product_briefs import get_product_brief
+                        from ...research.product_briefs import get_product_brief, brief_to_research_context
                         product_brief = await get_product_brief(db, product, state_code=state_code)
-                        product_context = json.dumps(product_brief, default=str)[:3000]
+                        product_context = brief_to_research_context(product_brief) or json.dumps(product_brief, default=str)[:3000]
                         
                         # Convert gated hooks to dict format for de-duplication
                         state_hooks_dict = [
@@ -3561,6 +3605,16 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 conferences=conferences,
                 warnings=warnings,
             )
+            try:
+                from ...research.qa import compute_research_qa
+                payload.research_qa = compute_research_qa(
+                    hooks=gated,
+                    district_research=_dump_model(district_research_result) if district_research_result else None,
+                    conferences=_dump_model(conferences),
+                    include_district=bool(request.include_district_research),
+                )
+            except Exception as qa_err:
+                logger.warning(f"Prep stream: Failed to compute QA summary: {qa_err}")
             yield _ndjson({"type": "prep_ready", "ts": _utcnow_iso(), "payload": _dump_model(payload)})
             yield _ndjson({"type": "done", "ts": _utcnow_iso(), "ok": True, "warnings": warnings})
 

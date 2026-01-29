@@ -30,6 +30,7 @@ import {
   PipelineRunResponse,
   PipelineStreamEvent,
   HookDecision,
+  ResearchQASummary,
   EmailRevisionRequest,
   EmailReviewRequest,
   SavedRunSummary,
@@ -191,6 +192,7 @@ type CachedPrepResult = {
   district_research?: DistrictResearchResult | null
   conferences?: ConferenceOpportunity[]
   warnings: string[]
+  research_qa?: ResearchQASummary
   research_status?: {
     state?: { status: string; hook_count?: number }
     district?: { status: string; hook_count?: number }
@@ -223,6 +225,7 @@ interface PendingEmailTaskPrep {
   district_research?: DistrictResearchResult | null
   conferences?: ConferenceOpportunity[]
   warnings: string[]
+  research_qa?: ResearchQASummary
 }
 
 interface PendingEmailTask {
@@ -1522,7 +1525,15 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
   const [backgroundEmailTasks, setBackgroundEmailTasks] = useState<PendingEmailTasksMap>({})  // Track all pending tasks
   const lastEmailTaskIdRef = useRef<string | null>(null)
   const lastAutoSavedRunIdRef = useRef<number | null>(null)
-  const [prep, setPrep] = useState<{ evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; district_research?: DistrictResearchResult | null; conferences?: ConferenceOpportunity[]; warnings: string[] } | null>(null)
+  const [prep, setPrep] = useState<{
+    evidence_pack: EvidencePack
+    treasure_hooks: WebHook[]
+    filtered_requirements: FilteredRequirement[]
+    district_research?: DistrictResearchResult | null
+    conferences?: ConferenceOpportunity[]
+    warnings: string[]
+    research_qa?: ResearchQASummary
+  } | null>(null)
   const [blockedFilteredRequirements, setBlockedFilteredRequirements] = useState<FilteredRequirement[]>([])
   // Use hook_id for reliable selection (handles multiple hooks with same URL)
   const [selectedHookKeys, setSelectedHookKeys] = useState<string[]>([])  // hook_id or link fallback
@@ -1774,6 +1785,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
           district_research: full.pipeline_response.district_research || null,
           conferences: full.pipeline_response.conferences || [],
           warnings: full.pipeline_response.warnings || [],
+          research_qa: full.pipeline_response.research_qa,
         })
         setDistrictResearchStatus(full.pipeline_response.district_research ? 'complete' : 'idle')
       }
@@ -2270,6 +2282,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
         filtered_requirements: prep.filtered_requirements || [],
         district_research: prep.district_research || null,
         conferences: prep.conferences || [],
+        research_qa: prep.research_qa,
       })
       toast({
         title: 'Research saved',
@@ -2371,7 +2384,15 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
   }
 
   const prepMutation = useMutation<
-    { evidence_pack: EvidencePack; treasure_hooks: WebHook[]; filtered_requirements: FilteredRequirement[]; district_research?: DistrictResearchResult | null; warnings: string[] },
+    {
+      evidence_pack: EvidencePack
+      treasure_hooks: WebHook[]
+      filtered_requirements: FilteredRequirement[]
+      district_research?: DistrictResearchResult | null
+      conferences?: ConferenceOpportunity[]
+      warnings: string[]
+      research_qa?: ResearchQASummary
+    },
     Error & { filteredRequirements?: FilteredRequirement[] },
     void
   >({
@@ -3133,6 +3154,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                   })
                   return
                 }
+                const request = result?.request
                 const treasureHooks = (result.treasure_hooks && result.treasure_hooks.length > 0)
                   ? result.treasure_hooks
                   : (result.hooks || [])
@@ -3144,20 +3166,46 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
                   })
                   return
                 }
+                if (!activeVariant.selected_hook) {
+                  toast({
+                    title: 'Missing selected hook',
+                    description: 'Pick a hook before requesting a revision.',
+                    variant: 'destructive',
+                  })
+                  return
+                }
+                const product = selectedProduct || request?.product || ''
+                const state = selectedStates[0]?.code || request?.state || ''
+                if (!product || !state) {
+                  toast({
+                    title: 'Missing request context',
+                    description: 'Select a product and state before revising.',
+                    variant: 'destructive',
+                  })
+                  return
+                }
+                if (!result.evidence_pack) {
+                  toast({
+                    title: 'Missing evidence pack',
+                    description: 'Regenerate the email before revising.',
+                    variant: 'destructive',
+                  })
+                  return
+                }
                 const priorSubject = draft.edited_subject_line.trim() || activeVariant.email_draft.subject_line
                 const priorBody = draft.edited_email_body.trim() || activeVariant.email_draft.email_body
                 const payload: EmailRevisionRequest = {
-                  product: selectedProduct || result.request.product || '',
-                  state: selectedStates[0]?.code || result.request.state || '',
-                  state_full: selectedStates[0]?.name || result.request.state_full || null,
+                  product,
+                  state,
+                  state_full: selectedStates[0]?.name || request?.state_full || null,
                   audience: aud,
                   evidence_pack: result.evidence_pack,
                   treasure_hooks: treasureHooks,
                   selected_hook: activeVariant.selected_hook,
                   secondary_hook: activeVariant.secondary_hook || null,
-                  district_name: result.request.district_name || activeVariant.selected_hook?.hook?.district_name || null,
-                  district_url: result.request.district_url || null,
-                  purpose_prompt: result.request.purpose_prompt || null,
+                  district_name: request?.district_name || activeVariant.selected_hook?.hook?.district_name || null,
+                  district_url: request?.district_url || null,
+                  purpose_prompt: request?.purpose_prompt || null,
                   supporting_context: null,
                   prior_subject_line: priorSubject,
                   prior_email_body: priorBody,
@@ -4634,6 +4682,35 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
             <p className="text-sm text-slate-400 mb-6">
               Select 1-2 requirements to include in your email. Each selected requirement needs at least one reason tag.
             </p>
+            {prep?.research_qa && (
+              <div className="mb-6">
+                <div className="flex items-center gap-3">
+                <span
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                    prep.research_qa.badge === 'good'
+                      ? 'bg-emerald-900/40 text-emerald-300 border border-emerald-700/50'
+                      : 'bg-amber-900/30 text-amber-300 border border-amber-700/50'
+                  }`}
+                >
+                  Research QA: {prep.research_qa.badge === 'good' ? 'Good' : 'Needs review'}
+                </span>
+                <span className="text-xs text-slate-500">
+                  Score {prep.research_qa.score} · Hooks {prep.research_qa.counts.hooks_total}
+                </span>
+                </div>
+                <details className="mt-2">
+                  <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-400">
+                    View QA details
+                  </summary>
+                  <div className="mt-2 text-xs text-slate-400 space-y-1">
+                    <div>Missing timing: {prep.research_qa.counts.missing_timing}</div>
+                    <div>Unverified: {prep.research_qa.counts.unverified}</div>
+                    <div>Weak product tie: {prep.research_qa.counts.weak_product_tie}</div>
+                    <div>Expired: {prep.research_qa.counts.expired}</div>
+                  </div>
+                </details>
+              </div>
+            )}
 
             {/* Passed requirements */}
             {passedRequirements.length > 0 ? (

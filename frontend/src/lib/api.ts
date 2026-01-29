@@ -560,6 +560,34 @@ export interface PipelineRunResponse {
   variants: AudienceVariantResult[]
   trace: PipelineTrace
   warnings: string[]
+  research_status?: {
+    state?: { status: string; hook_count?: number }
+    district?: { status: string; hook_count?: number }
+    conference?: { status: string; count?: number }
+  }
+  research_qa?: ResearchQASummary
+}
+
+export interface ResearchQASummary {
+  badge: 'good' | 'needs_review'
+  score: number
+  counts: {
+    hooks_total: number
+    missing_timing: number
+    unverified: number
+    weak_product_tie: number
+    expired: number
+    by_type: Record<string, number>
+  }
+  district: {
+    requested: boolean
+    passed: number
+    filtered: number
+    surveyed: number
+  }
+  conferences: {
+    count: number
+  }
 }
 
 export interface EmailRevisionRequest {
@@ -868,6 +896,7 @@ export interface SaveResearchRequest {
   district_research?: DistrictResearchResult | null
   conferences?: ConferenceOpportunity[]
   batch_job_id?: number
+  research_qa?: ResearchQASummary
 }
 
 export interface GroupedRunsResponse {
@@ -1327,6 +1356,7 @@ export const api = {
           filtered_requirements: FilteredRequirement[]
           district_research?: DistrictResearchResult | null
           warnings: string[]
+          research_qa?: ResearchQASummary
         }
         cache_age_days: number
         cached_at: string
@@ -1550,6 +1580,7 @@ export const api = {
       district_research?: DistrictResearchResult | null
       conferences?: ConferenceOpportunity[]
       warnings: string[]
+      research_qa?: ResearchQASummary
     }> => {
       // Start the task
       const startResult = await fetchApi<{
