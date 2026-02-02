@@ -110,11 +110,11 @@ export default function Landing() {
         {/* Quick Links */}
         <div className="flex flex-wrap items-center justify-center gap-4">
           <Link
-            to="/saved-runs"
+            to="/research-library"
             className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800/50 border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-slate-100 transition-colors"
           >
             <FolderOpen className="w-4 h-4" />
-            Saved Research
+            Research Library
           </Link>
           
           <Link

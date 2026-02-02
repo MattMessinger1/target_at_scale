@@ -11,6 +11,7 @@ import EmailGenerator from '@/pages/EmailGenerator'
 import SavedRuns from '@/pages/SavedRuns'
 import TrainingFeedback from '@/pages/TrainingFeedback'
 import ResearchCoverage from '@/pages/ResearchCoverage'
+import ResearchLibrary from '@/pages/ResearchLibrary'
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
         
         {/* Other pages */}
         <Route path="/coverage" element={<ResearchCoverage />} />
+        <Route path="/research-library" element={<ResearchLibrary />} />
         <Route path="/saved-runs" element={<SavedRuns />} />
         <Route path="/training" element={<TrainingFeedback />} />
         
