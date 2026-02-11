@@ -66,10 +66,9 @@ class TestPipelineRepair(unittest.TestCase):
             ValidationFailure(code="missing_micro_offer_cta", message=""),
         ]
         ins = failures_to_instructions(failures)
-        self.assertTrue(any("exactly 3 bullets" in x for x in ins))
+        self.assertTrue(any("0-3 bullets" in x for x in ins))
         self.assertTrue(any("micro-offer" in x.lower() for x in ins))
 
 
 if __name__ == "__main__":
     unittest.main()
-

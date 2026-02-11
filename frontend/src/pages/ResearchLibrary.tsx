@@ -118,10 +118,24 @@ export default function ResearchLibrary() {
         {hook.timing_summary && (
           <span className="text-slate-500">{hook.timing_summary}</span>
         )}
+        {typeof hook.propensity_score === 'number' && (
+          <span className="text-emerald-300">Propensity: {hook.propensity_score}</span>
+        )}
+        {typeof hook.outcome_score === 'number' && (
+          <span className="text-sky-300">Outcome: {hook.outcome_score}</span>
+        )}
       </div>
       <div className="mt-2 text-sm text-slate-100">{hook.quote || hook.trigger_excerpt}</div>
       {hook.why_relevant && (
         <div className="mt-2 text-xs text-slate-400">Why relevant: {hook.why_relevant}</div>
+      )}
+      {hook.propensity_reasons && hook.propensity_reasons.length > 0 && (
+        <div className="mt-1 text-xs text-slate-500">
+          Signals: {hook.propensity_reasons.join(', ')}
+        </div>
+      )}
+      {hook.outcome_summary && (
+        <div className="mt-1 text-xs text-sky-300/80">{hook.outcome_summary}</div>
       )}
       <div className="mt-2 flex items-center gap-2 text-xs">
         <a

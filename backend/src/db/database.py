@@ -27,15 +27,20 @@ elif database_url.startswith("postgresql+psycopg2://"):
 # Detect if we're using PostgreSQL
 is_postgres = "postgresql" in database_url or "postgres" in database_url
 
-# Create async engine with connection pool settings
-engine = create_async_engine(
-    database_url,
-    echo=settings.debug,
-    pool_size=10,  # Number of connections to keep open
-    max_overflow=20,  # Allow up to 20 additional connections under load
-    pool_timeout=30,  # Wait up to 30s for a connection
-    pool_recycle=1800,  # Recycle connections after 30 minutes
-)
+# Create async engine with connection pool settings.
+# SQLite uses NullPool and does not accept pool sizing kwargs.
+engine_kwargs = {"echo": settings.debug}
+if is_postgres:
+    engine_kwargs.update(
+        {
+            "pool_size": 10,  # Number of connections to keep open
+            "max_overflow": 20,  # Allow up to 20 additional connections under load
+            "pool_timeout": 30,  # Wait up to 30s for a connection
+            "pool_recycle": 1800,  # Recycle connections after 30 minutes
+        }
+    )
+
+engine = create_async_engine(database_url, **engine_kwargs)
 
 # Create async session factory
 AsyncSessionLocal = async_sessionmaker(
@@ -106,6 +111,26 @@ async def run_migrations():
     ]
     
     async with engine.begin() as conn:
+        # Table migration: hook_outcome_events
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS hook_outcome_events (
+                    id SERIAL PRIMARY KEY,
+                    created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+                    product VARCHAR(200) NOT NULL,
+                    product_key VARCHAR(100),
+                    state_code VARCHAR(2) NOT NULL,
+                    audience VARCHAR(200),
+                    hook_link VARCHAR(800) NOT NULL,
+                    hook_type VARCHAR(50),
+                    outcome VARCHAR(30) NOT NULL,
+                    note TEXT
+                )
+            """))
+            logger.info("Migration: ensured table hook_outcome_events exists")
+        except Exception as e:
+            logger.warning(f"Migration failed for hook_outcome_events table: {e}")
+
         for table, column, col_type in migrations:
             try:
                 # Check if column exists

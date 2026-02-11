@@ -13,6 +13,7 @@ from .models import (
     DeepResearchCache,
     GoldenEmail,
     ApiUsageLog,
+    HookOutcomeEvent,
 )
 
 __all__ = [
@@ -32,4 +33,5 @@ __all__ = [
     "DeepResearchCache",
     "GoldenEmail",
     "ApiUsageLog",
+    "HookOutcomeEvent",
 ]

@@ -23,12 +23,13 @@ from difflib import SequenceMatcher
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
-from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
 from ..db.models import DistrictResearchCache
+from ..utils.braintrust import log_trace_metadata
+from ..utils.openai_client import get_async_openai_client
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -89,6 +90,8 @@ Do NOT include:
 - Teacher certification requirements (state-wide)
 - Standard state allocations
 - Foundation/private/corporate grants (not government funding)
+- Facilities-only bonds or referendums where funds are primarily for buildings/HVAC/roofing
+  (unless the measure explicitly funds professional learning, assessments, or instructional tech)
 
 The goal is to find TREASURE that wouldn't appear in a state-level search.
 
@@ -277,6 +280,44 @@ STATE_PROGRAM_INDICATORS = [
     "state categorical", "title i allocation", "title iii allocation"
 ]
 
+# Indicators that funding is facilities/capital-only (not relevant to PL/assessments)
+FACILITIES_ONLY_INDICATORS = [
+    "facility", "facilities", "construction", "new school", "campus",
+    "hvac", "roof", "roofing", "building", "buildings", "renovation",
+    "remodel", "modernization", "capital improvement", "capital project",
+    "bond issue", "bond measure", "general obligation bond", "bond referendum",
+    "safety upgrades", "security upgrades", "bus purchase", "transportation",
+]
+
+# If any of these are present, we consider the finding relevant to PL/assessments
+LEARNING_RELEVANCE_INDICATORS = [
+    "professional learning", "professional development", "pd", "training",
+    "assessment", "assessments", "instructional", "curriculum", "mtss",
+    "edtech", "technology", "software", "licenses", "licensing",
+    "teacher", "coaching", "instructional coaching", "intervention",
+    "multilingual", "english learner", "ell", "esl", "el",
+]
+
+
+def _is_facilities_only(finding: Dict[str, Any]) -> Tuple[bool, str]:
+    """Filter out facilities/capital-only bonds unless tied to learning/assessment spend."""
+    text = " ".join([
+        finding.get("title", ""),
+        finding.get("description", ""),
+        finding.get("why_district_specific", ""),
+        finding.get("amount", ""),
+    ]).lower()
+
+    has_facilities = any(indicator in text for indicator in FACILITIES_ONLY_INDICATORS)
+    if not has_facilities:
+        return False, ""
+
+    has_learning = any(indicator in text for indicator in LEARNING_RELEVANCE_INDICATORS)
+    if has_learning:
+        return False, ""
+
+    return True, "Facilities/capital-only funding (no PL/assessment/learning relevance)"
+
 
 def is_truly_district_specific(finding: Dict[str, Any]) -> Tuple[bool, str]:
     """
@@ -451,6 +492,11 @@ def filter_district_hooks(
         is_expired, expire_reason = _is_finding_expired(finding)
         if is_expired:
             filter_reasons.append(("expired_deadline", expire_reason))
+
+        # Check 1.6: Facilities-only (exclude)
+        is_facilities_only, facilities_reason = _is_facilities_only(finding)
+        if is_facilities_only:
+            filter_reasons.append(("facilities_only", facilities_reason))
         
         # Check 2: Is truly district-specific
         is_specific, specific_reason = is_truly_district_specific(finding)
@@ -479,8 +525,45 @@ def filter_district_hooks(
             })
         else:
             passed.append(_convert_finding_to_hook(finding, product_key))
-    
+
+    passed.sort(key=lambda h: int(h.get("propensity_score") or 0), reverse=True)
     return passed, filtered
+
+
+def _compute_district_propensity(finding: Dict[str, Any]) -> Tuple[int, List[str]]:
+    """Score district opportunity propensity for outreach prioritization (0-25)."""
+    score = 0
+    reasons: List[str] = []
+    text = " ".join([
+        finding.get("title", ""),
+        finding.get("description", ""),
+        finding.get("why_district_specific", ""),
+        finding.get("deadline", ""),
+    ]).lower()
+    finding_type = (finding.get("finding_type") or "").lower()
+    url = (finding.get("url") or "").lower()
+
+    if finding_type == "compliance" or any(t in text for t in ["monitoring", "corrective action", "consent decree", "ocr"]):
+        score += 8
+        reasons.append("active_compliance_trigger")
+
+    if finding.get("deadline"):
+        score += 5
+        reasons.append("timebound_window")
+
+    if finding.get("amount"):
+        score += 4
+        reasons.append("funding_amount_disclosed")
+
+    if ".gov" in url or ".k12" in url or ".edu" in url:
+        score += 4
+        reasons.append("authoritative_source")
+
+    if len((finding.get("why_district_specific") or "").strip()) >= 40:
+        score += 3
+        reasons.append("clear_district_specificity")
+
+    return min(25, score), reasons
 
 
 def _convert_finding_to_hook(finding: Dict[str, Any], product_key: str) -> Dict[str, Any]:
@@ -502,6 +585,7 @@ def _convert_finding_to_hook(finding: Dict[str, Any], product_key: str) -> Dict[
     
     # Build trigger excerpt
     trigger = finding.get("deadline") or finding.get("why_district_specific") or quote
+    propensity_score, propensity_reasons = _compute_district_propensity(finding)
     
     return {
         "hook_id": _generate_hook_id(hook_type, quote, finding.get("url", ""), district_name),
@@ -517,6 +601,8 @@ def _convert_finding_to_hook(finding: Dict[str, Any], product_key: str) -> Dict[
         "source_level": "district",
         "district_name": district_name,
         "why_district_specific": finding.get("why_district_specific", ""),
+        "propensity_score": propensity_score,
+        "propensity_reasons": propensity_reasons,
     }
 
 
@@ -574,7 +660,7 @@ async def run_district_deep_research(
     cache_entry = await get_or_create_district_research_job(db, state_code, product_key)
     
     # Set a request timeout; polling controls total search time.
-    client = AsyncOpenAI(
+    client = get_async_openai_client(
         api_key=settings.openai_api_key,
         timeout=3600.0,
     )
@@ -595,6 +681,17 @@ IMPORTANT: Return your findings as a valid JSON object matching the schema in th
 {prompt}
 
 Remember: Return ONLY a valid JSON object, no other text."""
+
+    log_trace_metadata(
+        {
+            "state_code": state_code,
+            "state_full": state_full,
+            "product_key": product_key,
+            "pipeline_stage": "district_research",
+            "model": "o3-deep-research",
+        },
+        tags=[f"state:{state_code}", f"product:{product_key}", "stage:district_research"],
+    )
     
     # Check if we can resume an existing in-progress task
     response = None

@@ -131,6 +131,8 @@ export interface StateInfo {
 export interface ResearchStatus {
   status: 'completed'
   age_days: number
+  freshness?: 'fresh' | 'stale' | 'expired'
+  needs_refresh?: boolean
   hook_count?: number
   districts_surveyed?: number
   conference_count?: number
@@ -140,6 +142,7 @@ export interface StateCoverage {
   code: string
   name: string
   overall_status: 'complete' | 'partial' | 'missing'
+  freshness_status?: 'fresh' | 'stale' | 'expired' | 'missing'
   state_research: ResearchStatus | null
   district_research: ResearchStatus | null
   conference_research: ResearchStatus | null
@@ -155,6 +158,9 @@ export interface CoverageResponse {
     complete: number
     partial: number
     missing: number
+    fresh?: number
+    stale?: number
+    expired?: number
   }
 }
 
@@ -443,6 +449,13 @@ export interface WebHook {
   stale_score?: number | null
   stale_reason?: string | null
   stale_confidence?: string | null
+  // District propensity
+  propensity_score?: number | null
+  propensity_reasons?: string[] | null
+  // Historical outcomes
+  outcome_score?: number | null
+  outcome_sample_size?: number | null
+  outcome_summary?: string | null
 }
 
 export interface SelectedHook {
@@ -644,6 +657,22 @@ export interface HookFeedbackResponse {
   inserted: number
 }
 
+export type HookOutcomeKind = 'sent' | 'reply' | 'meeting_booked' | 'won' | 'lost'
+
+export interface HookOutcomeRequest {
+  product: string
+  state_code: string
+  hook_link: string
+  hook_type?: string | null
+  audience?: string | null
+  outcome: HookOutcomeKind
+  note?: string | null
+}
+
+export interface HookOutcomeResponse {
+  id: number
+}
+
 export interface RubricItem {
   score: number | null  // Optional: 1-5, or null if not provided
   comment?: string | null
@@ -784,6 +813,7 @@ export interface QualityMetrics {
   total_negative: number
   avg_scores_by_category: Record<string, number>
   low_score_categories_frequency: Record<string, number>
+  outcome_counts?: Record<string, number>
 }
 
 // Chunk Feedback (flagging)
@@ -1660,6 +1690,8 @@ export const api = {
   feedback: {
     submitHookFeedback: (data: HookFeedbackRequest) =>
       fetchApi<HookFeedbackResponse>('/feedback/hooks', { method: 'POST', body: JSON.stringify(data) }),
+    submitHookOutcome: (data: HookOutcomeRequest) =>
+      fetchApi<HookOutcomeResponse>('/feedback/hooks/outcomes', { method: 'POST', body: JSON.stringify(data) }),
     exportHookFeedback: () => fetch(`${API_BASE}/feedback/hooks/export`),
     submitEmailReview: (data: EmailReviewRequest) =>
       fetchApi<EmailReviewResponse>('/feedback/email-reviews', { method: 'POST', body: JSON.stringify(data) }),

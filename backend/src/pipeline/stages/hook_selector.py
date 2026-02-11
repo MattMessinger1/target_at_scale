@@ -133,6 +133,16 @@ def select_primary_hooks(
                 score += signal_strength // 2
                 reasons.append(f"signal_strength:{signal_strength}")
 
+            propensity_score = getattr(h, "propensity_score", None)
+            if isinstance(propensity_score, int):
+                score += propensity_score // 3
+                reasons.append(f"propensity_score:{propensity_score}")
+
+            outcome_score = getattr(h, "outcome_score", None)
+            if isinstance(outcome_score, int):
+                score += outcome_score // 2
+                reasons.append(f"outcome_score:{outcome_score}")
+
             # Penalize very tight deadlines to avoid late outreach when other options exist
             warning = getattr(h, "deadline_warning", "") or ""
             m = re.search(r"Deadline in (\d+) days", warning)

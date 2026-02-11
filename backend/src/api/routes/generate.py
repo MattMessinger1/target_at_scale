@@ -592,6 +592,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         from ...pipeline.hook_gate import gate_treasure_hooks
         from ...pipeline.stages.evidence_pack import build_product_evidence_pack
         from ...pipeline.stages.hook_selector import select_primary_hooks
+        from ...pipeline.hook_performance import annotate_hooks_with_outcomes
         from ...pipeline.stages.treasure_hunter import run_treasure_hunter
         from ...pipeline.stages.email_writer import (
             get_golden_examples,
@@ -1273,6 +1274,15 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         else:
                             raise RuntimeError("Selected cached hooks but couldn't extract any WebHook objects")
                     else:
+                        try:
+                            treasure_hooks = await annotate_hooks_with_outcomes(
+                                db,
+                                list(treasure_hooks),
+                                product_key=product_key or "",
+                                state_code=state_code,
+                            )
+                        except Exception as perf_err:
+                            logger.warning("Failed to annotate hook outcomes: %s", perf_err)
                         selected = select_primary_hooks(hooks=list(treasure_hooks), audiences=audiences)
 
                     # Generate variants
@@ -1410,6 +1420,15 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                             )
                             variants.append(variant)
                     else:
+                        try:
+                            treasure_hooks = await annotate_hooks_with_outcomes(
+                                db,
+                                list(treasure_hooks),
+                                product_key=product_key or "",
+                                state_code=state_code,
+                            )
+                        except Exception as perf_err:
+                            logger.warning("Failed to annotate hook outcomes: %s", perf_err)
                         selected = select_primary_hooks(hooks=list(treasure_hooks), audiences=audiences)
                         for aud_idx, aud in enumerate(audiences):
                             sel = selected.get(aud)
@@ -2242,6 +2261,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                 source_level="district",
                                 district_name=h.get("district_name"),
                                 why_district_specific=h.get("why_district_specific"),
+                                propensity_score=h.get("propensity_score"),
+                                propensity_reasons=h.get("propensity_reasons"),
                             ))
                         except Exception as e:
                             logger.warning(f"Failed to convert district hook: {e}")
@@ -2262,6 +2283,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                     confidence=hook_data.get("confidence", "medium"),
                                     source_level="district",
                                     district_name=hook_data.get("district_name"),
+                                    propensity_score=hook_data.get("propensity_score"),
+                                    propensity_reasons=hook_data.get("propensity_reasons"),
                                 ),
                                 filter_reason=fh.get("filter_reason", "unknown"),
                                 filter_detail=fh.get("filter_detail", ""),
@@ -3490,6 +3513,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                 source_level="district",
                                 district_name=h.get("district_name"),
                                 why_district_specific=h.get("why_district_specific"),
+                                propensity_score=h.get("propensity_score"),
+                                propensity_reasons=h.get("propensity_reasons"),
                             ))
                         except Exception as e:
                             logger.warning(f"Failed to convert district hook: {e}")
@@ -3508,13 +3533,15 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                                     trigger_excerpt=hook_data.get("trigger_excerpt", ""),
                                     eligibility_excerpt=hook_data.get("eligibility_excerpt"),
                                     why_relevant=hook_data.get("why_relevant", ""),
-                                    confidence=hook_data.get("confidence", "medium"),
-                                    source_level="district",
-                                    district_name=hook_data.get("district_name"),
-                                ),
-                                filter_reason=fh.get("filter_reason", "unknown"),
-                                filter_detail=fh.get("filter_detail", ""),
-                            ))
+                                        confidence=hook_data.get("confidence", "medium"),
+                                        source_level="district",
+                                        district_name=hook_data.get("district_name"),
+                                        propensity_score=hook_data.get("propensity_score"),
+                                        propensity_reasons=hook_data.get("propensity_reasons"),
+                                    ),
+                                    filter_reason=fh.get("filter_reason", "unknown"),
+                                    filter_detail=fh.get("filter_detail", ""),
+                                ))
                         except Exception as e:
                             logger.warning(f"Failed to convert filtered hook: {e}")
                     
@@ -3638,6 +3665,7 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
         from ...pipeline.schemas import PipelineRequest as PipelineRequestModel, PipelineTrace, SelectedHook
         from ...pipeline.stages.evidence_pack import build_product_evidence_pack
         from ...pipeline.stages.hook_selector import select_primary_hooks
+        from ...pipeline.hook_performance import annotate_hooks_with_outcomes
         from ...pipeline.stages.treasure_hunter import run_treasure_hunter
         from ...pipeline.stages.email_writer import (
             get_golden_examples,
@@ -3975,6 +4003,15 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                 # Legacy behavior: choose one hook per audience deterministically.
                 yield _ndjson({"type": "stage_start", "ts": _utcnow_iso(), "stage": "hook_selector"})
                 t3 = time.perf_counter()
+                try:
+                    treasure_hooks = await annotate_hooks_with_outcomes(
+                        db,
+                        list(treasure_hooks),
+                        product_key=normalize_product_key(product) or "",
+                        state_code=state_code,
+                    )
+                except Exception as perf_err:
+                    logger.warning("Failed to annotate hook outcomes: %s", perf_err)
                 selected = select_primary_hooks(hooks=list(treasure_hooks), audiences=audiences)
                 stage_ms["hook_selector"] = int((time.perf_counter() - t3) * 1000)
                 yield _ndjson(
@@ -4149,6 +4186,15 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                     variants.append(variant_result[0])
             else:
                 # per-audience selected hooks
+                try:
+                    treasure_hooks = await annotate_hooks_with_outcomes(
+                        db,
+                        list(treasure_hooks),
+                        product_key=product_key_stream or "",
+                        state_code=state_code,
+                    )
+                except Exception as perf_err:
+                    logger.warning("Failed to annotate hook outcomes: %s", perf_err)
                 selected = select_primary_hooks(hooks=list(treasure_hooks), audiences=audiences)
                 for aud_idx, aud in enumerate(audiences):
                     sel = selected.get(aud)
@@ -4395,6 +4441,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                         source_level="district",
                         district_name=h.get("district_name"),
                         why_district_specific=h.get("why_district_specific"),
+                        propensity_score=h.get("propensity_score"),
+                        propensity_reasons=h.get("propensity_reasons"),
                     ))
                 except Exception as e:
                     logger.warning(f"Failed to convert district hook: {e}")
@@ -4415,6 +4463,8 @@ if PipelineRequest is not None and PipelineRunResponse is not None:
                             confidence=hook_data.get("confidence", "medium"),
                             source_level="district",
                             district_name=hook_data.get("district_name"),
+                            propensity_score=hook_data.get("propensity_score"),
+                            propensity_reasons=hook_data.get("propensity_reasons"),
                         ),
                         filter_reason=fh.get("filter_reason", "unknown"),
                         filter_detail=fh.get("filter_detail", ""),
@@ -4764,7 +4814,7 @@ async def generate_email_v1(
     Uses RAG to get product context, then combines with selected
     funding/compliance items to generate a targeted email.
     """
-    from openai import AsyncOpenAI
+    from ...utils.openai_client import get_async_openai_client
     
     # Use primary selections if multiple values were joined with commas
     primary_product = request.product.split(",")[0].strip()
@@ -4801,7 +4851,7 @@ async def generate_email_v1(
     )
     
     # Generate with GPT
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    client = get_async_openai_client(api_key=settings.openai_api_key)
     
     response = await client.chat.completions.create(
         model=settings.openai_model,
@@ -5101,7 +5151,7 @@ async def refine_email_tone(
     compliance_items: List[ComplianceItemInput],
 ) -> tuple:
     """Second-pass rewrite to enforce empathetic tone and hard requirements."""
-    from openai import AsyncOpenAI
+    from ...utils.openai_client import get_async_openai_client
     import re
 
     # Quick heuristic: if opener is a question like "Are you..." rewrite.
@@ -5151,7 +5201,7 @@ async def refine_email_tone(
 
     prompt = f"""Rewrite this email to be a trusted, empathetic colleague.\n\nHard rules:\n- Do NOT start with a question.\n- Avoid any accusatory language.\n- Keep the email plain text.\n- Keep the subject specific; include state and the hook when provided.\n- CTA must: ask for a 15-minute meeting, say \"today\", include calendly.com/wceps.\n- Include at least ONE offering phrase verbatim.\n{avoid_text}\n{offering_text}\n\nState: {state}\nAudience: {audience}\nProduct: {product}\nHook: {hook or ''}\n\nProduct brief (for accuracy):\n{str(product_context)[:2500]}\n\nOriginal:\nSUBJECT: {subject_line}\n\n{email_body}\n\nReturn EXACT format:\nSUBJECT: ...\n\n...body...\n"""
 
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    client = get_async_openai_client(api_key=settings.openai_api_key)
     resp = await client.chat.completions.create(
         model=settings.openai_model,
         messages=[

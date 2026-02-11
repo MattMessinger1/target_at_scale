@@ -21,12 +21,13 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Callable
 
-from openai import AsyncOpenAI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
 from ..db.models import DeepResearchCache
+from ..utils.braintrust import log_trace_metadata
+from ..utils.openai_client import get_async_openai_client
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -398,22 +399,6 @@ async def get_cached_research(
     """Get cached research if still valid (within TTL) and not archived."""
     cutoff = datetime.utcnow() - timedelta(days=CACHE_TTL_DAYS)
 
-    # region agent log
-    try:
-        with open("/Users/mattmessinger/Desktop/Target_Scale_Repo/.cursor/debug.log", "a") as f:
-            f.write(json.dumps({
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "H1",
-                "location": "backend/src/research/deep_research.py:get_cached_research",
-                "message": "cache_lookup_start",
-                "data": {"state_code": state_code, "product_key": product_key, "research_type": research_type},
-                "timestamp": int(datetime.utcnow().timestamp() * 1000),
-            }) + "\n")
-    except Exception:
-        pass
-    # endregion
-    
     result = await db.execute(
         select(DeepResearchCache)
         .where(DeepResearchCache.state_code == state_code)
@@ -424,28 +409,6 @@ async def get_cached_research(
         .where(DeepResearchCache.is_archived.is_(False))
     )
     entry = result.scalar_one_or_none()
-    # region agent log
-    try:
-        with open("/Users/mattmessinger/Desktop/Target_Scale_Repo/.cursor/debug.log", "a") as f:
-            f.write(json.dumps({
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "H1",
-                "location": "backend/src/research/deep_research.py:get_cached_research",
-                "message": "cache_lookup_result",
-                "data": {
-                    "state_code": state_code,
-                    "product_key": product_key,
-                    "found": bool(entry),
-                    "status": getattr(entry, "status", None),
-                    "created_at": getattr(entry, "created_at", None).isoformat() if getattr(entry, "created_at", None) else None,
-                    "is_archived": getattr(entry, "is_archived", None),
-                },
-                "timestamp": int(datetime.utcnow().timestamp() * 1000),
-            }) + "\n")
-    except Exception:
-        pass
-    # endregion
     return entry
 
 
@@ -797,7 +760,7 @@ async def run_deep_research(
     cache_entry = await get_or_create_research_job(db, state_code, product_key, research_type)
     
     # Set a very long timeout (60 minutes) - Deep Research can take 30+ minutes
-    client = AsyncOpenAI(
+    client = get_async_openai_client(
         api_key=settings.openai_api_key,
         timeout=3600.0,  # 60 minutes - let it run as long as needed
     )
@@ -832,6 +795,17 @@ IMPORTANT: Return your findings as a valid JSON object matching the schema in th
 {prompt}
 
 Remember: Return ONLY a valid JSON object, no other text."""
+
+    log_trace_metadata(
+        {
+            "state_code": state_code,
+            "state_full": state_full,
+            "product_key": product_key,
+            "pipeline_stage": "state_research",
+            "model": "o3-deep-research",
+        },
+        tags=[f"state:{state_code}", f"product:{product_key}", "stage:state_research"],
+    )
     
     # Check if we can resume an existing in-progress task
     response = None
@@ -1320,7 +1294,7 @@ async def run_conference_research(
     )
     
     # Use a longer timeout since deep research can take a while
-    client = AsyncOpenAI(
+    client = get_async_openai_client(
         api_key=settings.openai_api_key,
         timeout=1800.0,  # 30 minutes
     )
@@ -1473,6 +1447,12 @@ async def convert_to_webhooks(
             "timing_summary": timing_summary,
         })
     
+    def _coerce_iso_date(value: Optional[str]) -> Optional[str]:
+        if not value:
+            return None
+        m = re.search(r"\b20\d{2}-\d{2}-\d{2}\b", str(value))
+        return m.group(0) if m else None
+
     # Convert compliance items
     for item in research_results.get("compliance_items", []):
         hook_type = "monitoring"
@@ -1502,6 +1482,12 @@ async def convert_to_webhooks(
         timing_summary = item.get("timing_summary")
         trigger_excerpt = timing_summary or item.get("deadline") or item.get("consequences") or item.get("description", "")
         
+        deadline_date = (
+            _coerce_iso_date(item.get("deadline_date"))
+            or _coerce_iso_date(item.get("effective_date"))
+            or _coerce_iso_date(item.get("deadline"))
+        )
+
         hooks.append({
             "hook_id": _generate_hook_id(hook_type, quote, link, trigger_excerpt),
             "hook_type": hook_type,
@@ -1513,7 +1499,7 @@ async def convert_to_webhooks(
             "confidence": "high" if item.get("status") == "active" else "medium",
             "source_quality_reason": f"Type: {item.get('type', 'other')}; Status: {item.get('status', 'unverified')}",
             "timing_type": item.get("timing_type"),
-            "deadline_date": item.get("deadline") if item.get("deadline") else item.get("effective_date"),
+            "deadline_date": deadline_date,
             "start_date": None,
             "end_date": None,
             "timing_summary": timing_summary,

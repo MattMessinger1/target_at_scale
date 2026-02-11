@@ -642,7 +642,14 @@ function OverviewDashboard({
   recentNegative,
   flaggedCount,
 }: {
-  metrics?: { total_reviews: number; total_golden: number; total_negative: number; avg_scores_by_category: Record<string, number>; low_score_categories_frequency: Record<string, number> } | null
+  metrics?: {
+    total_reviews: number
+    total_golden: number
+    total_negative: number
+    avg_scores_by_category: Record<string, number>
+    low_score_categories_frequency: Record<string, number>
+    outcome_counts?: Record<string, number>
+  } | null
   isLoading: boolean
   recentNegative: NegativeEmailListItem[]
   flaggedCount: number
@@ -686,6 +693,20 @@ function OverviewDashboard({
           <div className="text-sm text-orange-400">Flagged Chunks</div>
         </div>
       </div>
+
+      {metrics?.outcome_counts && (
+        <div className="p-4 rounded-lg border border-sky-700/40 bg-sky-900/10">
+          <h3 className="text-lg font-medium text-sky-100 mb-3">Outreach Outcomes</h3>
+          <div className="grid grid-cols-5 gap-3">
+            {['sent', 'reply', 'meeting_booked', 'won', 'lost'].map((k) => (
+              <div key={k} className="rounded border border-slate-700/50 bg-slate-900/40 px-3 py-2">
+                <div className="text-[11px] uppercase tracking-wide text-slate-400">{k.replace('_', ' ')}</div>
+                <div className="text-lg font-semibold text-slate-100">{metrics.outcome_counts?.[k] ?? 0}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       
       {/* Score Averages */}
       {metrics?.avg_scores_by_category && Object.keys(metrics.avg_scores_by_category).length > 0 && (

@@ -48,6 +48,7 @@ from ..research.product_briefs import normalize_product_key
 from .stages.repair import MAX_REPAIR_ITERATIONS, failures_to_instructions, should_stop_repair
 from .stages.treasure_hunter import run_treasure_hunter
 from .hook_gate import gate_treasure_hooks
+from .hook_performance import annotate_hooks_with_outcomes
 
 
 DEFAULT_AUDIENCES = [
@@ -510,6 +511,15 @@ async def run_email_pipeline(*, request: PipelineRequest, db: AsyncSession) -> P
                 f"dropped={report.dropped_by_reason}"
             )
         treasure_hooks = gated
+        try:
+            treasure_hooks = await annotate_hooks_with_outcomes(
+                db,
+                treasure_hooks,
+                product_key=normalize_product_key(product) or "",
+                state_code=state_code,
+            )
+        except Exception as perf_err:
+            logger.warning("Failed to annotate hook outcomes: %s", perf_err)
 
     # Stage 3: HookSelector (deterministic)
     logger.info("Pipeline: Stage 3 - Selecting hooks for audiences")

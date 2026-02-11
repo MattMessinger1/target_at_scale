@@ -615,11 +615,21 @@ async def get_research_coverage(
     except Exception:
         saved_summary = {}
     
+    def _freshness(age_days: int) -> str:
+        if age_days <= 30:
+            return "fresh"
+        if age_days <= 60:
+            return "stale"
+        return "expired"
+
     # Build coverage matrix
     states_coverage = []
     complete_count = 0
     partial_count = 0
     missing_count = 0
+    fresh_count = 0
+    stale_count = 0
+    expired_count = 0
     
     for state_code in states_to_check:
         state_name = STATE_NAMES.get(state_code, state_code)
@@ -646,7 +656,8 @@ async def get_research_coverage(
                 }
         if state_best_created_at and state_best_payload is not None:
             age_days = (datetime.utcnow() - state_best_created_at).days
-            state_research = {"status": "completed", "age_days": age_days, **state_best_payload}
+            freshness = _freshness(age_days)
+            state_research = {"status": "completed", "age_days": age_days, "freshness": freshness, "needs_refresh": freshness != "fresh", **state_best_payload}
         
         # Check district research
         district_entry = district_cache_map.get(state_code)
@@ -669,7 +680,8 @@ async def get_research_coverage(
                 }
         if district_best_created_at and district_best_payload is not None:
             age_days = (datetime.utcnow() - district_best_created_at).days
-            district_research = {"status": "completed", "age_days": age_days, **district_best_payload}
+            freshness = _freshness(age_days)
+            district_research = {"status": "completed", "age_days": age_days, "freshness": freshness, "needs_refresh": freshness != "fresh", **district_best_payload}
         
         # Check conference research
         conf_entry = deep_cache_map.get((state_code, "conference"))
@@ -690,14 +702,33 @@ async def get_research_coverage(
                 }
         if conf_best_created_at and conf_best_payload is not None:
             age_days = (datetime.utcnow() - conf_best_created_at).days
-            conference_research = {"status": "completed", "age_days": age_days, **conf_best_payload}
+            freshness = _freshness(age_days)
+            conference_research = {"status": "completed", "age_days": age_days, "freshness": freshness, "needs_refresh": freshness != "fresh", **conf_best_payload}
         
         # Determine overall status
         has_state = state_research is not None
         has_district = district_research is not None
         has_conference = conference_research is not None
         
-        if has_state and has_district and has_conference:
+        freshness_levels = [
+            (state_research or {}).get("freshness"),
+            (district_research or {}).get("freshness"),
+            (conference_research or {}).get("freshness"),
+        ]
+        freshness_levels = [f for f in freshness_levels if f]
+        if "expired" in freshness_levels:
+            freshness_status = "expired"
+            expired_count += 1
+        elif "stale" in freshness_levels:
+            freshness_status = "stale"
+            stale_count += 1
+        elif freshness_levels:
+            freshness_status = "fresh"
+            fresh_count += 1
+        else:
+            freshness_status = "missing"
+
+        if has_state and has_district and has_conference and freshness_status == "fresh":
             overall_status = "complete"
             complete_count += 1
         elif has_state or has_district or has_conference:
@@ -711,6 +742,7 @@ async def get_research_coverage(
             "code": state_code,
             "name": state_name,
             "overall_status": overall_status,
+            "freshness_status": freshness_status,
             "state_research": state_research,
             "district_research": district_research,
             "conference_research": conference_research,
@@ -729,6 +761,9 @@ async def get_research_coverage(
             "complete": complete_count,
             "partial": partial_count,
             "missing": missing_count,
+            "fresh": fresh_count,
+            "stale": stale_count,
+            "expired": expired_count,
         }
     }
 

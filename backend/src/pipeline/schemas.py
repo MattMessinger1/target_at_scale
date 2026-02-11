@@ -213,6 +213,15 @@ class WebHook(BaseModel):
     stale_reason: Optional[str] = Field(default=None, description="Reason for staleness.")
     stale_confidence: Optional[str] = Field(default=None, description="high|medium|low confidence in staleness.")
 
+    # District targeting propensity
+    propensity_score: Optional[int] = Field(default=None, description="District opportunity propensity (0-25).")
+    propensity_reasons: Optional[List[str]] = Field(default=None, description="Reason tags for propensity score.")
+
+    # Historical outreach outcomes
+    outcome_score: Optional[int] = Field(default=None, description="Historical outreach performance score (0-20).")
+    outcome_sample_size: Optional[int] = Field(default=None, description="Number of prior sends for this hook/source.")
+    outcome_summary: Optional[str] = Field(default=None, description="Compact summary of historical outcomes.")
+
 
 class SelectedHook(BaseModel):
     """Selected hook for a given audience variant."""

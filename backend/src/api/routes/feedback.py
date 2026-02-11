@@ -13,7 +13,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...db import get_db
-from ...db.models import EmailImprovementReview, TreasureHookFeedback, GoldenEmail, NegativeEmailExample, ChunkFeedback
+from ...db.models import (
+    EmailImprovementReview,
+    TreasureHookFeedback,
+    GoldenEmail,
+    NegativeEmailExample,
+    ChunkFeedback,
+    HookOutcomeEvent,
+)
 from ...research.product_briefs import normalize_product_key
 from ...pipeline.schemas import WebHook
 
@@ -97,6 +104,22 @@ class HookFeedbackResponse(BaseModel):
     inserted: int
 
 
+class HookOutcomeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    product: str
+    state_code: str
+    hook_link: str
+    hook_type: Optional[str] = None
+    audience: Optional[str] = None
+    outcome: Literal["sent", "reply", "meeting_booked", "won", "lost"]
+    note: Optional[str] = None
+
+
+class HookOutcomeResponse(BaseModel):
+    id: int
+
+
 @router.post("/hooks", response_model=HookFeedbackResponse)
 async def submit_hook_feedback(
     req: HookFeedbackRequest,
@@ -150,6 +173,34 @@ async def submit_hook_feedback(
     db.add_all(rows)
     await db.commit()
     return HookFeedbackResponse(inserted=len(rows))
+
+
+@router.post("/hooks/outcomes", response_model=HookOutcomeResponse)
+async def submit_hook_outcome(
+    req: HookOutcomeRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    product = (req.product or "").strip()
+    state_code = (req.state_code or "").strip().upper()
+    hook_link = (req.hook_link or "").strip()
+    if not product or not state_code or not hook_link:
+        raise HTTPException(status_code=422, detail="product, state_code, and hook_link are required.")
+
+    row = HookOutcomeEvent(
+        product=product,
+        product_key=normalize_product_key(product),
+        state_code=state_code,
+        audience=(req.audience or "").strip() or None,
+        hook_link=hook_link,
+        hook_type=(req.hook_type or "").strip() or None,
+        outcome=req.outcome,
+        note=(req.note or "").strip() or None,
+        created_at=_utcnow(),
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return HookOutcomeResponse(id=row.id)
 
 
 @router.get("/hooks/export")
@@ -745,6 +796,7 @@ class QualityMetrics(BaseModel):
     total_negative: int
     avg_scores_by_category: dict  # {subject_line: 3.5, hook_usage: 2.8, ...}
     low_score_categories_frequency: dict  # {hook_usage: 15, cta: 12, ...}
+    outcome_counts: dict = {}  # {sent: 120, reply: 18, ...}
 
 
 @router.get("/metrics", response_model=QualityMetrics)
@@ -816,6 +868,17 @@ async def get_quality_metrics(
         for cat in (neg.low_score_categories or []):
             if cat in low_score_frequency:
                 low_score_frequency[cat] += 1
+
+    outcome_counts = {"sent": 0, "reply": 0, "meeting_booked": 0, "won": 0, "lost": 0}
+    outcome_query = select(HookOutcomeEvent)
+    if product:
+        outcome_query = outcome_query.where(HookOutcomeEvent.product == product)
+    if state_code:
+        outcome_query = outcome_query.where(HookOutcomeEvent.state_code == state_code.upper())
+    outcome_result = await db.execute(outcome_query)
+    for evt in outcome_result.scalars().all():
+        if evt.outcome in outcome_counts:
+            outcome_counts[evt.outcome] += 1
     
     return QualityMetrics(
         total_reviews=total_reviews,
@@ -823,6 +886,7 @@ async def get_quality_metrics(
         total_negative=total_negative,
         avg_scores_by_category={k: v for k, v in avg_scores_by_category.items() if v is not None},
         low_score_categories_frequency=low_score_frequency,
+        outcome_counts=outcome_counts,
     )
 
 
@@ -962,4 +1026,3 @@ async def resolve_chunk_flag(
     await db.commit()
     
     return {"status": "resolved", "id": flag_id}
-

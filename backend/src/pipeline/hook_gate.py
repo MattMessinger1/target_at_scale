@@ -672,10 +672,9 @@ def gate_treasure_hooks(
         
         kept.append(h)
 
-    report = HookGateReport(total=len(hooks or []), kept=len(kept), dropped_by_reason=dropped)
-    
     # Consolidate similar hooks (e.g., multiple districts under monitoring)
     kept = _consolidate_similar_hooks(kept)
+    report = HookGateReport(total=len(hooks or []), kept=len(kept), dropped_by_reason=dropped)
     
     return kept, filtered, report
 
@@ -805,6 +804,18 @@ def _consolidate_similar_hooks(hooks: List[WebHook]) -> List[WebHook]:
     return consolidated_hooks
 
 
+def _pick_highest_int(values: List[Optional[int]]) -> Optional[int]:
+    nums = [v for v in values if isinstance(v, int)]
+    return max(nums) if nums else None
+
+
+def _pick_first_non_empty(values: List[Optional[str]]) -> Optional[str]:
+    for v in values:
+        if isinstance(v, str) and v.strip():
+            return v
+    return None
+
+
 def _merge_improvement_hooks(hooks: List[WebHook]) -> Optional[WebHook]:
     """Merge multiple improvement status hooks into one consolidated hook."""
     if not hooks:
@@ -862,8 +873,25 @@ def _merge_improvement_hooks(hooks: List[WebHook]) -> Optional[WebHook]:
         "and exit improvement status."
     )
     
-    # Create consolidated hook using the best source
-    # We need to create a new WebHook - import the class
+    # Preserve the strongest timing/signal metadata from merged hooks so selector
+    # and UI keep urgency signals after consolidation.
+    timing_score = _pick_highest_int([getattr(h, "timing_score", None) for h in hooks])
+    signal_strength = _pick_highest_int([getattr(h, "signal_strength", None) for h in hooks])
+    stale_score = _pick_highest_int([getattr(h, "stale_score", None) for h in hooks])
+
+    # Prefer "ongoing"/"near_term" if any constituent hook has it.
+    buckets = [getattr(h, "timing_bucket", None) for h in hooks]
+    timing_bucket = "unknown"
+    if "ongoing" in buckets:
+        timing_bucket = "ongoing"
+    elif "near_term" in buckets:
+        timing_bucket = "near_term"
+    elif "future" in buckets:
+        timing_bucket = "future"
+    elif "expired" in buckets:
+        timing_bucket = "expired"
+
+    # Create consolidated hook using the best source.
     return WebHook(
         hook_type="monitoring",
         confidence="high",
@@ -874,4 +902,19 @@ def _merge_improvement_hooks(hooks: List[WebHook]) -> Optional[WebHook]:
         why_relevant=consolidated_why,
         source_quality_reason=f"Consolidated from {len(hooks)} sources; primary source: {best_hook.link}",
         hook_id=f"consolidated_{best_hook.hook_id or 'monitoring'}",
+        deadline_warning=_pick_first_non_empty([getattr(h, "deadline_warning", None) for h in hooks]),
+        timing_type=_pick_first_non_empty([getattr(h, "timing_type", None) for h in hooks]),
+        deadline_date=_pick_first_non_empty([getattr(h, "deadline_date", None) for h in hooks]),
+        start_date=_pick_first_non_empty([getattr(h, "start_date", None) for h in hooks]),
+        end_date=_pick_first_non_empty([getattr(h, "end_date", None) for h in hooks]),
+        timing_summary=_pick_first_non_empty([getattr(h, "timing_summary", None) for h in hooks]),
+        timing_bucket=timing_bucket,
+        timing_score=timing_score,
+        timing_confidence=_pick_first_non_empty([getattr(h, "timing_confidence", None) for h in hooks]),
+        signal_summary=_pick_first_non_empty([getattr(h, "signal_summary", None) for h in hooks]),
+        signal_strength=signal_strength,
+        signal_type=_pick_first_non_empty([getattr(h, "signal_type", None) for h in hooks]),
+        stale_score=stale_score,
+        stale_reason=_pick_first_non_empty([getattr(h, "stale_reason", None) for h in hooks]),
+        stale_confidence=_pick_first_non_empty([getattr(h, "stale_confidence", None) for h in hooks]),
     )

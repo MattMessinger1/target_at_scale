@@ -445,6 +445,25 @@ class ChunkFeedback(Base):
     resolution_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
+class HookOutcomeEvent(Base):
+    """Observed outreach outcomes for hooks/sources."""
+
+    __tablename__ = "hook_outcome_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    product: Mapped[str] = mapped_column(String(200), nullable=False)
+    product_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    state_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    audience: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
+    hook_link: Mapped[str] = mapped_column(String(800), nullable=False)
+    hook_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    outcome: Mapped[str] = mapped_column(String(30), nullable=False)  # sent|reply|meeting_booked|won|lost
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
 class DeepResearchCache(Base):
     """Cache for OpenAI Deep Research results (14-day TTL).
     

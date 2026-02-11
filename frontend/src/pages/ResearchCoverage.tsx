@@ -91,7 +91,7 @@ export default function ResearchCoverage() {
   const selectAllWithGaps = () => {
     if (!coverage) return
     const gaps = coverage.states
-      .filter(s => s.overall_status !== 'complete')
+      .filter(s => s.overall_status !== 'complete' || s.freshness_status === 'stale' || s.freshness_status === 'expired')
       .map(s => s.code)
     setSelectedStates(new Set(gaps))
   }
@@ -143,7 +143,7 @@ export default function ResearchCoverage() {
   }
 
   // Status indicator component
-  const StatusCell = ({ status, ageLabel }: { status: 'completed' | 'missing' | null, ageLabel?: string }) => {
+  const StatusCell = ({ status, ageLabel, freshness }: { status: 'completed' | 'missing' | null, ageLabel?: string, freshness?: 'fresh' | 'stale' | 'expired' }) => {
     if (!status || status === 'missing') {
       return (
         <div className="flex items-center justify-center gap-1">
@@ -155,9 +155,12 @@ export default function ResearchCoverage() {
     
     return (
       <div className="flex items-center justify-center gap-1">
-        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+        <CheckCircle2 className={`w-4 h-4 ${freshness === 'expired' ? 'text-red-400' : freshness === 'stale' ? 'text-amber-400' : 'text-emerald-400'}`} />
         {ageLabel && (
           <span className="text-xs text-slate-400">{ageLabel}</span>
+        )}
+        {freshness && freshness !== 'fresh' && (
+          <span className={`text-[10px] uppercase ${freshness === 'expired' ? 'text-red-400' : 'text-amber-400'}`}>{freshness}</span>
         )}
       </div>
     )
@@ -279,11 +282,11 @@ export default function ResearchCoverage() {
             </div>
             <div className="p-4 bg-emerald-900/20 rounded-lg border border-emerald-700/50">
               <div className="text-2xl font-bold text-emerald-400">{coverage.summary.complete}</div>
-              <div className="text-sm text-emerald-300/70">Complete (all 3)</div>
+              <div className="text-sm text-emerald-300/70">Complete + Fresh</div>
             </div>
             <div className="p-4 bg-amber-900/20 rounded-lg border border-amber-700/50">
               <div className="text-2xl font-bold text-amber-400">{coverage.summary.partial}</div>
-              <div className="text-sm text-amber-300/70">Partial (some done)</div>
+              <div className="text-sm text-amber-300/70">Partial or Stale</div>
             </div>
             <div className="p-4 bg-red-900/20 rounded-lg border border-red-700/50">
               <div className="text-2xl font-bold text-red-400">{coverage.summary.missing}</div>
@@ -397,23 +400,31 @@ export default function ResearchCoverage() {
                           Missing
                         </span>
                       )}
+                      {state.freshness_status && state.freshness_status !== 'fresh' && state.freshness_status !== 'missing' && (
+                        <div className={`mt-1 text-[10px] uppercase ${state.freshness_status === 'expired' ? 'text-red-400' : 'text-amber-400'}`}>
+                          {state.freshness_status}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <StatusCell 
                         status={state.state_research ? 'completed' : 'missing'}
                         ageLabel={state.state_research ? `${state.state_research.age_days}d ago` : undefined}
+                        freshness={state.state_research?.freshness}
                       />
                     </td>
                     <td className="px-4 py-3">
                       <StatusCell 
                         status={state.district_research ? 'completed' : 'missing'}
                         ageLabel={state.district_research ? `${state.district_research.age_days}d ago` : undefined}
+                        freshness={state.district_research?.freshness}
                       />
                     </td>
                     <td className="px-4 py-3">
                       <StatusCell 
                         status={state.conference_research ? 'completed' : 'missing'}
                         ageLabel={state.conference_research ? `${state.conference_research.age_days}d ago` : undefined}
+                        freshness={state.conference_research?.freshness}
                       />
                     </td>
                   </tr>
