@@ -849,6 +849,15 @@ export interface ChunkFeedbackListResponse {
   items: ChunkFeedbackListItem[]
 }
 
+export interface SystemHealthStatus {
+  status: 'healthy' | 'degraded'
+  degraded_reason?: string
+  database?: {
+    available: boolean
+    error?: string | null
+  }
+}
+
 // ----------------------------------------------------------------------------
 // Saved Research Types
 // ----------------------------------------------------------------------------
@@ -1760,6 +1769,10 @@ export const api = {
         method: 'POST', 
         body: JSON.stringify({ resolution_notes: resolutionNotes }) 
       }),
+  },
+
+  system: {
+    health: () => fetchApi<SystemHealthStatus>('/health'),
   },
 
   savedRuns: {

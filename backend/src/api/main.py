@@ -31,12 +31,19 @@ except Exception as e:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
+    app.state.db_available = False
+    app.state.db_error = "Database not initialized"
+
     # Startup
     try:
         await init_db()
+        app.state.db_available = True
+        app.state.db_error = None
     except Exception as e:
         # Keep API process alive even if DB is temporarily unavailable.
         # This allows static/non-DB endpoints to respond instead of hard 502.
+        app.state.db_available = False
+        app.state.db_error = str(e)
         logger.error(
             "Database init failed during startup; continuing in degraded mode: %s",
             e,
@@ -454,9 +461,29 @@ async def root():
 
 
 @app.get("/health")
+@app.get("/api/health")
 async def health():
     """Health check endpoint."""
-    return {"status": "healthy"}
+    db_available = bool(getattr(app.state, "db_available", False))
+    db_error = getattr(app.state, "db_error", None)
+
+    if db_available:
+        return {
+            "status": "healthy",
+            "database": {
+                "available": True,
+                "error": None,
+            },
+        }
+
+    return {
+        "status": "degraded",
+        "degraded_reason": "db_unavailable",
+        "database": {
+            "available": False,
+            "error": db_error,
+        },
+    }
 
 
 @app.exception_handler(Exception)

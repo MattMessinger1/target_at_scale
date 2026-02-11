@@ -33,6 +33,7 @@ import {
   ResearchQASummary,
   EmailRevisionRequest,
   EmailReviewRequest,
+  SystemHealthStatus,
   SavedRunSummary,
   SavedRunFull
 } from '../lib/api'
@@ -1469,6 +1470,7 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null)
   const [selectedStates, setSelectedStates] = useState<SelectedState[]>([])
   const [selectedAudience, setSelectedAudience] = useState<string>('Decision Makers')
+  const [backendHealth, setBackendHealth] = useState<SystemHealthStatus | null>(null)
 
   // User identification (persisted to localStorage so you can find your info later)
   const [createdBy, setCreatedBy] = useState<string>(() => {
@@ -1988,6 +1990,31 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
     
     return () => { cancelled = true }
   }, []) // Only run once on mount
+
+  // Check backend health on page load so we can show a clearer degraded-mode banner.
+  useEffect(() => {
+    let cancelled = false
+
+    const checkHealth = async () => {
+      try {
+        const health = await api.system.health()
+        if (!cancelled) setBackendHealth(health)
+      } catch {
+        if (!cancelled) {
+          setBackendHealth({
+            status: 'degraded',
+            degraded_reason: 'db_unavailable',
+            database: { available: false, error: 'Health check failed' },
+          })
+        }
+      }
+    }
+
+    checkHealth()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // On page load: check for ALL pending email generations and handle them
   // Supports multiple concurrent tasks - auto-saves completed ones, clears failed ones
@@ -3799,6 +3826,10 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
   const headerSubtitle = isResearchMode 
     ? 'Discover funding opportunities and compliance hooks for any product and state.'
     : 'Find funding/compliance requirements and generate targeted emails.'
+  const showDbDegradedBanner =
+    isResearchMode &&
+    backendHealth?.status === 'degraded' &&
+    backendHealth?.degraded_reason === 'db_unavailable'
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
@@ -3874,6 +3905,22 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
             <ThemeToggle />
           </div>
         </div>
+
+        {showDbDegradedBanner && (
+          <div className="mb-6 rounded-xl border border-amber-700/60 bg-amber-950/40 px-4 py-3 text-amber-100">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+              <div className="text-sm">
+                <div className="font-medium">
+                  Backend is running in degraded mode (`db_unavailable`).
+                </div>
+                <div className="mt-1 text-amber-200/90">
+                  Product and state selectors may fail until database connectivity is restored.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Saved Research Modal */}
         {showSavedRuns && (
