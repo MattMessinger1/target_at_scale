@@ -2011,8 +2011,10 @@ function EmailGeneratorPipeline({ flowMode }: EmailGeneratorPipelineProps) {
     }
 
     checkHealth()
+    const timer = window.setInterval(checkHealth, 30000)
     return () => {
       cancelled = true
+      window.clearInterval(timer)
     }
   }, [])
 

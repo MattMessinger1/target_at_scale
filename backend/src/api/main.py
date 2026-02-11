@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
 from sqlalchemy import select, func, delete, desc
 
-from ..db import init_db, run_migrations, AsyncSessionLocal
+from ..db import init_db, run_migrations, check_db_connection, AsyncSessionLocal
 from ..config import get_settings
 from ..db.models import KnowledgeBaseItem, SavedEmailRun, BatchJob
 
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
         # Keep API process alive even if DB is temporarily unavailable.
         # This allows static/non-DB endpoints to respond instead of hard 502.
         app.state.db_available = False
-        app.state.db_error = str(e)
+        app.state.db_error = f"{type(e).__name__}: {str(e) or repr(e)}"
         logger.error(
             "Database init failed during startup; continuing in degraded mode: %s",
             e,
@@ -466,6 +466,19 @@ async def health():
     """Health check endpoint."""
     db_available = bool(getattr(app.state, "db_available", False))
     db_error = getattr(app.state, "db_error", None)
+
+    # Auto-recover health state when DB comes back after startup.
+    if not db_available:
+        try:
+            await check_db_connection(timeout_seconds=3.0)
+            app.state.db_available = True
+            app.state.db_error = None
+            db_available = True
+            db_error = None
+        except Exception as e:
+            app.state.db_available = False
+            app.state.db_error = f"{type(e).__name__}: {str(e) or repr(e)}"
+            db_error = app.state.db_error
 
     if db_available:
         return {

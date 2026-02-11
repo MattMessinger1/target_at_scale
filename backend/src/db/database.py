@@ -1,4 +1,5 @@
 """Database connection and session management."""
+import asyncio
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
@@ -59,6 +60,19 @@ async def init_db():
     """Initialize database tables."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+
+async def check_db_connection(timeout_seconds: float = 5.0) -> None:
+    """Verify database connectivity with a lightweight query.
+
+    Raises if the DB is unavailable or the check times out.
+    """
+
+    async def _ping() -> None:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+
+    await asyncio.wait_for(_ping(), timeout=timeout_seconds)
 
 
 async def run_migrations():

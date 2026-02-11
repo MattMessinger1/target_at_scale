@@ -1,5 +1,5 @@
 """Database module."""
-from .database import get_db, init_db, run_migrations, AsyncSessionLocal
+from .database import get_db, init_db, run_migrations, check_db_connection, AsyncSessionLocal
 from .models import (
     Base,
     District,
@@ -20,6 +20,7 @@ __all__ = [
     "get_db",
     "init_db",
     "run_migrations",
+    "check_db_connection",
     "AsyncSessionLocal",
     "Base",
     "District",
