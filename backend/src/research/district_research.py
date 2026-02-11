@@ -28,7 +28,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
 from ..db.models import DistrictResearchCache
-from ..utils.braintrust import log_trace_metadata
+try:
+    from ..utils.braintrust import log_trace_metadata
+except Exception:  # pragma: no cover - optional telemetry fallback
+    def log_trace_metadata(*args, **kwargs):
+        return None
 from ..utils.openai_client import get_async_openai_client
 
 logger = logging.getLogger(__name__)
