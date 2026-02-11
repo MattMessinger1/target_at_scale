@@ -32,7 +32,18 @@ except Exception as e:
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
-    await init_db()
+    try:
+        await init_db()
+    except Exception as e:
+        # Keep API process alive even if DB is temporarily unavailable.
+        # This allows static/non-DB endpoints to respond instead of hard 502.
+        logger.error(
+            "Database init failed during startup; continuing in degraded mode: %s",
+            e,
+            exc_info=True,
+        )
+        yield
+        return
     
     # Run schema migrations (adds missing columns to existing tables)
     try:
