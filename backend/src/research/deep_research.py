@@ -896,14 +896,16 @@ Remember: Return ONLY a valid JSON object, no other text."""
                     "incomplete_details": getattr(response, 'incomplete_details', None),
                 }
                 
-                # Check if it's a rate limit error - these are retryable
+                # Check if it's a retryable error (rate limit or transient server error)
                 error_code = getattr(error_obj, 'code', None) if error_obj else None
-                if error_code == 'rate_limit_exceeded' and retry_count < max_retries:
+                retryable_errors = ('rate_limit_exceeded', 'server_error')
+                if error_code in retryable_errors and retry_count < max_retries:
                     retry_count += 1
-                    logger.warning(f"Rate limit hit for {state_code}/{product_key} (attempt {retry_count}/{max_retries}), waiting 60s before retry...")
+                    wait_time = 60 if error_code == 'rate_limit_exceeded' else 15
+                    logger.warning(f"{error_code} for {state_code}/{product_key} (attempt {retry_count}/{max_retries}), waiting {wait_time}s before retry...")
                     if on_progress:
-                        on_progress(f"Rate limit hit, waiting 60 seconds before retry (attempt {retry_count}/{max_retries})...", 50.0)
-                    await asyncio.sleep(60)  # Wait 60 seconds for rate limit to reset
+                        on_progress(f"{error_code} - retrying in {wait_time}s (attempt {retry_count}/{max_retries})...", 50.0)
+                    await asyncio.sleep(wait_time)
                     
                     # Re-create the research task
                     response = await client.responses.create(

@@ -306,10 +306,10 @@ LEARNING_RELEVANCE_INDICATORS = [
 def _is_facilities_only(finding: Dict[str, Any]) -> Tuple[bool, str]:
     """Filter out facilities/capital-only bonds unless tied to learning/assessment spend."""
     text = " ".join([
-        finding.get("title", ""),
-        finding.get("description", ""),
-        finding.get("why_district_specific", ""),
-        finding.get("amount", ""),
+        finding.get("title") or "",
+        finding.get("description") or "",
+        finding.get("why_district_specific") or "",
+        finding.get("amount") or "",
     ]).lower()
 
     has_facilities = any(indicator in text for indicator in FACILITIES_ONLY_INDICATORS)
@@ -331,9 +331,9 @@ def is_truly_district_specific(finding: Dict[str, Any]) -> Tuple[bool, str]:
         (is_specific, reason) - True if district-specific, with explanation
     """
     text = " ".join([
-        finding.get("title", ""),
-        finding.get("description", ""),
-        finding.get("why_district_specific", "")
+        finding.get("title") or "",
+        finding.get("description") or "",
+        finding.get("why_district_specific") or "",
     ]).lower()
     
     # Check for state program indicators (disqualifying)
@@ -349,7 +349,7 @@ def is_truly_district_specific(finding: Dict[str, Any]) -> Tuple[bool, str]:
             return True, f"Contains district-specific indicator: '{indicator}'"
     
     # Check if why_district_specific field is substantive
-    why_specific = finding.get("why_district_specific", "")
+    why_specific = finding.get("why_district_specific") or ""
     if len(why_specific) > 30:  # Has meaningful explanation
         return True, "Has substantive why_district_specific explanation"
     
@@ -539,10 +539,10 @@ def _compute_district_propensity(finding: Dict[str, Any]) -> Tuple[int, List[str
     score = 0
     reasons: List[str] = []
     text = " ".join([
-        finding.get("title", ""),
-        finding.get("description", ""),
-        finding.get("why_district_specific", ""),
-        finding.get("deadline", ""),
+        finding.get("title") or "",
+        finding.get("description") or "",
+        finding.get("why_district_specific") or "",
+        finding.get("deadline") or "",
     ]).lower()
     finding_type = (finding.get("finding_type") or "").lower()
     url = (finding.get("url") or "").lower()
@@ -604,7 +604,7 @@ def _convert_finding_to_hook(finding: Dict[str, Any], product_key: str) -> Dict[
         # NEW district-level fields
         "source_level": "district",
         "district_name": district_name,
-        "why_district_specific": finding.get("why_district_specific", ""),
+        "why_district_specific": finding.get("why_district_specific") or "",
         "propensity_score": propensity_score,
         "propensity_reasons": propensity_reasons,
     }

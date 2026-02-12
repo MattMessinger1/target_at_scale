@@ -38,6 +38,11 @@ if is_postgres:
             "max_overflow": 20,  # Allow up to 20 additional connections under load
             "pool_timeout": 30,  # Wait up to 30s for a connection
             "pool_recycle": 1800,  # Recycle connections after 30 minutes
+            "pool_pre_ping": True,  # Verify connections before use
+            "connect_args": {
+                "timeout": 120,  # 2 minute timeout for initial connection (Railway cold starts)
+                "command_timeout": 60,  # 60s per query timeout
+            },
         }
     )
 
@@ -56,10 +61,26 @@ class Base(DeclarativeBase):
     pass
 
 
-async def init_db():
-    """Initialize database tables."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+async def init_db(max_retries: int = 3, retry_delay: float = 5.0):
+    """Initialize database tables with retry logic for cold starts."""
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            logger.info("Database initialized successfully")
+            return
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                logger.warning(
+                    f"Database init attempt {attempt + 1}/{max_retries} failed: {e}. "
+                    f"Retrying in {retry_delay}s..."
+                )
+                await asyncio.sleep(retry_delay)
+            else:
+                logger.error(f"Database init failed after {max_retries} attempts")
+    raise last_error
 
 
 async def check_db_connection(timeout_seconds: float = 5.0) -> None:
